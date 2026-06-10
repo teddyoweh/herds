@@ -1,0 +1,51 @@
+"""Darwin Cloud -- connect your Mac to the internet and turn it into a
+programmable runtime.
+
+    import darwin as dc
+
+    mac = dc.mac()
+    result = mac.run("xcodebuild -scheme MyApp build")
+    print(result.stdout)
+
+The public surface intentionally echoes Modal so the mental model transfers:
+``App``, ``Image``, ``Volume``, ``Sandbox`` -- but the runtime is *your Mac*.
+"""
+
+from __future__ import annotations
+
+from .sdk import (
+    App,
+    CommandError,
+    DarwinClient,
+    DarwinError,
+    Function,
+    Image,
+    Mac,
+    RemoteExecutionError,
+    Result,
+    Sandbox,
+    Secret,
+    Volume,
+    mac,
+    machines,
+)
+
+__version__ = "0.1.0"
+
+__all__ = [
+    "App",
+    "CommandError",
+    "DarwinClient",
+    "DarwinError",
+    "Function",
+    "Image",
+    "Mac",
+    "RemoteExecutionError",
+    "Result",
+    "Sandbox",
+    "Secret",
+    "Volume",
+    "mac",
+    "machines",
+    "__version__",
+]

@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "darwin-cloud"
+version = "0.1.0"
+description = "Connect your Mac to the internet and turn it into a programmable runtime. Modal, for Macs."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [{ name = "Spawn Labs", email = "teddy@spawnlabs.ai" }]
+keywords = ["mac", "macos", "runtime", "sandbox", "modal", "ci", "xcode"]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "websockets>=13.0",
+    "httpx>=0.27",
+    "typer>=0.12",
+    "rich>=13.7",
+    "pydantic>=2.7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "anyio>=4.0"]
+
+[project.scripts]
+darwin = "darwin.cli:app"
+darwind = "darwin.daemon:main"
+
+[project.urls]
+Homepage = "https://github.com/spawnlabs/darwin-cloud"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/darwin"]
+# Bundle the pre-built static dashboard so `pip install` ships the full UI.
+artifacts = ["src/darwin/web_dist/**/*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

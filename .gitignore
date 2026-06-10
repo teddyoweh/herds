@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Next.js (dashboard)
+web/node_modules/
+web/.next/
+web/out/
+web/.env*.local
+*.tsbuildinfo
+
+# Generated: the dashboard is built into the wheel by scripts/build_release.sh
+src/darwin/web_dist/
+
+# Local Darwin state / data
+*.db
+*.sqlite
+.darwin/
+host_token
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
