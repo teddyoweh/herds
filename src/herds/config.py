@@ -30,6 +30,10 @@ RUN_DIR = HERDS_HOME / "run"
 
 DEFAULT_CONTROL_PLANE = os.environ.get("HERDS_CONTROL_PLANE", "http://127.0.0.1:8787")
 
+AUTH_PATH = HERDS_HOME / "auth.json"
+# The relay is invisible infra — baked in, overridable only for our own testing.
+DEFAULT_RELAY = os.environ.get("HERDS_RELAY", "wss://relay.herds.run")
+
 
 def ensure_dirs() -> None:
     for d in (HERDS_HOME, VOLUMES_DIR, SANDBOXES_DIR, IMAGES_DIR, LOGS_DIR, RUN_DIR):
@@ -114,5 +118,49 @@ class Credentials:
         # Tokens are secrets; never world-readable.
         try:
             os.chmod(CREDENTIALS_PATH, 0o600)
+        except OSError:
+            pass
+
+
+# --------------------------------------------------------------------------- #
+# Auth (account token + assigned subdomain) — set by `herds auth`
+# --------------------------------------------------------------------------- #
+
+
+@dataclass
+class Auth:
+    """The user's account identity. `token` authenticates to the relay; `account`
+    is their assigned name/subdomain. The relay URL is infra — never user-set."""
+
+    token: Optional[str] = None       # hx_… account token
+    account: Optional[str] = None      # assigned subdomain, e.g. "teddy" → teddy.herds.run
+    url: Optional[str] = None          # the public link, e.g. https://teddy.herds.run
+    relay: str = DEFAULT_RELAY
+
+    @classmethod
+    def load(cls) -> "Auth":
+        token = os.environ.get("HERDS_TOKEN")
+        account = os.environ.get("HERDS_ACCOUNT")
+        url = None
+        relay = DEFAULT_RELAY
+        if AUTH_PATH.exists():
+            raw = json.loads(AUTH_PATH.read_text())
+            token = token or raw.get("token")
+            account = account or raw.get("account")
+            url = raw.get("url")
+            relay = os.environ.get("HERDS_RELAY") or raw.get("relay") or DEFAULT_RELAY
+        return cls(token=token, account=account, url=url, relay=relay)
+
+    @property
+    def signed_in(self) -> bool:
+        return bool(self.token and self.account)
+
+    def save(self) -> None:
+        ensure_dirs()
+        AUTH_PATH.write_text(
+            json.dumps({"token": self.token, "account": self.account, "url": self.url, "relay": self.relay}, indent=2)
+        )
+        try:
+            os.chmod(AUTH_PATH, 0o600)
         except OSError:
             pass

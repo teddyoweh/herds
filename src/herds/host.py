@@ -278,17 +278,23 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True, 
     if not has_dashboard:
         err.print("[yellow]No bundled dashboard found; serving API only.[/yellow]")
 
-    # 3. Tunnel first, so the control plane knows its own public URL.
+    # 3. Public link. Signed in → our relay (stable, branded, invisible). Else
+    #    fall back to a Cloudflare/Tailscale tunnel.
+    auth = config.Auth.load()
+    use_relay = tunnel and not quick and auth.signed_in
     public_url, provider, permanent = f"http://127.0.0.1:{port}", "local", True
-    if tunnel:
+    if use_relay:
+        public_url = auth.url or f"https://{auth.account}.herds.run"
+        provider, permanent = "Herds", True
+    elif tunnel:
         console.print("[dim]Opening secure tunnel…[/dim]")
         url, provider, permanent = _start_tunnel(port, procs, quick=quick)
         if url:
             public_url = url
         else:
             provider, permanent = "local", True
-            err.print("[yellow]cloudflared not found — serving locally. "
-                      "Install it for a public link: [bold]brew install cloudflared[/bold].[/yellow]")
+            err.print("[yellow]Not signed in and no tunnel available. Run [bold]herds auth[/bold] "
+                      "for a stable link, or install cloudflared. Serving locally.[/yellow]")
 
     # 4. Control plane: auth on, serves the dashboard, knows its public URL + token.
     cp_env = {
@@ -310,8 +316,15 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True, 
         env={**base_env, "HERDS_CONTROL_PLANE": f"http://127.0.0.1:{port}", "HERDS_DEVICE_TOKEN": token},
     ))
 
-    # 6. Don't hand over a dead link — wait until the tunnel actually serves.
-    if provider != "local":
+    # 6. Connect the public link. Relay = our infra (dial out, expose this control
+    #    plane at your account's subdomain). Tunnel = verify it actually serves.
+    if use_relay:
+        procs.append(_spawn(
+            [sys.executable, "-m", "herds.relay", "client", auth.relay, auth.token, f"http://127.0.0.1:{port}"],
+            env=base_env,
+        ))
+        time.sleep(1.5)
+    elif provider != "local":
         console.print("[dim]Verifying the link is live (quick tunnels take a few seconds)…[/dim]")
         if not _verify_tunnel(public_url):
             err.print("[yellow]The tunnel didn't come up in time.[/yellow] "

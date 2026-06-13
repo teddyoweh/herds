@@ -113,6 +113,54 @@ def _host_setup():
 
 
 @app.command()
+def auth(
+    token: Optional[str] = typer.Option(None, "--token", help="Account token (hx_…)."),
+    name: Optional[str] = typer.Option(None, "--name", help="Preferred subdomain when provisioning."),
+):
+    """Sign in to your Herds account, so `herds host` gets you a stable link."""
+    from ..relay import provision_account, whoami
+
+    config.ensure_dirs()
+    a = config.Auth.load()
+
+    if token:  # bring an existing token (e.g. to a second Mac)
+        info = whoami(a.relay, token)
+        if not info:
+            console.print("[red]✗ Invalid or expired token.[/red]")
+            raise typer.Exit(1)
+        a.token, a.account, a.url = token, info["account"], info.get("url")
+        a.save()
+    elif a.signed_in and not name:
+        console.print(f"[green]✓ Signed in[/green] as [bold]{a.account}[/bold] — run [bold]herds host[/bold].")
+        return
+    else:  # provision a fresh account
+        info = provision_account(a.relay, name or "")
+        a.token, a.account, a.url = info["token"], info["account"], info.get("url")
+        a.save()
+
+    console.print(Panel.fit(
+        f"[green]✓ Signed in to Herds[/green]\n\n"
+        f"[bold]Account[/bold]\n  {a.account}\n\n"
+        f"[bold]Your link[/bold]  [dim](after `herds host`)[/dim]\n  [cyan]https://{a.account}.herds.run[/cyan]\n\n"
+        f"[bold]Token[/bold]  [dim](use `herds auth --token …` on your other Macs)[/dim]\n  [yellow]{a.token}[/yellow]\n\n"
+        f"[dim]Now run [bold]herds host[/bold] — your Mac goes live at the link above.[/dim]",
+        title="herds auth", border_style="green",
+    ))
+
+
+@app.command()
+def relay(
+    port: int = typer.Option(8888, help="Relay port."),
+    domain: str = typer.Option("herds.run", help="Wildcard domain for host subdomains."),
+):
+    """Run a Herds relay server (our infra — routes you.<domain> → connected hosts)."""
+    from ..relay import serve_relay
+
+    console.print(f"[green]herds relay[/green] on :{port} routing [cyan]*.{domain}[/cyan] → hosts")
+    serve_relay(port=port, domain=domain)
+
+
+@app.command()
 def connect(
     url: Optional[str] = typer.Argument(None, help="Host link, e.g. https://….trycloudflare.com"),
     token: Optional[str] = typer.Argument(None, help="Host token from `herds host`."),
