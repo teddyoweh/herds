@@ -6,7 +6,7 @@ import useSWR from "swr";
 // serves the dashboard, so the API is same-origin; in dev a build-time override
 // points at the separate control plane.
 export const API = (() => {
-  const env = process.env.NEXT_PUBLIC_DARWIN_API?.replace(/\/$/, "");
+  const env = process.env.NEXT_PUBLIC_HERDS_API?.replace(/\/$/, "");
   if (env) return env;
   if (typeof window !== "undefined") return window.location.origin;
   return "http://127.0.0.1:8787";
@@ -14,10 +14,10 @@ export const API = (() => {
 
 // ---- auth (host mode) ------------------------------------------------------
 export function getToken(): string {
-  return (typeof window !== "undefined" && localStorage.getItem("darwin_token")) || "";
+  return (typeof window !== "undefined" && localStorage.getItem("herds_token")) || "";
 }
 export function setToken(t: string) {
-  if (typeof window !== "undefined") localStorage.setItem("darwin_token", t);
+  if (typeof window !== "undefined") localStorage.setItem("herds_token", t);
 }
 export function authInit(init: RequestInit = {}): RequestInit {
   const t = getToken();

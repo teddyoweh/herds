@@ -28,8 +28,8 @@ from typing import Any, Callable, Optional, Union
 from .image import Image
 from .mac import Mac, mac as get_mac
 
-_RESULT_MARKER = "__DARWIN_RESULT__"
-_ERROR_MARKER = "__DARWIN_ERROR__"
+_RESULT_MARKER = "__HERDS_RESULT__"
+_ERROR_MARKER = "__HERDS_ERROR__"
 
 
 class RemoteExecutionError(RuntimeError):
@@ -115,7 +115,7 @@ class Function:
 
 
 class App:
-    def __init__(self, name: str = "darwin-app", *, image: Union[Image, str, None] = None):
+    def __init__(self, name: str = "herds-app", *, image: Union[Image, str, None] = None):
         self.name = name
         self.image = image
         self.functions: dict[str, Function] = {}

@@ -1,18 +1,18 @@
-"""Darwin quickstart -- run commands, mount a volume, drive a sandbox.
+"""Herds quickstart -- run commands, mount a volume, drive a sandbox.
 
 Prereqs (in separate terminals):
-    darwin serve        # control plane
-    darwin connect      # connect this Mac
+    herds serve        # control plane
+    herds connect      # connect this Mac
 
 Then:
     python examples/quickstart.py
 """
 
-import darwin as dc
+import herds
 
 
 def main() -> None:
-    mac = dc.mac()
+    mac = herds.mac()
     print(f"Connected to: {mac.name}  (online={mac.online})\n")
 
     # 1. Run a command -----------------------------------------------------
@@ -25,14 +25,14 @@ def main() -> None:
     print()
 
     # 3. Volumes -- persist data across runs -------------------------------
-    vol = dc.Volume.from_name("demo-cache")
-    # The volume is reachable via $DARWIN_VOLUME_<NAME> (and as ./<name>).
-    mac.run("echo 1.2.3 > $DARWIN_VOLUME_DEMO_CACHE/version.txt", volumes={"cache": vol})
-    r = mac.run("cat $DARWIN_VOLUME_DEMO_CACHE/version.txt", volumes={"cache": vol})
+    vol = herds.Volume.from_name("demo-cache")
+    # The volume is reachable via $HERDS_VOLUME_<NAME> (and as ./<name>).
+    mac.run("echo 1.2.3 > $HERDS_VOLUME_DEMO_CACHE/version.txt", volumes={"cache": vol})
+    r = mac.run("cat $HERDS_VOLUME_DEMO_CACHE/version.txt", volumes={"cache": vol})
     print(f"volume readback -> {r.stdout.strip()}\n")
 
     # 4. Sandboxes -- isolated workspace, files persist between exec calls --
-    with dc.Sandbox.create(mac=mac) as sbx:
+    with herds.Sandbox.create(mac=mac) as sbx:
         sbx.exec("echo 'build output' > artifact.txt")
         r = sbx.exec("cat artifact.txt && pwd")
         print(f"sandbox {sbx.id} ->")

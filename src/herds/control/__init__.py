@@ -1,4 +1,4 @@
-"""The Darwin control plane.
+"""The Herds control plane.
 
 A small FastAPI service that does three jobs and nothing more:
   1. Holds the persistent WebSocket from each Mac's daemon (the agent).
@@ -40,12 +40,12 @@ from ..protocol import (
 from .store import Store
 
 # In dev (the default for local use) we don't force auth -- the magic should
-# work the instant you run it. Set DARWIN_REQUIRE_AUTH=1 to enforce keys.
-REQUIRE_AUTH = os.environ.get("DARWIN_REQUIRE_AUTH") == "1"
+# work the instant you run it. Set HERDS_REQUIRE_AUTH=1 to enforce keys.
+REQUIRE_AUTH = os.environ.get("HERDS_REQUIRE_AUTH") == "1"
 # Wildcard domain for named-subdomain port links, e.g. "ports.example.com" →
 # https://<name>.ports.example.com. Needs a wildcard tunnel route (Cloudflare
 # named tunnel). Without it, links fall back to the universal /p/<id>/<port>/ path.
-PORTS_DOMAIN = os.environ.get("DARWIN_PORTS_DOMAIN", "").strip().lower()
+PORTS_DOMAIN = os.environ.get("HERDS_PORTS_DOMAIN", "").strip().lower()
 
 
 def _slugify(s: str) -> str:
@@ -153,7 +153,7 @@ class Hub:
 def create_app(db_path: str | Path = ":memory:") -> FastAPI:
     store = Store(db_path)
     hub = Hub(store)
-    app = FastAPI(title="Darwin Control Plane", version="0.1.0")
+    app = FastAPI(title="Herds Control Plane", version="0.1.0")
     app.state.store = store
     app.state.hub = hub
 
@@ -625,7 +625,7 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
     def _port_url(sandbox_id: str, port: int, name: str) -> str:
         if PORTS_DOMAIN and name:
             return f"https://{name}.{PORTS_DOMAIN}/"
-        base = os.environ.get("DARWIN_PUBLIC_URL", "").rstrip("/")
+        base = os.environ.get("HERDS_PUBLIC_URL", "").rstrip("/")
         return f"{base}/p/{sandbox_id}/{port}/"
 
     async def _proxy_port(machine_id, port, method, path, query, headers, body) -> Response:
@@ -703,12 +703,12 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
     @app.get("/v1/host")
     def host_info(authorization: Optional[str] = Header(None)):
         owner_from_key(authorization)
-        url = os.environ.get("DARWIN_PUBLIC_URL", "")
-        token = os.environ.get("DARWIN_HOST_TOKEN", "")
+        url = os.environ.get("HERDS_PUBLIC_URL", "")
+        token = os.environ.get("HERDS_HOST_TOKEN", "")
         return {
             "public_url": url,
             "token": token,
-            "connect": f"darwin connect {url} {token}" if url and token else "",
+            "connect": f"herds connect {url} {token}" if url and token else "",
             "hosted": bool(url),
         }
 
@@ -718,13 +718,13 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
 
     # -- single-origin: serve the dashboard through the control plane -------- #
     # One tunneled origin serves UI + API + WS. API paths win (defined above).
-    #  • DARWIN_DASHBOARD_URL → reverse-proxy a running Next server (dev).
+    #  • HERDS_DASHBOARD_URL → reverse-proxy a running Next server (dev).
     #  • else web_dist (bundled static export) → serve files directly (prod).
     import httpx as _httpx
 
     _API_PREFIXES = ("v1/", "v1", "agent", "healthz", "p/")
-    dashboard_url = os.environ.get("DARWIN_DASHBOARD_URL")
-    web_dist = Path(os.environ.get("DARWIN_WEB_DIST") or (Path(__file__).resolve().parent.parent / "web_dist"))
+    dashboard_url = os.environ.get("HERDS_DASHBOARD_URL")
+    web_dist = Path(os.environ.get("HERDS_WEB_DIST") or (Path(__file__).resolve().parent.parent / "web_dist"))
 
     if dashboard_url:
         proxy = _httpx.AsyncClient(base_url=dashboard_url.rstrip("/"), timeout=30.0)
@@ -797,14 +797,14 @@ def _resolve_default_machine(store: Store, hub: Hub, owner: str) -> str:
             return m["machine_id"]
     if online:
         return online[0]
-    raise HTTPException(409, "no machines online; run `darwin connect` on a Mac")
+    raise HTTPException(409, "no machines online; run `herds connect` on a Mac")
 
 
 def serve(host: str = "127.0.0.1", port: int = 8787, db_path: Optional[str] = None) -> None:
-    """Run the control plane with uvicorn (used by ``darwin serve``)."""
+    """Run the control plane with uvicorn (used by ``herds serve``)."""
     import uvicorn
 
     config.ensure_dirs()
-    path = db_path or str(config.DARWIN_HOME / "control.db")
+    path = db_path or str(config.HERDS_HOME / "control.db")
     app = create_app(path)
     uvicorn.run(app, host=host, port=port, log_level="warning")

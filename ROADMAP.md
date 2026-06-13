@@ -1,4 +1,4 @@
-# Darwin Cloud — Roadmap
+# Herds — Roadmap
 
 ## ✅ Now (MVP — works end-to-end locally)
 
@@ -17,18 +17,18 @@
 
 ## 🔜 Next
 
-- **Auth & accounts**: OAuth device-authorization flow for `darwin connect`,
+- **Auth & accounts**: OAuth device-authorization flow for `herds connect`,
   per-machine device tokens, API keys, machine-ownership ACLs (the `Store`
-  already models all of this; flip on `DARWIN_REQUIRE_AUTH`). `darwin login` /
-  `darwin token new`.
+  already models all of this; flip on `HERDS_REQUIRE_AUTH`). `herds login` /
+  `herds token new`.
 - **Hosted control plane**: deploy the FastAPI app; swap in-memory fan-out for
   Redis pub/sub and SQLite for Postgres (both isolated behind existing
   boundaries). Public TLS endpoint so Macs anywhere can connect.
 - **Robust function shipping**: package dependencies + module context (beyond
   single-file `getsource`) so `@app.function` runs richer code remotely;
   `.spawn()` → `FunctionCall.get()`, `.map()` fan-out.
-- **`darwin shell`**: a true interactive PTY session, not just `-c`.
-- **Scheduled jobs**: `@app.function(schedule=dc.Cron("0 9 * * *"))` driven by
+- **`herds shell`**: a true interactive PTY session, not just `-c`.
+- **Scheduled jobs**: `@app.function(schedule=herds.Cron("0 9 * * *"))` driven by
   the control plane.
 
 ## 🌋 Premium isolation tier — Tart VMs
@@ -48,7 +48,7 @@
 - Throwaway/recycled local-user pool for stronger filesystem isolation without a
   VM.
 - Web dashboard for machines, jobs, logs.
-- Distribution: Homebrew tap (`brew install darwin-cloud`) with a
+- Distribution: Homebrew tap (`brew install herds`) with a
   `virtualenv_install_with_resources` formula and a `service do` block; later a
   signed/notarized single binary.
 - Volume snapshots & sharing; per-volume APFS quotas.

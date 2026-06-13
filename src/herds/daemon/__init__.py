@@ -1,4 +1,4 @@
-"""The Darwin daemon: the agent that lives on a Mac and makes it programmable.
+"""The Herds daemon: the agent that lives on a Mac and makes it programmable.
 
 It holds a single persistent WebSocket out to the control plane (so it works
 behind NAT with no inbound ports), registers this machine, then services
@@ -55,7 +55,7 @@ class Daemon:
                 await self._connect_once()
                 backoff = 1.0  # reset after a clean session
             except (OSError, websockets.WebSocketException) as exc:
-                print(f"darwin daemon: connection lost ({exc}); retrying in {backoff:.0f}s",
+                print(f"herds daemon: connection lost ({exc}); retrying in {backoff:.0f}s",
                       file=sys.stderr)
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 30.0)
@@ -68,7 +68,7 @@ class Daemon:
                 type=FrameType.REGISTERED,
                 data={"machine": self.info.model_dump()},
             ))
-            print(f"darwin daemon: connected as {self.machine_id} "
+            print(f"herds daemon: connected as {self.machine_id} "
                   f"({self.info.name}) -> {self.control_plane}", file=sys.stderr)
             await self._report_volumes()
             await self._report_metrics()
@@ -239,7 +239,7 @@ class Daemon:
 
 
 def main() -> None:
-    """Entry point for the ``darwind`` console script and ``darwin connect``."""
+    """Entry point for the ``herdsd`` console script and ``herds connect``."""
     config.ensure_dirs()
     cfg = config.Config.load()
     creds = config.Credentials.load()
@@ -251,7 +251,7 @@ def main() -> None:
     try:
         asyncio.run(daemon.run_forever())
     except KeyboardInterrupt:
-        print("darwin daemon: shutting down", file=sys.stderr)
+        print("herds daemon: shutting down", file=sys.stderr)
 
 
 if __name__ == "__main__":

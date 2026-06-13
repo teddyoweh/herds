@@ -4,8 +4,8 @@ import { API } from "@/lib/api";
 import { Copy, LiveDot } from "./ui";
 
 const STEPS = [
-  { n: 1, title: "Install Darwin", cmd: "brew install darwin-cloud" },
-  { n: 2, title: "Connect this Mac", cmd: "darwin connect" },
+  { n: 1, title: "Install Herds", cmd: "brew install herds" },
+  { n: 2, title: "Connect this Mac", cmd: "herds connect" },
 ];
 
 export function Onboarding() {
@@ -17,7 +17,7 @@ export function Onboarding() {
         </div>
         <h2 className="text-[20px] font-semibold tracking-tight text-white">Connect your first Mac</h2>
         <p className="mx-auto mt-2 max-w-sm text-[13px] leading-relaxed text-zinc-500">
-          Install Darwin and sign in. The Mac dials home over a secure connection — no inbound
+          Install Herds and sign in. The Mac dials home over a secure connection — no inbound
           ports — and becomes a programmable runtime you can drive from anywhere.
         </p>
       </div>
@@ -43,7 +43,7 @@ export function Onboarding() {
       </div>
       <p className="mt-3 text-center text-[11px] text-zinc-700">
         Self-hosting? Point a Mac at this control plane with{" "}
-        <span className="font-mono text-zinc-600">DARWIN_CONTROL_PLANE={API}</span>
+        <span className="font-mono text-zinc-600">HERDS_CONTROL_PLANE={API}</span>
       </p>
     </div>
   );

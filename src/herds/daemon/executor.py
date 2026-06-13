@@ -88,7 +88,7 @@ def _build_env(
     """
     if inherit_home:
         env = dict(os.environ)
-        env["DARWIN_SANDBOX_ID"] = sandbox.id
+        env["HERDS_SANDBOX_ID"] = sandbox.id
         env.update({k: v for k, v in resolution.env.items() if v})
         env["PATH"] = resolution.merge_path(os.environ.get("PATH", _DEFAULT_PATH))
         env.update(extra_env)
@@ -101,8 +101,8 @@ def _build_env(
 
     env["HOME"] = str(sandbox.home)
     env["TMPDIR"] = str(sandbox.tmp)
-    env["USER"] = os.environ.get("USER", "darwin")
-    env["DARWIN_SANDBOX_ID"] = sandbox.id
+    env["USER"] = os.environ.get("USER", "herds")
+    env["HERDS_SANDBOX_ID"] = sandbox.id
 
     # Redirect toolchain caches into the sandbox so jobs don't fight over them.
     env["DERIVED_DATA_PATH"] = str(sandbox.home / "DerivedData")
@@ -233,11 +233,11 @@ class Executor:
 
         # Surface image resolution notes as stderr so users see what got pinned.
         for note in resolution.notes:
-            await sink("stderr", f"darwin: {note}\n")
+            await sink("stderr", f"herds: {note}\n")
 
         # Mount volumes. Without a container there is no real "/workspace", so a
         # volume is symlinked under the sandbox working dir at the mount's
-        # basename, AND exposed as an absolute path via $DARWIN_VOLUME_<NAME>.
+        # basename, AND exposed as an absolute path via $HERDS_VOLUME_<NAME>.
         # Commands reach it as a relative path or through the env var -- both
         # unambiguous on a bare Mac.
         volume_paths: list[Path] = []
@@ -254,7 +254,7 @@ class Executor:
                     link.symlink_to(real)
                 except OSError:
                     pass
-            env_key = "DARWIN_VOLUME_" + "".join(
+            env_key = "HERDS_VOLUME_" + "".join(
                 c.upper() if c.isalnum() else "_" for c in vol_name
             )
             volume_env[env_key] = str(real)
@@ -288,7 +288,7 @@ class Executor:
                     start_new_session=True,  # own process group -> killable tree
                 )
             except (OSError, ValueError) as exc:
-                await sink("stderr", f"darwin: failed to launch: {exc}\n")
+                await sink("stderr", f"herds: failed to launch: {exc}\n")
                 self._canceled.discard(request_id)
                 return 127, int((time.monotonic() - started) * 1000)
 
@@ -301,7 +301,7 @@ class Executor:
                     await proc.wait()
             except asyncio.TimeoutError:
                 _kill_tree(proc)
-                await sink("stderr", f"darwin: timed out after {timeout}s\n")
+                await sink("stderr", f"herds: timed out after {timeout}s\n")
             finally:
                 await pumps
                 sandbox._procs.pop(request_id, None)
@@ -311,7 +311,7 @@ class Executor:
             if not keep_alive or request_id in self._canceled:
                 break
             # Supervised restart with capped backoff.
-            await sink("stderr", f"darwin: process exited ({code}); restarting (#{attempt})\n")
+            await sink("stderr", f"herds: process exited ({code}); restarting (#{attempt})\n")
             await asyncio.sleep(min(5.0, 0.5 * attempt))
             if request_id in self._canceled:
                 break

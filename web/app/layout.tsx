@@ -10,7 +10,7 @@ import { OfflineBanner } from "@/components/OfflineBanner";
 import { TokenGate } from "@/components/TokenGate";
 
 export const metadata: Metadata = {
-  title: "Darwin Cloud",
+  title: "Herds",
   description: "Every Mac becomes an API.",
 };
 

@@ -1,16 +1,16 @@
-"""The ``darwin`` CLI: connect Macs, run commands, manage volumes and images.
+"""The ``herds`` CLI: connect Macs, run commands, manage volumes and images.
 
 Mirrors the shape the product mockups call for:
 
-    darwin serve        # run a control plane locally (dev / self-host)
-    darwin connect      # connect THIS Mac and keep it online
-    darwin machines     # list your connected Macs
-    darwin run -- <cmd> # run a command on a Mac
-    darwin shell        # run a one-off command / drop a quick shell
-    darwin logs         # recent jobs
-    darwin volume ls    # list volumes
-    darwin image ls     # toolchain images available on this Mac
-    darwin install      # install the launchd LaunchAgent (stay online on login)
+    herds serve        # run a control plane locally (dev / self-host)
+    herds connect      # connect THIS Mac and keep it online
+    herds machines     # list your connected Macs
+    herds run -- <cmd> # run a command on a Mac
+    herds shell        # run a one-off command / drop a quick shell
+    herds logs         # recent jobs
+    herds volume ls    # list volumes
+    herds image ls     # toolchain images available on this Mac
+    herds install      # install the launchd LaunchAgent (stay online on login)
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from .. import __version__, config
 from ..daemon import machine as machine_mod
 
 app = typer.Typer(
-    name="darwin",
+    name="herds",
     help="Connect your Mac to the internet and turn it into a programmable runtime.",
     no_args_is_help=True,
     add_completion=False,
@@ -44,9 +44,9 @@ err = Console(stderr=True)
 
 
 def _client():
-    from ..sdk.client import DarwinClient
+    from ..sdk.client import HerdsClient
 
-    return DarwinClient()
+    return HerdsClient()
 
 
 # --------------------------------------------------------------------------- #
@@ -56,8 +56,8 @@ def _client():
 
 @app.command()
 def version():
-    """Show the Darwin version."""
-    console.print(f"darwin {__version__}")
+    """Show the Herds version."""
+    console.print(f"herds {__version__}")
 
 
 @app.command()
@@ -65,16 +65,16 @@ def serve(
     host: str = typer.Option("127.0.0.1", help="Bind host."),
     port: int = typer.Option(8787, help="Bind port."),
 ):
-    """Run a Darwin control plane locally (for development or self-hosting)."""
+    """Run a Herds control plane locally (for development or self-hosting)."""
     from ..control import serve as serve_control
 
     console.print(
         Panel.fit(
-            f"[bold]Darwin control plane[/bold]\n\n"
+            f"[bold]Herds control plane[/bold]\n\n"
             f"Listening on  [cyan]http://{host}:{port}[/cyan]\n"
             f"Agents dial   [cyan]ws://{host}:{port}/agent/ws[/cyan]\n\n"
             f"Point Macs here with:\n"
-            f"  [dim]DARWIN_CONTROL_PLANE=http://{host}:{port} darwin connect[/dim]",
+            f"  [dim]HERDS_CONTROL_PLANE=http://{host}:{port} herds connect[/dim]",
             title="serve",
             border_style="green",
         )
@@ -82,7 +82,7 @@ def serve(
     serve_control(host=host, port=port)
 
 
-host_app = typer.Typer(help="Self-host Darwin with a secure public link.", invoke_without_command=True)
+host_app = typer.Typer(help="Self-host Herds with a secure public link.", invoke_without_command=True)
 app.add_typer(host_app, name="host")
 
 
@@ -95,7 +95,7 @@ def _host_main(
 ):
     """Self-host this Mac with a permanent Tailscale Funnel link.
 
-    Run `darwin host setup` first to enable Tailscale Funnel (free, permanent).
+    Run `herds host setup` first to enable Tailscale Funnel (free, permanent).
     """
     if ctx.invoked_subcommand is not None:
         return
@@ -115,7 +115,7 @@ def _host_setup():
 @app.command()
 def connect(
     url: Optional[str] = typer.Argument(None, help="Host link, e.g. https://….trycloudflare.com"),
-    token: Optional[str] = typer.Argument(None, help="Host token from `darwin host`."),
+    token: Optional[str] = typer.Argument(None, help="Host token from `herds host`."),
     control_plane: Optional[str] = typer.Option(
         None, "--control-plane", help="Control plane URL (overrides positional)."
     ),
@@ -148,7 +148,7 @@ def connect(
             f"[bold]Machine[/bold]\n  {cfg.machine_name}\n  {mem}\n  macOS {info.macos_version}\n\n"
             f"[bold]ID[/bold]\n  {cfg.machine_id}\n\n"
             f"[bold]Control plane[/bold]\n  {cfg.control_plane}",
-            title="darwin connect",
+            title="herds connect",
             border_style="green",
         )
     )
@@ -171,7 +171,7 @@ def machines():
         err.print(f"[red]Could not reach control plane:[/red] {exc}")
         raise typer.Exit(1)
     if not rows:
-        console.print("[dim]No machines yet. Run `darwin connect` on a Mac.[/dim]")
+        console.print("[dim]No machines yet. Run `herds connect` on a Mac.[/dim]")
         return
     table = Table(title="Machines", show_lines=False)
     table.add_column("ID", style="cyan")
@@ -260,13 +260,13 @@ def logs(machine: Optional[str] = typer.Option(None, "--machine", "-m")):
 
 @app.command()
 def status():
-    """Show local Darwin configuration."""
+    """Show local Herds configuration."""
     cfg = config.Config.load()
     creds = config.Credentials.load()
     table = Table(show_header=False)
     table.add_column(style="bold")
     table.add_column()
-    table.add_row("Darwin home", str(config.DARWIN_HOME))
+    table.add_row("Herds home", str(config.HERDS_HOME))
     table.add_row("Control plane", cfg.control_plane)
     table.add_row("This machine", f"{cfg.machine_name or '—'} ({cfg.machine_id or 'not connected'})")
     table.add_row("API key", "set" if creds.api_key else "[dim]none[/dim]")
@@ -352,11 +352,11 @@ def image_ls():
 # launchd install / uninstall
 # --------------------------------------------------------------------------- #
 
-_PLIST_LABEL = "ai.spawnlabs.darwin"
+_PLIST_LABEL = "ai.spawnlabs.herds"
 _PLIST_PATH = Path.home() / "Library/LaunchAgents" / f"{_PLIST_LABEL}.plist"
 
 
-def _plist_contents(darwin_bin: str) -> str:
+def _plist_contents(herds_bin: str) -> str:
     config.ensure_dirs()
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -365,7 +365,7 @@ def _plist_contents(darwin_bin: str) -> str:
   <key>Label</key><string>{_PLIST_LABEL}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>{darwin_bin}</string>
+    <string>{herds_bin}</string>
     <string>connect</string>
   </array>
   <key>RunAtLoad</key><true/>
@@ -382,9 +382,9 @@ def _plist_contents(darwin_bin: str) -> str:
 @app.command()
 def install():
     """Install a launchd LaunchAgent so this Mac stays online across logins."""
-    darwin_bin = shutil.which("darwin") or "darwin"
+    herds_bin = shutil.which("herds") or "herds"
     _PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _PLIST_PATH.write_text(_plist_contents(darwin_bin))
+    _PLIST_PATH.write_text(_plist_contents(herds_bin))
     uid = subprocess.run(["id", "-u"], capture_output=True, text=True).stdout.strip()
     subprocess.run(["launchctl", "bootout", f"gui/{uid}", str(_PLIST_PATH)],
                    capture_output=True)

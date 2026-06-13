@@ -1,4 +1,4 @@
-"""The wire protocol spoken across all three Darwin components.
+"""The wire protocol spoken across all three Herds components.
 
 The SDK talks REST to the control plane to *start* work and WebSocket to
 *stream* logs back. The Mac daemon ("agent") holds a single persistent

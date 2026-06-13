@@ -37,7 +37,7 @@ export default function Overview() {
     return (
       <div className="space-y-10">
         <header>
-          <h1 className="text-[26px] font-semibold tracking-tightest text-white">Welcome to Darwin</h1>
+          <h1 className="text-[26px] font-semibold tracking-tightest text-white">Welcome to Herds</h1>
           <p className="mt-2 text-[13px] text-zinc-500">Turn any Mac into a programmable cloud runtime.</p>
         </header>
         <Onboarding />
@@ -175,15 +175,15 @@ export default function Overview() {
 
       {/* Quickstart */}
       <section>
-        <Heading title="Run something on a Mac" href="https://github.com/spawnlabs/darwin-cloud" cta="Docs →" />
+        <Heading title="Run something on a Mac" href="https://github.com/teddyoweh/herds" cta="Docs →" />
         <pre className="surface mt-3 overflow-x-auto px-5 py-4 font-mono text-[12.5px] leading-[1.7] text-zinc-400">
-{`import darwin as dc
+{`import herds
 
-mac = dc.mac()
-sbx = dc.Sandbox.create(
+mac = herds.mac()
+sbx = herds.Sandbox.create(
     image="xcode:26",
-    volumes={"builds": dc.Volume.from_name("ios")},
-    secrets=[dc.Secret.from_name("appstore")],
+    volumes={"builds": herds.Volume.from_name("ios")},
+    secrets=[herds.Secret.from_name("appstore")],
 )
 sbx.exec("xcodebuild -scheme App archive", check=True)`}
         </pre>

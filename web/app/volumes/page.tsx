@@ -51,7 +51,7 @@ export default function VolumesPage() {
       ) : all.length === 0 ? (
         <EmptyState
           title="No volumes yet"
-          hint="dc.Volume.from_name('ios-builds') creates a persistent directory. Mount it with volumes={'builds': vol} and reach it via $DARWIN_VOLUME_<NAME>."
+          hint="herds.Volume.from_name('ios-builds') creates a persistent directory. Mount it with volumes={'builds': vol} and reach it via $HERDS_VOLUME_<NAME>."
         />
       ) : (
         <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl bg-white/[0.012] shadow-[0_4px_24px_-12px_rgba(0,0,0,0.6)]">

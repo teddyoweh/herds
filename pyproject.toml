@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "darwin-cloud"
+name = "herds"
 version = "0.1.0"
 description = "Connect your Mac to the internet and turn it into a programmable runtime. Modal, for Macs."
 readme = "README.md"
@@ -25,16 +25,16 @@ dependencies = [
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "anyio>=4.0"]
 
 [project.scripts]
-darwin = "darwin.cli:app"
-darwind = "darwin.daemon:main"
+herds = "herds.cli:app"
+herdsd = "herds.daemon:main"
 
 [project.urls]
-Homepage = "https://github.com/spawnlabs/darwin-cloud"
+Homepage = "https://github.com/teddyoweh/herds"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/darwin"]
+packages = ["src/herds"]
 # Bundle the pre-built static dashboard so `pip install` ships the full UI.
-artifacts = ["src/darwin/web_dist/**/*"]
+artifacts = ["src/herds/web_dist/**/*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

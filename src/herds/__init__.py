@@ -1,7 +1,7 @@
-"""Darwin Cloud -- connect your Mac to the internet and turn it into a
+"""Herds Cloud -- connect your Mac to the internet and turn it into a
 programmable runtime.
 
-    import darwin as dc
+    import herds as dc
 
     mac = dc.mac()
     result = mac.run("xcodebuild -scheme MyApp build")
@@ -16,8 +16,8 @@ from __future__ import annotations
 from .sdk import (
     App,
     CommandError,
-    DarwinClient,
-    DarwinError,
+    HerdsClient,
+    HerdsError,
     Function,
     Image,
     Mac,
@@ -35,8 +35,8 @@ __version__ = "0.1.0"
 __all__ = [
     "App",
     "CommandError",
-    "DarwinClient",
-    "DarwinError",
+    "HerdsClient",
+    "HerdsError",
     "Function",
     "Image",
     "Mac",

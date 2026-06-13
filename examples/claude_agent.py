@@ -1,12 +1,12 @@
-"""Run Claude on your Mac, through Darwin — the whole thesis in one file.
+"""Run Claude on your Mac, through Herds — the whole thesis in one file.
 
-A Claude Code agent executes inside a Darwin sandbox: an isolated working
+A Claude Code agent executes inside a Herds sandbox: an isolated working
 directory on your Mac, but with your *real* Claude login (inherit_home=True).
 The SDK orchestrates a small agent loop — ask Claude to write code, drop it in
 the sandbox, run it — all on a Mac that could be anywhere on the internet.
 
-    darwin serve        # terminal A
-    darwin connect      # terminal B
+    herds serve        # terminal A
+    herds connect      # terminal B
     python examples/claude_agent.py
 
 Requires Claude Code (`brew install claude` / logged in) on the connected Mac.
@@ -14,7 +14,7 @@ Requires Claude Code (`brew install claude` / logged in) on the connected Mac.
 
 import base64
 import re
-import darwin as dc
+import herds
 
 
 def extract_code(text: str) -> str:
@@ -24,11 +24,11 @@ def extract_code(text: str) -> str:
 
 
 def main() -> None:
-    mac = dc.mac()
+    mac = herds.mac()
     print(f"Mac: {mac.name}\n")
 
     # An isolated workspace, but with your real tools + Claude login.
-    sbx = dc.Sandbox.create(mac=mac, inherit_home=True)
+    sbx = herds.Sandbox.create(mac=mac, inherit_home=True)
     print(f"sandbox: {sbx.id}\n")
 
     v = sbx.exec("claude --version", timeout=60)

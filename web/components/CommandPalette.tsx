@@ -82,8 +82,8 @@ export function CommandPalette() {
     const c = new URLSearchParams(window.location.search).get("cmdk");
     if (c) { setOpen(true); if (c !== "1") setTimeout(() => setQ(c), 30); }
     window.addEventListener("keydown", onKey);
-    window.addEventListener("darwin-open-cmdk", onOpen as EventListener);
-    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("darwin-open-cmdk", onOpen as EventListener); };
+    window.addEventListener("herds-open-cmdk", onOpen as EventListener);
+    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("herds-open-cmdk", onOpen as EventListener); };
   }, []);
 
   useEffect(() => { if (open) { setQ(""); setCursor(0); setTimeout(() => inputRef.current?.focus(), 10); } }, [open]);

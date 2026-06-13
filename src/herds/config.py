@@ -1,4 +1,4 @@
-"""Local on-disk state for Darwin: ``~/.darwin``.
+"""Local on-disk state for Herds: ``~/.herds``.
 
 This is the single source of truth for where things live and how the CLI, SDK,
 and daemon find their config. Mirrors Modal's ``~/.modal.toml`` idea but as a
@@ -18,21 +18,21 @@ from typing import Optional
 # Paths
 # --------------------------------------------------------------------------- #
 
-DARWIN_HOME = Path(os.environ.get("DARWIN_HOME", Path.home() / ".darwin"))
+HERDS_HOME = Path(os.environ.get("HERDS_HOME", Path.home() / ".herds"))
 
-CONFIG_PATH = DARWIN_HOME / "config.json"
-CREDENTIALS_PATH = DARWIN_HOME / "credentials.json"
-VOLUMES_DIR = DARWIN_HOME / "volumes"
-SANDBOXES_DIR = DARWIN_HOME / "sandboxes"
-IMAGES_DIR = DARWIN_HOME / "images"
-LOGS_DIR = DARWIN_HOME / "logs"
-RUN_DIR = DARWIN_HOME / "run"
+CONFIG_PATH = HERDS_HOME / "config.json"
+CREDENTIALS_PATH = HERDS_HOME / "credentials.json"
+VOLUMES_DIR = HERDS_HOME / "volumes"
+SANDBOXES_DIR = HERDS_HOME / "sandboxes"
+IMAGES_DIR = HERDS_HOME / "images"
+LOGS_DIR = HERDS_HOME / "logs"
+RUN_DIR = HERDS_HOME / "run"
 
-DEFAULT_CONTROL_PLANE = os.environ.get("DARWIN_CONTROL_PLANE", "http://127.0.0.1:8787")
+DEFAULT_CONTROL_PLANE = os.environ.get("HERDS_CONTROL_PLANE", "http://127.0.0.1:8787")
 
 
 def ensure_dirs() -> None:
-    for d in (DARWIN_HOME, VOLUMES_DIR, SANDBOXES_DIR, IMAGES_DIR, LOGS_DIR, RUN_DIR):
+    for d in (HERDS_HOME, VOLUMES_DIR, SANDBOXES_DIR, IMAGES_DIR, LOGS_DIR, RUN_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
 
@@ -48,7 +48,7 @@ def now_ms() -> int:
 @dataclass
 class Config:
     control_plane: str = DEFAULT_CONTROL_PLANE
-    machine_id: Optional[str] = None        # this Mac's id, set on `darwin connect`
+    machine_id: Optional[str] = None        # this Mac's id, set on `herds connect`
     machine_name: Optional[str] = None
     default_machine: Optional[str] = None    # which machine the SDK targets by default
     extra: dict = field(default_factory=dict)
@@ -57,9 +57,9 @@ class Config:
     def load(cls) -> "Config":
         if CONFIG_PATH.exists():
             raw = json.loads(CONFIG_PATH.read_text())
-            # DARWIN_CONTROL_PLANE env always wins over the saved file, so a host
+            # HERDS_CONTROL_PLANE env always wins over the saved file, so a host
             # that bumps to a free port can point its daemon at the right URL.
-            control_plane = os.environ.get("DARWIN_CONTROL_PLANE") or raw.get("control_plane") or DEFAULT_CONTROL_PLANE
+            control_plane = os.environ.get("HERDS_CONTROL_PLANE") or raw.get("control_plane") or DEFAULT_CONTROL_PLANE
             return cls(
                 control_plane=control_plane,
                 machine_id=raw.get("machine_id"),
@@ -98,8 +98,8 @@ class Credentials:
     @classmethod
     def load(cls) -> "Credentials":
         # Env always wins, like Modal's MODAL_TOKEN_* precedence.
-        api_key = os.environ.get("DARWIN_API_KEY")
-        device_token = os.environ.get("DARWIN_DEVICE_TOKEN")
+        api_key = os.environ.get("HERDS_API_KEY")
+        device_token = os.environ.get("HERDS_DEVICE_TOKEN")
         if CREDENTIALS_PATH.exists():
             raw = json.loads(CREDENTIALS_PATH.read_text())
             api_key = api_key or raw.get("api_key")

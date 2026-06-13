@@ -37,7 +37,7 @@ export default function SettingsPage() {
     toast("Key revoked");
   };
 
-  const connectSnippet = `# install\nbrew install darwin-cloud\n\n# connect this Mac\ndarwin connect`;
+  const connectSnippet = `# install\nbrew install herds\n\n# connect this Mac\nherds connect`;
 
   return (
     <div className="max-w-3xl">
@@ -74,7 +74,7 @@ export default function SettingsPage() {
         <p className="mt-3 text-[12px] text-zinc-600">
           Control plane: <span className="font-mono text-zinc-400">{API}</span>{" "}
           <span className="text-zinc-700">— set</span>{" "}
-          <span className="font-mono text-zinc-500">DARWIN_CONTROL_PLANE</span>{" "}
+          <span className="font-mono text-zinc-500">HERDS_CONTROL_PLANE</span>{" "}
           <span className="text-zinc-700">to point a Mac at your own.</span>
         </p>
       </section>

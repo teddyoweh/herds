@@ -1,4 +1,4 @@
-from darwin.protocol import (
+from herds.protocol import (
     Frame,
     FrameType,
     ExecRequest,

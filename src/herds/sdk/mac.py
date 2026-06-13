@@ -1,6 +1,6 @@
 """``Mac`` -- a handle to one of your connected Macs. The core of the SDK.
 
-    import darwin as dc
+    import herds as dc
     mac = dc.mac()
     result = mac.run("xcodebuild -scheme MyApp build")
     print(result.stdout)
@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Iterator, Optional, Union
 
 from ..protocol import ExecRequest
-from .client import DarwinClient, Result, default_client
+from .client import HerdsClient, Result, default_client
 from .image import Image
 from .secret import Secret
 from .volume import Volume
@@ -73,7 +73,7 @@ def _build_request(
 class Mac:
     """A connected Mac you can run commands on."""
 
-    def __init__(self, machine_id: str = "default", client: Optional[DarwinClient] = None):
+    def __init__(self, machine_id: str = "default", client: Optional[HerdsClient] = None):
         self._client = client or default_client()
         self.machine_id = machine_id
         self._info: Optional[dict] = None
@@ -160,12 +160,12 @@ class Mac:
         return f"Mac({self.machine_id!r})"
 
 
-def mac(machine_id: str = "default", *, client: Optional[DarwinClient] = None) -> Mac:
+def mac(machine_id: str = "default", *, client: Optional[HerdsClient] = None) -> Mac:
     """Get a handle to one of your Macs. With no id, picks your online Mac."""
     return Mac(machine_id, client=client)
 
 
-def machines(client: Optional[DarwinClient] = None) -> list[Mac]:
+def machines(client: Optional[HerdsClient] = None) -> list[Mac]:
     """List all your connected Macs as :class:`Mac` handles."""
     c = client or default_client()
     return [Mac(m["machine_id"], client=c) for m in c.list_machines()]

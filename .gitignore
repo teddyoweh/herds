@@ -19,12 +19,12 @@ web/.env*.local
 *.tsbuildinfo
 
 # Generated: the dashboard is built into the wheel by scripts/build_release.sh
-src/darwin/web_dist/
+src/herds/web_dist/
 
-# Local Darwin state / data
+# Local Herds state / data
 *.db
 *.sqlite
-.darwin/
+.herds/
 host_token
 
 # OS / editor

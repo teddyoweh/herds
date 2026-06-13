@@ -1,4 +1,4 @@
-"""``darwin host`` — turn this Mac into a self-hosted Darwin control plane with a
+"""``herds host`` — turn this Mac into a self-hosted Herds control plane with a
 secure public link.
 
 It orchestrates four things and prints one link + one token:
@@ -8,7 +8,7 @@ It orchestrates four things and prints one link + one token:
   4. this Mac's own daemon, so the host is also a compute node
 
 The single tunneled origin serves the UI, the API, and all WebSockets. Other
-Macs join with ``darwin connect <link> <token>``.
+Macs join with ``herds connect <link> <token>``.
 """
 
 from __future__ import annotations
@@ -41,12 +41,12 @@ def _spawn(cmd, env=None, cwd=None, **kw) -> subprocess.Popen:
 
 def _persistent_token() -> str:
     """A stable host token that survives restarts (so the link+token never change)."""
-    f = config.DARWIN_HOME / "host_token"
+    f = config.HERDS_HOME / "host_token"
     if f.exists():
         t = f.read_text().strip()
         if t:
             return t
-    t = "darwin_sk_" + secrets.token_urlsafe(24)
+    t = "herds_sk_" + secrets.token_urlsafe(24)
     f.write_text(t)
     try:
         os.chmod(f, 0o600)
@@ -77,8 +77,8 @@ def _start_tunnel(port: int, procs: list, quick: bool = False) -> tuple[Optional
                 pass
 
         # Cloudflare named tunnel — only if configured (domain).
-        name = os.environ.get("DARWIN_TUNNEL_NAME")
-        hostname = os.environ.get("DARWIN_TUNNEL_HOSTNAME")
+        name = os.environ.get("HERDS_TUNNEL_NAME")
+        hostname = os.environ.get("HERDS_TUNNEL_HOSTNAME")
         if shutil.which("cloudflared") and name and hostname:
             procs.append(_spawn(
                 ["cloudflared", "tunnel", "run", "--url", f"http://127.0.0.1:{port}", name],
@@ -168,7 +168,7 @@ def host_setup() -> None:
     console.print(Panel.fit(
         "Set up a [bold]permanent[/bold] public link for your host with [bold]Tailscale Funnel[/bold].\n"
         "[dim]Free, secure, stable — your link becomes https://<your-mac>.<tailnet>.ts.net[/dim]",
-        title="darwin host setup", border_style="green",
+        title="herds host setup", border_style="green",
     ))
 
     def step(n, title):
@@ -180,7 +180,7 @@ def host_setup() -> None:
         if shutil.which("brew") and _confirm("Not found. Install Tailscale with Homebrew now?"):
             _run(["brew", "install", "tailscale"])
         if not shutil.which("tailscale"):
-            console.print("   [yellow]Still not installed.[/yellow] Install it and re-run [bold]darwin host setup[/bold]:")
+            console.print("   [yellow]Still not installed.[/yellow] Install it and re-run [bold]herds host setup[/bold]:")
             console.print("     [cyan]brew install tailscale[/cyan]  [dim]or the Mac app → https://tailscale.com/download/macos[/dim]")
             return
     console.print("   [green]✓ installed[/green]")
@@ -225,7 +225,7 @@ def host_setup() -> None:
         if shutil.which("open") and _confirm("Open both admin pages in your browser now?"):
             _run(["open", "https://login.tailscale.com/admin/dns"])
             _run(["open", "https://login.tailscale.com/admin/acls"])
-        console.print("   Then re-run [bold]darwin host setup[/bold] to confirm.")
+        console.print("   Then re-run [bold]herds host setup[/bold] to confirm.")
         return
     console.print("   [green]✓ Funnel enabled[/green]")
 
@@ -234,7 +234,7 @@ def host_setup() -> None:
     console.print(Panel.fit(
         f"[green]✓ Tailscale Funnel is ready[/green]\n\n"
         f"[bold]Your permanent link[/bold]\n  [cyan]{url}[/cyan]\n\n"
-        f"[dim]Now run [bold]darwin host[/bold] — it'll use Funnel automatically and this link\n"
+        f"[dim]Now run [bold]herds host[/bold] — it'll use Funnel automatically and this link\n"
         f"(and your saved host token) will stay the same every time.[/dim]",
         title="all set", border_style="green",
     ))
@@ -260,7 +260,7 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True, 
     if chosen != port:
         console.print(f"[dim]Port {port} is in use — using [bold]{chosen}[/bold] instead.[/dim]")
         port = chosen
-    db_path = str(config.DARWIN_HOME / "host.db")
+    db_path = str(config.HERDS_HOME / "host.db")
 
     # 1. Stable host token (persisted) usable by dashboard + SDK + daemons.
     token = _persistent_token()
@@ -269,10 +269,10 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True, 
     store.db.close()
 
     procs: list[subprocess.Popen] = []
-    base_env = {**os.environ, "DARWIN_HOME": str(config.DARWIN_HOME)}
+    base_env = {**os.environ, "HERDS_HOME": str(config.HERDS_HOME)}
 
     # 2. Dashboard: the control plane serves the bundled static export
-    #    (src/darwin/web_dist) directly — no Node.js needed at runtime.
+    #    (src/herds/web_dist) directly — no Node.js needed at runtime.
     web_dist = Path(__file__).resolve().parent / "web_dist"
     has_dashboard = web_dist.is_dir()
     if not has_dashboard:
@@ -293,21 +293,21 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True, 
     # 4. Control plane: auth on, serves the dashboard, knows its public URL + token.
     cp_env = {
         **base_env,
-        "DARWIN_REQUIRE_AUTH": "1",
-        "DARWIN_PUBLIC_URL": public_url,
-        "DARWIN_HOST_TOKEN": token,
+        "HERDS_REQUIRE_AUTH": "1",
+        "HERDS_PUBLIC_URL": public_url,
+        "HERDS_HOST_TOKEN": token,
     }
     procs.append(_spawn(
         [sys.executable, "-c",
-         f"from darwin.control import serve; serve(port={port}, db_path={db_path!r})"],
+         f"from herds.control import serve; serve(port={port}, db_path={db_path!r})"],
         env=cp_env,
     ))
     time.sleep(3)
 
     # 5. This Mac's own daemon (local, authed with the host token).
     procs.append(_spawn(
-        [sys.executable, "-m", "darwin.daemon"],
-        env={**base_env, "DARWIN_CONTROL_PLANE": f"http://127.0.0.1:{port}", "DARWIN_DEVICE_TOKEN": token},
+        [sys.executable, "-m", "herds.daemon"],
+        env={**base_env, "HERDS_CONTROL_PLANE": f"http://127.0.0.1:{port}", "HERDS_DEVICE_TOKEN": token},
     ))
 
     # 6. Don't hand over a dead link — wait until the tunnel actually serves.
@@ -315,20 +315,20 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True, 
         console.print("[dim]Verifying the link is live (quick tunnels take a few seconds)…[/dim]")
         if not _verify_tunnel(public_url):
             err.print("[yellow]The tunnel didn't come up in time.[/yellow] "
-                      "It may still appear in a few seconds — reload the link, or re-run [bold]darwin host[/bold].")
+                      "It may still appear in a few seconds — reload the link, or re-run [bold]herds host[/bold].")
 
     link_note = (
         f"[dim]via {provider} · permanent[/dim]" if permanent
         else f"[dim]via {provider} · temporary link (changes each run) — "
-             f"run [bold]darwin host setup[/bold] once for a permanent Tailscale link.[/dim]"
+             f"run [bold]herds host setup[/bold] once for a permanent Tailscale link.[/dim]"
     )
     console.print(Panel.fit(
-        f"[green]✓ Darwin host is live[/green]\n\n"
+        f"[green]✓ Herds host is live[/green]\n\n"
         f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]\n  {link_note}\n\n"
         f"[bold]Host token[/bold]\n  [yellow]{token}[/yellow] [dim](stable)[/dim]\n\n"
-        f"[bold]Add another Mac[/bold]\n  [dim]darwin connect {public_url} {token}[/dim]\n\n"
+        f"[bold]Add another Mac[/bold]\n  [dim]herds connect {public_url} {token}[/dim]\n\n"
         f"[dim]Open the dashboard, paste the token once, and you're in.[/dim]",
-        title="darwin host", border_style="green",
+        title="herds host", border_style="green",
     ))
 
     def shutdown(*_):

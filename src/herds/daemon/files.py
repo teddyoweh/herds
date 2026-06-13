@@ -2,7 +2,7 @@
 
 The dashboard browses files that live on the Mac. These helpers resolve a
 ``kind`` ("sandbox"/"volume") + relative path to a real directory under
-``~/.darwin``, refusing any path that escapes the root, then list directories
+``~/.herds``, refusing any path that escapes the root, then list directories
 or read (capped) file contents.
 """
 

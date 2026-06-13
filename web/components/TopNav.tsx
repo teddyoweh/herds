@@ -31,7 +31,7 @@ export function TopNav() {
             <span className="grid h-[22px] w-[22px] place-items-center rounded-md bg-gradient-to-br from-signal-400 to-signal-600 text-[11px]">
               🍎
             </span>
-            <span className="text-[15px] font-semibold tracking-tightest text-white">Darwin</span>
+            <span className="text-[15px] font-semibold tracking-tightest text-white">Herds</span>
           </Link>
           <Slash />
           <button className="group flex items-center gap-2 rounded-lg py-1 pl-1.5 pr-2 transition-colors hover:bg-white/[0.05]">
@@ -45,7 +45,7 @@ export function TopNav() {
 
         <div className="flex items-center gap-3 text-[12px]">
           <button
-            onClick={() => window.dispatchEvent(new Event("darwin-open-cmdk"))}
+            onClick={() => window.dispatchEvent(new Event("herds-open-cmdk"))}
             className="flex w-56 items-center justify-between rounded-lg bg-white/[0.04] py-1.5 pl-3 pr-2 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-400"
           >
             <span className="flex items-center gap-2">

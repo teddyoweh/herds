@@ -150,7 +150,7 @@ class Store:
     # -- auth --------------------------------------------------------------- #
 
     def create_api_key(self, owner: str, label: str = "") -> str:
-        key = "darwin_sk_" + secrets.token_urlsafe(24)
+        key = "herds_sk_" + secrets.token_urlsafe(24)
         self.db.execute(
             "INSERT INTO api_keys (key, owner, label) VALUES (?, ?, ?)", (key, owner, label)
         )
@@ -191,7 +191,7 @@ class Store:
         return False
 
     def create_device_token(self, machine_id: str, owner: str) -> str:
-        token = "darwin_dt_" + secrets.token_urlsafe(24)
+        token = "herds_dt_" + secrets.token_urlsafe(24)
         self.db.execute(
             "INSERT INTO device_tokens (token, machine_id, owner) VALUES (?, ?, ?)",
             (token, machine_id, owner),

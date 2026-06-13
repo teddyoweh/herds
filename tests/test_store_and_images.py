@@ -1,6 +1,6 @@
-from darwin.control.store import Store
-from darwin.daemon import images
-from darwin.protocol import JobState, MachineStatus
+from herds.control.store import Store
+from herds.daemon import images
+from herds.protocol import JobState, MachineStatus
 
 
 def test_store_machine_lifecycle():

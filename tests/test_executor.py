@@ -1,4 +1,4 @@
-"""Executor tests: these run real subprocesses inside a temp DARWIN_HOME."""
+"""Executor tests: these run real subprocesses inside a temp HERDS_HOME."""
 
 import os
 from pathlib import Path
@@ -7,16 +7,16 @@ import pytest
 
 
 @pytest.fixture()
-def darwin_home(tmp_path, monkeypatch):
-    home = tmp_path / "darwin"
-    monkeypatch.setenv("DARWIN_HOME", str(home))
+def herds_home(tmp_path, monkeypatch):
+    home = tmp_path / "herds"
+    monkeypatch.setenv("HERDS_HOME", str(home))
     # Reimport config so it picks up the patched env.
     import importlib
 
-    import darwin.config as cfg
+    import herds.config as cfg
 
     importlib.reload(cfg)
-    import darwin.daemon.executor as ex
+    import herds.daemon.executor as ex
 
     importlib.reload(ex)
     return home
@@ -35,18 +35,18 @@ async def _collect(executor, request_id, command, **kw):
 
 
 @pytest.mark.asyncio
-async def test_basic_command(darwin_home):
-    from darwin.daemon.executor import Executor
+async def test_basic_command(herds_home):
+    from herds.daemon.executor import Executor
 
     ex = Executor()
-    code, out, err = await _collect(ex, "r1", "echo hello-darwin")
+    code, out, err = await _collect(ex, "r1", "echo hello-herds")
     assert code == 0
-    assert "hello-darwin" in out
+    assert "hello-herds" in out
 
 
 @pytest.mark.asyncio
-async def test_nonzero_exit(darwin_home):
-    from darwin.daemon.executor import Executor
+async def test_nonzero_exit(herds_home):
+    from herds.daemon.executor import Executor
 
     ex = Executor()
     code, out, err = await _collect(ex, "r2", "exit 7")
@@ -54,8 +54,8 @@ async def test_nonzero_exit(darwin_home):
 
 
 @pytest.mark.asyncio
-async def test_sandbox_workspace_persists(darwin_home):
-    from darwin.daemon.executor import Executor
+async def test_sandbox_workspace_persists(herds_home):
+    from herds.daemon.executor import Executor
 
     ex = Executor()
     ex.create_sandbox("sbx_test")
@@ -66,8 +66,8 @@ async def test_sandbox_workspace_persists(darwin_home):
 
 
 @pytest.mark.asyncio
-async def test_env_is_isolated_to_sandbox(darwin_home):
-    from darwin.daemon.executor import Executor
+async def test_env_is_isolated_to_sandbox(herds_home):
+    from herds.daemon.executor import Executor
 
     ex = Executor()
     # HOME should be redirected into the sandbox tree, not the real home.
@@ -76,8 +76,8 @@ async def test_env_is_isolated_to_sandbox(darwin_home):
 
 
 @pytest.mark.asyncio
-async def test_timeout_kills_command(darwin_home):
-    from darwin.daemon.executor import Executor
+async def test_timeout_kills_command(herds_home):
+    from herds.daemon.executor import Executor
 
     ex = Executor()
     code, out, err = await _collect(ex, "r6", "sleep 10", timeout=1)
@@ -86,11 +86,11 @@ async def test_timeout_kills_command(darwin_home):
 
 
 @pytest.mark.asyncio
-async def test_volume_env_var_exposed(darwin_home):
-    from darwin.daemon.executor import Executor
+async def test_volume_env_var_exposed(herds_home):
+    from herds.daemon.executor import Executor
 
     ex = Executor()
     code, out, _ = await _collect(
-        ex, "r7", "echo $DARWIN_VOLUME_MYVOL", volumes={"data": "myvol"}
+        ex, "r7", "echo $HERDS_VOLUME_MYVOL", volumes={"data": "myvol"}
     )
     assert "volumes/myvol" in out

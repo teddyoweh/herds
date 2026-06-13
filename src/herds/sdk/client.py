@@ -50,11 +50,11 @@ class CommandError(RuntimeError):
         )
 
 
-class DarwinError(RuntimeError):
+class HerdsError(RuntimeError):
     pass
 
 
-class DarwinClient:
+class HerdsClient:
     """Talks to the control plane. One per process is plenty."""
 
     def __init__(self, control_plane: Optional[str] = None, api_key: Optional[str] = None):
@@ -75,7 +75,7 @@ class DarwinClient:
     def get_machine(self, machine_id: str) -> dict:
         r = self._http.get(f"/v1/machines/{machine_id}")
         if r.status_code == 404:
-            raise DarwinError(f"no such machine: {machine_id}")
+            raise HerdsError(f"no such machine: {machine_id}")
         r.raise_for_status()
         return r.json()
 
@@ -84,25 +84,25 @@ class DarwinClient:
     def _start(self, machine_id: str, req: ExecRequest) -> str:
         r = self._http.post(f"/v1/machines/{machine_id}/exec", json=req.model_dump())
         if r.status_code >= 400:
-            raise DarwinError(r.json().get("detail", r.text))
+            raise HerdsError(r.json().get("detail", r.text))
         return r.json()["request_id"]
 
     def stop_sandbox(self, sandbox_id: str) -> dict:
         r = self._http.post(f"/v1/sandboxes/{sandbox_id}/stop")
         if r.status_code >= 400:
-            raise DarwinError(r.json().get("detail", r.text))
+            raise HerdsError(r.json().get("detail", r.text))
         return r.json()
 
     def terminate_sandbox(self, sandbox_id: str) -> dict:
         r = self._http.delete(f"/v1/sandboxes/{sandbox_id}")
         if r.status_code >= 400:
-            raise DarwinError(r.json().get("detail", r.text))
+            raise HerdsError(r.json().get("detail", r.text))
         return r.json()
 
     def expose_port(self, sandbox_id: str, port: int, name: str = "") -> dict:
         r = self._http.post(f"/v1/sandboxes/{sandbox_id}/ports", json={"port": port, "name": name})
         if r.status_code >= 400:
-            raise DarwinError(r.json().get("detail", r.text))
+            raise HerdsError(r.json().get("detail", r.text))
         return r.json()
 
     def stream(
@@ -166,11 +166,11 @@ class DarwinClient:
 
 
 # A lazily-created process-wide default client, so `dc.mac()` needs no setup.
-_default_client: Optional[DarwinClient] = None
+_default_client: Optional[HerdsClient] = None
 
 
-def default_client() -> DarwinClient:
+def default_client() -> HerdsClient:
     global _default_client
     if _default_client is None:
-        _default_client = DarwinClient()
+        _default_client = HerdsClient()
     return _default_client

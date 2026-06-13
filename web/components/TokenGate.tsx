@@ -22,12 +22,12 @@ export function TokenGate({ children }: { children: React.ReactNode }) {
           <div className="w-full max-w-sm rounded-2xl bg-ink-850 p-7 shadow-e2">
             <div className="flex items-center gap-2.5">
               <span className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-signal-400 to-signal-600 text-base">🍎</span>
-              <span className="text-[15px] font-semibold tracking-tightest text-white">Darwin Cloud</span>
+              <span className="text-[15px] font-semibold tracking-tightest text-white">Herds</span>
             </div>
             <h2 className="mt-5 text-[15px] font-semibold text-white">This host is protected</h2>
             <p className="mt-1.5 text-[13px] leading-relaxed text-zinc-500">
               Enter the host token to access this dashboard. You get it from{" "}
-              <span className="font-mono text-zinc-400">darwin host</span> on the host machine.
+              <span className="font-mono text-zinc-400">herds host</span> on the host machine.
             </p>
             <input
               autoFocus
@@ -40,7 +40,7 @@ export function TokenGate({ children }: { children: React.ReactNode }) {
                   location.reload();
                 }
               }}
-              placeholder="darwin_sk_…"
+              placeholder="herds_sk_…"
               className="mt-5 w-full rounded-lg bg-black/30 px-3 py-2.5 font-mono text-[13px] text-zinc-100 outline-none ring-1 ring-white/[0.06] transition focus:ring-signal-500/50 placeholder:text-zinc-700"
             />
             <button

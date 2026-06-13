@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from .client import DarwinClient, DarwinError, default_client
+from .client import HerdsClient, HerdsError, default_client
 
 
 @dataclass(frozen=True)
@@ -27,16 +27,16 @@ class Secret:
 
     @staticmethod
     def create(
-        name: str, values: dict[str, str], *, client: Optional[DarwinClient] = None
+        name: str, values: dict[str, str], *, client: Optional[HerdsClient] = None
     ) -> "Secret":
         c = client or default_client()
         r = c._http.post("/v1/secrets", json={"name": name, "values": values})
         if r.status_code >= 400:
-            raise DarwinError(r.json().get("detail", r.text))
+            raise HerdsError(r.json().get("detail", r.text))
         return Secret(name=name)
 
     @staticmethod
-    def list(client: Optional[DarwinClient] = None) -> list[dict]:
+    def list(client: Optional[HerdsClient] = None) -> list[dict]:
         c = client or default_client()
         r = c._http.get("/v1/secrets")
         r.raise_for_status()

@@ -16,7 +16,7 @@ import uuid
 from typing import TYPE_CHECKING, Iterator, Optional, Union
 
 from ..protocol import ExecRequest, FrameType
-from .client import DarwinClient, Result, default_client
+from .client import HerdsClient, Result, default_client
 from .image import Image
 from .volume import Volume
 
@@ -37,7 +37,7 @@ class Sandbox:
         volumes: VolumesLike = None,
         secrets=None,
         inherit_home: bool = False,
-        client: Optional[DarwinClient] = None,
+        client: Optional[HerdsClient] = None,
     ):
         self.id = sandbox_id
         self.machine_id = machine_id
@@ -57,7 +57,7 @@ class Sandbox:
         inherit_home: bool = False,
         mac: Optional["Mac"] = None,
         machine_id: str = "default",
-        client: Optional[DarwinClient] = None,
+        client: Optional[HerdsClient] = None,
     ) -> "Sandbox":
         sid = "sbx_" + uuid.uuid4().hex[:10]
         mid = mac.machine_id if mac is not None else machine_id

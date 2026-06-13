@@ -80,7 +80,7 @@ def _resolve_mise(kind: str, version: Optional[str], res: ImageResolution) -> No
     res.env["MISE_"] = ""  # placeholder so callers see mise is engaged
     res.path_prepend.insert(0, str(Path.home() / ".local/share/mise/shims"))
     res.notes.append(f"{kind} -> mise {spec}")
-    res.env.setdefault("DARWIN_MISE_SPEC", spec)
+    res.env.setdefault("HERDS_MISE_SPEC", spec)
 
 
 # Runtimes we know how to pin through mise.

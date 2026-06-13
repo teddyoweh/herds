@@ -4,17 +4,17 @@
 target Python, returning the JSON-serializable result. Run this as a file (not
 ``python -c``) so the source is introspectable.
 
-    darwin serve            # terminal A
-    darwin connect          # terminal B
+    herds serve            # terminal A
+    herds connect          # terminal B
     python examples/remote_function.py
 """
 
-import darwin as dc
+import herds
 
-app = dc.App("remote-demo")
+app = herds.App("remote-demo")
 
 
-@app.function(image=dc.Image.python("3.13"))
+@app.function(image=herds.Image.python("3.13"))
 def system_report(label: str) -> dict:
     import platform
     import os
@@ -23,7 +23,7 @@ def system_report(label: str) -> dict:
         "ran_on": platform.node(),
         "python": platform.python_version(),
         "machine": platform.machine(),
-        "cwd_is_sandbox": "darwin/sandboxes" in os.getcwd(),
+        "cwd_is_sandbox": "herds/sandboxes" in os.getcwd(),
     }
 
 
