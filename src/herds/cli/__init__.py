@@ -161,6 +161,28 @@ def relay(
 
 
 @app.command()
+def skill(
+    install: bool = typer.Option(False, "--install", help="Install to ~/.claude/skills/herds/ so Claude Code picks it up."),
+    dir: Optional[str] = typer.Option(None, "--dir", help="Skills directory (default: ~/.claude/skills)."),
+):
+    """Print the Herds agent skill (SKILL.md), or --install it for Claude Code."""
+    from ..skill import SKILL_MD
+
+    if not install:
+        print(SKILL_MD)  # plain print so it's pipeable: `herds skill > SKILL.md`
+        return
+
+    dest = (Path(dir) if dir else Path.home() / ".claude" / "skills") / "herds" / "SKILL.md"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(SKILL_MD)
+    console.print(Panel.fit(
+        f"[green]✓ Installed the Herds skill[/green]\n\n  [cyan]{dest}[/cyan]\n\n"
+        f"[dim]Claude Code will pick it up — your agent can now drive a real Mac.[/dim]",
+        title="herds skill", border_style="green",
+    ))
+
+
+@app.command()
 def connect(
     url: Optional[str] = typer.Argument(None, help="Host link, e.g. https://….trycloudflare.com"),
     token: Optional[str] = typer.Argument(None, help="Host token from `herds host`."),
