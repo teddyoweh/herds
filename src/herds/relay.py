@@ -138,7 +138,7 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
             return Response(status_code=200)
         if d.endswith("." + relay_domain):
             sub = d[: -(len(relay_domain) + 1)]
-            if "." not in sub and sub in accounts.taken:
+            if "." not in sub and (sub in accounts.taken or sub in RESERVED):
                 return Response(status_code=200)
         return Response(status_code=404)
 

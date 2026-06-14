@@ -4,8 +4,10 @@
 // account against the relay, get back an `hx_…` token + the account's dashboard
 // URL, and persist that as the local session.
 
+// Use a *.relay.herds.run subdomain (not the apex): the apex can get stale-cached
+// to the old wildcard, but fresh subdomains always resolve straight to the box.
 const RELAY_API =
-  process.env.NEXT_PUBLIC_HERDS_RELAY_API?.replace(/\/$/, "") || "https://relay.herds.run";
+  process.env.NEXT_PUBLIC_HERDS_RELAY_API?.replace(/\/$/, "") || "https://api.relay.herds.run";
 
 export type Session = { token: string; account: string; url: string };
 
