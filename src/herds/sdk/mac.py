@@ -156,6 +156,18 @@ class Mac:
 
         return Sandbox.create(image=image, volumes=volumes, mac=self)
 
+    def push(self, local: str, volume: str, remote: str = "", *, clean: bool = False, ignore=None) -> dict:
+        """Push a local file/dir to a named volume on this Mac (sugar over Volume.put)::
+
+            mac.push("./my-project", "repo")
+            mac.run("python3 app/main.py", volumes={"app": herds.Volume.from_name("repo")})
+        """
+        from .volume import Volume
+
+        return Volume.from_name(volume).put(
+            local, remote, client=self._client, machine=self.machine_id, clean=clean, ignore=ignore,
+        )
+
     def __repr__(self) -> str:
         return f"Mac({self.machine_id!r})"
 

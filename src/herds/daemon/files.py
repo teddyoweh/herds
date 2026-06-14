@@ -22,7 +22,8 @@ _WRITE_CAP = 512 * 1024 * 1024  # 512 MB per upload
 
 def _root(kind: str, ident: str) -> Path:
     if kind == "sandbox":
-        return (config.SANDBOXES_DIR / ident).resolve()
+        # The sandbox's working dir is workspace/ — what exec sees and put should target.
+        return (config.SANDBOXES_DIR / ident / "workspace").resolve()
     if kind == "volume":
         return (config.VOLUMES_DIR / ident).resolve()
     raise ValueError(f"unknown fs kind: {kind}")

@@ -187,9 +187,12 @@ arrive with the Tart VM backend.)
 
 ```python
 with herds.Sandbox.create(image="xcode:26") as sbx:
-    sbx.exec("git clone https://github.com/me/app .")
+    sbx.put("./my-project")                       # push your local codebase in
     sbx.exec("xcodebuild -scheme App build", check=True)
 ```
+
+`sbx.put()` (and `mac.push("./dir", "volume")`) tar a local directory and extract it
+on the Mac — the same one-liner whether you target a sandbox or a volume.
 
 Each sandbox is its own directory tree with redirected `HOME`/`TMPDIR` and
 toolchain caches, its own process session (so timeouts kill the whole tree), and

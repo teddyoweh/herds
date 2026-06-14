@@ -507,7 +507,7 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
     @app.put("/v1/volumes/{name}/put")
     async def volume_put(name: str, body: FsWriteBody, authorization: Optional[str] = Header(None)):
         """Push a file or an entire directory (tar) into a volume on the Mac."""
-        owner_from_key(authorization)
+        require_scope(authorization, "run")
         data: dict = {"kind": "volume", "id": name, "path": body.path}
         if body.tar_b64 is not None:
             data["tar_b64"], data["clean"] = body.tar_b64, body.clean
@@ -518,8 +518,10 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
     @app.put("/v1/sandboxes/{sandbox_id}/put")
     async def sandbox_put(sandbox_id: str, body: FsWriteBody, authorization: Optional[str] = Header(None)):
         """Push a file or directory (tar) into a sandbox on the Mac."""
-        owner_from_key(authorization)
-        mid = _machine_for_sandbox(sandbox_id)
+        owner = require_scope(authorization, "run")
+        # Resolve the machine directly — a sandbox may be pushed to before its first
+        # exec materializes it (the daemon creates the workspace dir on write).
+        mid = _resolve_machine(body.machine_id or "default", owner)
         data: dict = {"kind": "sandbox", "id": sandbox_id, "path": body.path}
         if body.tar_b64 is not None:
             data["tar_b64"], data["clean"] = body.tar_b64, body.clean

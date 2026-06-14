@@ -66,6 +66,37 @@ class Sandbox:
             client=client or (mac._client if mac else default_client()),
         )
 
+    def put(self, local: str, remote: str = "", *, clean: bool = False, ignore=None) -> dict:
+        """Copy a local file or directory into this sandbox's workspace.
+
+            sbx = herds.Sandbox.create()
+            sbx.put("./my-project")          # whole codebase → workspace root
+            sbx.exec("python3 main.py")
+        """
+        import base64
+        from pathlib import Path
+        from .client import HerdsError
+        from .volume import _DEFAULT_IGNORE, _tar_dir
+
+        if self._terminated:
+            raise RuntimeError(f"sandbox {self.id} has been terminated")
+        src = Path(local).expanduser()
+        if not src.exists():
+            raise FileNotFoundError(f"no such path: {src}")
+        if src.is_dir():
+            ignored = set(_DEFAULT_IGNORE) | set(ignore or [])
+            body = {"machine_id": self.machine_id, "path": remote,
+                    "tar_b64": base64.b64encode(_tar_dir(src, ignored)).decode(), "clean": clean}
+        else:
+            rel = remote.rstrip("/") + "/" + src.name if remote.endswith("/") else (remote or src.name)
+            body = {"machine_id": self.machine_id, "path": rel,
+                    "content_b64": base64.b64encode(src.read_bytes()).decode()}
+        r = self._client._http.put(f"/v1/sandboxes/{self.id}/put", json=body, timeout=300)
+        if r.status_code >= 400:
+            raise HerdsError(r.json().get("detail", r.text)
+                             if r.headers.get("content-type", "").startswith("application/json") else r.text)
+        return r.json()
+
     def _request(self, command, workdir, env, timeout, network) -> ExecRequest:
         from .mac import _build_request
 
