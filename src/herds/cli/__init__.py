@@ -141,7 +141,7 @@ def auth(
     console.print(Panel.fit(
         f"[green]✓ Signed in to Herds[/green]\n\n"
         f"[bold]Account[/bold]\n  {a.account}\n\n"
-        f"[bold]Your link[/bold]  [dim](after `herds host`)[/dim]\n  [cyan]https://{a.account}.herds.run[/cyan]\n\n"
+        f"[bold]Your link[/bold]  [dim](after `herds host`)[/dim]\n  [cyan]{a.url or f'https://{a.account}.relay.herds.run'}[/cyan]\n\n"
         f"[bold]Token[/bold]  [dim](use `herds auth --token …` on your other Macs)[/dim]\n  [yellow]{a.token}[/yellow]\n\n"
         f"[dim]Now run [bold]herds host[/bold] — your Mac goes live at the link above.[/dim]",
         title="herds auth", border_style="green",

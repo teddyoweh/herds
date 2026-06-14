@@ -335,12 +335,13 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True, 
         else f"[dim]via {provider} · temporary link (changes each run) — "
              f"run [bold]herds host setup[/bold] once for a permanent Tailscale link.[/dim]"
     )
+    open_url = f"{public_url}/?token={token}" if provider != "local" else f"{public_url}/?token={token}"
     console.print(Panel.fit(
         f"[green]✓ Herds host is live[/green]\n\n"
-        f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]\n  {link_note}\n\n"
+        f"[bold]Open your dashboard[/bold]  [dim](opens signed in)[/dim]\n  [cyan]{open_url}[/cyan]\n  {link_note}\n\n"
         f"[bold]Host token[/bold]\n  [yellow]{token}[/yellow] [dim](stable)[/dim]\n\n"
         f"[bold]Add another Mac[/bold]\n  [dim]herds connect {public_url} {token}[/dim]\n\n"
-        f"[dim]Open the dashboard, paste the token once, and you're in.[/dim]",
+        f"[dim]Click the link above — your dashboard opens already signed in.[/dim]",
         title="herds host", border_style="green",
     ))
 

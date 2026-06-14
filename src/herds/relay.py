@@ -244,7 +244,7 @@ async def _run_client(relay_ws_url: str, token: str, local_url: str) -> None:
     backoff = 1.0
     while True:
         try:
-            async with websockets.connect(url, max_size=None, ping_interval=20) as ws:
+            async with websockets.connect(url, max_size=None, ping_interval=25, ping_timeout=90, close_timeout=5) as ws:
                 backoff = 1.0
                 send_lock = asyncio.Lock()
                 async with httpx.AsyncClient(base_url=local_url, timeout=30.0) as client:

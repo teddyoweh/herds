@@ -678,7 +678,7 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
         return {"unexposed": port}
 
     @app.api_route("/p/{sandbox_id}/{port}/{path:path}",
-                   methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD"])
+                   methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD"], include_in_schema=False)
     async def sandbox_proxy(sandbox_id: str, port: int, path: str, request: Request):
         if not store.port_machine(sandbox_id, port):
             raise HTTPException(404, "port not exposed for this sandbox")

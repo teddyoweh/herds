@@ -10,6 +10,18 @@ export function TokenGate({ children }: { children: React.ReactNode }) {
   const [locked, setLocked] = useState(false);
   const [val, setVal] = useState("");
 
+  // Auto sign-in: `herds host` links you to ?token=… so the dashboard just opens.
+  useEffect(() => {
+    const u = new URL(window.location.href);
+    const t = u.searchParams.get("token");
+    if (t) {
+      setToken(t);
+      u.searchParams.delete("token");
+      window.history.replaceState({}, "", u.pathname + u.search + u.hash);
+      location.reload();
+    }
+  }, []);
+
   useEffect(() => {
     if (error && isUnauthorized(error)) setLocked(true);
     else if (!error) setLocked(false);
