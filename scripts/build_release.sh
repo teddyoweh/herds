@@ -13,7 +13,7 @@ cp -R web/out src/herds/web_dist
 
 echo "→ building wheel…"
 rm -rf dist
-uv build
+uv build --wheel
 
 echo "✓ done: $(ls dist/*.whl)"
 echo "  install:  uv tool install --force dist/*.whl   (or  pip install dist/*.whl)"
