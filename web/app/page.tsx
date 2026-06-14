@@ -9,8 +9,18 @@ import { StatSkeleton, RowSkeleton } from "@/components/Skeleton";
 import { Onboarding } from "@/components/Onboarding";
 import { useJobs, useMachines, useMetrics, useTimeseries, useSandboxes } from "@/lib/api";
 import { ago, bytes, dur } from "@/lib/format";
+import { Landing } from "@/components/platform/Landing";
 
-export default function Overview() {
+// On the hosted platform (Vercel) the root is the marketing/landing page; in the
+// bundled wheel (`herds host`) it's the dashboard. Decided at build time.
+const PLATFORM = process.env.NEXT_PUBLIC_HERDS_MODE === "platform";
+
+export default function Page() {
+  if (PLATFORM) return <Landing />;
+  return <Dashboard />;
+}
+
+function Dashboard() {
   const { data: m } = useMetrics();
   const { data: machinesData } = useMachines();
   const { data: jobsData } = useJobs();

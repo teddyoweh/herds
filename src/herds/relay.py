@@ -99,8 +99,15 @@ class _HostConn:
 
 
 def create_relay_app(domain: str = "herds.run") -> FastAPI:
+    from fastapi.middleware.cors import CORSMiddleware
+
     app = FastAPI(title="Herds Relay")
     relay_domain = domain  # the relay's own zone, e.g. relay.herds.run
+    # The platform site (herds.run) calls /relay/provision + /relay/whoami from the
+    # browser — token-based, no cookies, so a permissive CORS policy is fine.
+    app.add_middleware(
+        CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+    )
     accounts = _Accounts(Path(os.environ.get("HERDS_RELAY_STATE", "/tmp/herds_relay.json")))
     hosts: dict[str, _HostConn] = {}
 
