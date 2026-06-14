@@ -17,9 +17,10 @@ import { motion, type Variants } from "framer-motion";
 
 const GITHUB = "https://github.com/teddyoweh/herds";
 
-/* Borderless elevation on light paper. */
-const CARD = "shadow-[0_2px_4px_rgba(20,20,16,0.04),0_18px_50px_-16px_rgba(20,20,16,0.18)]";
-const INSET = "bg-[#f4f2ec]"; // recessed fill on a white card
+/* Flat surfaces on a pure-white page: cards are a subtle gray fill, inset tiles
+   are white. No shadows, no borders — separation comes from fill alone. */
+const CARD = "bg-[#f3f2ee]";
+const INSET = "bg-white";
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 18 },
@@ -54,7 +55,7 @@ function TopBar() {
   const [account, setAccount] = useState<string | null>(null);
   useEffect(() => { const s = getSession(); if (s) setAccount(s.account); }, []);
   return (
-    <header className="sticky top-0 z-40 bg-[#faf9f6]/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl">
       <div className="mx-auto flex h-[60px] max-w-[1120px] items-center justify-between px-6">
         <Link href="/" className="flex items-center gap-2.5">
           <Logo size={22} />
@@ -62,13 +63,13 @@ function TopBar() {
         </Link>
         <div className="flex items-center gap-2">
           {account ? (
-            <Link href="/dashboard" className="inline-flex items-center gap-1.5 rounded-full bg-signal-600 px-4 py-1.5 text-[13px] font-medium text-white shadow-sm transition-colors hover:bg-signal-500">
+            <Link href="/dashboard" className="inline-flex items-center gap-1.5 rounded-full bg-signal-600 px-4 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-signal-500">
               Dashboard <span aria-hidden className="text-white/60">→</span>
             </Link>
           ) : (
             <>
               <Link href="/login" className="hidden rounded-lg px-3 py-1.5 text-[13px] text-stone-500 transition-colors hover:text-stone-900 sm:inline-flex">Log in</Link>
-              <Link href="/signup" className="inline-flex items-center rounded-full bg-signal-600 px-4 py-1.5 text-[13px] font-medium text-white shadow-sm transition-colors hover:bg-signal-500">Start free</Link>
+              <Link href="/signup" className="inline-flex items-center rounded-full bg-signal-600 px-4 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-signal-500">Start free</Link>
             </>
           )}
         </div>
@@ -83,8 +84,8 @@ function TopBar() {
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-[12px] font-medium text-stone-600 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
-      <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-500 shadow-[0_0_8px_1px_rgba(27,189,134,0.45)]" />
+    <span className="inline-flex items-center gap-2 rounded-full bg-[#f3f2ee] px-3 py-1 text-[12px] font-medium text-stone-600">
+      <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-500" />
       {children}
     </span>
   );
@@ -108,7 +109,7 @@ function Section({ children, className = "" }: { children: React.ReactNode; clas
 /** Window chrome bar shared by product mockups. */
 function Chrome({ title }: { title?: string }) {
   return (
-    <div className="flex items-center gap-2 bg-[#f1efe9] px-4 py-3">
+    <div className="flex items-center gap-2 bg-[#e9e8e3] px-4 py-3">
       <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
       <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
       <span className="h-3 w-3 rounded-full bg-[#28c840]" />
@@ -131,7 +132,7 @@ function CommandBar() {
   const [i, setI] = useState(0);
   useEffect(() => { const t = setInterval(() => setI((v) => (v + 1) % EX.length), 2800); return () => clearInterval(t); }, []);
   return (
-    <div className={`flex items-center gap-3 rounded-2xl bg-white px-4 py-3 ${CARD}`}>
+    <div className={`flex items-center gap-3 rounded-2xl px-4 py-3 ${CARD}`}>
       <span className="font-mono text-[13px] text-signal-600">$</span>
       <div className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-left font-mono text-[13px] text-stone-400">
         herds.mac().run(<span className="text-stone-500">&quot;</span>
@@ -150,7 +151,7 @@ function CurlPill() {
   const cmd = "curl -fsSL herds.run/install | sh";
   return (
     <button onClick={() => { navigator.clipboard?.writeText(cmd); setCopied(true); setTimeout(() => setCopied(false), 1400); }}
-      className="group inline-flex items-center gap-2.5 rounded-full bg-white px-4 py-2.5 font-mono text-[12.5px] text-stone-500 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition hover:shadow-[0_3px_12px_rgba(20,20,16,0.12)]">
+      className="group inline-flex items-center gap-2.5 rounded-full bg-[#f3f2ee] px-4 py-2.5 font-mono text-[12.5px] text-stone-500 transition hover:bg-[#ececea]">
       <span className="text-signal-600">$</span><span>{cmd}</span>
       <span className={`text-[11px] ${copied ? "text-signal-600" : "text-stone-400 group-hover:text-stone-600"}`}>{copied ? "copied" : "copy"}</span>
     </button>
@@ -167,7 +168,7 @@ function FleetRow({ name, kind, load, delay }: { name: string; kind: string; loa
           <span className="tnum font-mono text-[11px] text-stone-400">{load}%</span>
         </div>
         <div className="mt-2 h-1 overflow-hidden rounded-full bg-black/[0.08]">
-          <motion.div initial={{ width: 0 }} whileInView={{ width: `${load}%` }} viewport={{ once: true }} transition={{ delay, duration: 1, ease: [0.22, 1, 0.36, 1] }} className="h-full rounded-full bg-gradient-to-r from-signal-500 to-signal-400" />
+          <motion.div initial={{ width: 0 }} whileInView={{ width: `${load}%` }} viewport={{ once: true }} transition={{ delay, duration: 1, ease: [0.22, 1, 0.36, 1] }} className="h-full rounded-full bg-signal-500" />
         </div>
         <div className="mt-1.5 text-[10px] text-stone-400">{kind}</div>
       </div>
@@ -185,10 +186,10 @@ const RUN_LINES: { node: React.ReactNode; cmd?: boolean }[] = [
 function DashboardCard() {
   return (
     <motion.div initial={{ opacity: 0, y: 28, scale: 0.99 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: 0.4, duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-      className={`relative mx-auto w-full max-w-[940px] overflow-hidden rounded-3xl bg-white ${CARD}`}>
+      className={`relative mx-auto w-full max-w-[940px] overflow-hidden rounded-3xl ${CARD}`}>
       <Chrome title="you.herds.run" />
       <div className="grid sm:grid-cols-[1.05fr_1fr]">
-        <div className="bg-white p-5 text-left">
+        <div className="p-5 text-left">
           <div className="flex items-center justify-between">
             <span className="text-[12px] font-semibold tracking-tight text-stone-700">Your fleet</span>
             <span className="inline-flex items-center gap-1.5 text-[11px] text-stone-500"><span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-500" /> 3 online</span>
@@ -199,7 +200,7 @@ function DashboardCard() {
             <FleetRow name="M3" kind="MacBook Air · 1 sandbox" load={12} delay={1.0} />
           </div>
         </div>
-        <div className="flex flex-col bg-white p-5 text-left">
+        <div className="flex flex-col p-5 text-left">
           <div className="flex items-center justify-between">
             <span className="text-[12px] font-semibold tracking-tight text-stone-700">Live run</span>
             <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-stone-400"><span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-500" /> m3max</span>
@@ -231,7 +232,6 @@ function DashboardCard() {
 function Hero() {
   return (
     <section className="relative overflow-hidden">
-      <div aria-hidden className="pointer-events-none absolute left-1/2 top-[-120px] h-[420px] w-[820px] -translate-x-1/2 rounded-full bg-signal-500/[0.06] blur-[130px]" />
       <div className="relative mx-auto max-w-[1080px] px-6 pb-16 pt-14 text-center">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-center"><Eyebrow>Modal, for Macs</Eyebrow></motion.div>
         <motion.h1 variants={stagger} initial="hidden" animate="show" className="ed mx-auto mt-6 max-w-[16ch] text-[12.5vw] leading-[0.98] text-stone-900 sm:text-[64px] lg:text-[80px]">
@@ -244,7 +244,7 @@ function Hero() {
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.34 }} className="mx-auto mt-8 max-w-[34rem]">
           <CommandBar />
           <div className="mt-3 flex flex-wrap items-center justify-center gap-3">
-            <Link href="/signup" className="inline-flex items-center rounded-full bg-signal-600 px-5 py-2.5 text-[14px] font-medium text-white shadow-sm transition-all hover:-translate-y-px hover:bg-signal-500">Start free</Link>
+            <Link href="/signup" className="inline-flex items-center rounded-full bg-signal-600 px-5 py-2.5 text-[14px] font-medium text-white transition-all hover:-translate-y-px hover:bg-signal-500">Start free</Link>
             <CurlPill />
           </div>
         </motion.div>
@@ -268,7 +268,7 @@ const OVERNIGHT = [
 
 function MorningCard() {
   return (
-    <Reveal className={`mx-auto mt-14 w-full max-w-[480px] rounded-3xl bg-white p-3 ${CARD}`}>
+    <Reveal className={`mx-auto mt-14 w-full max-w-[480px] rounded-3xl p-3 ${CARD}`}>
       {OVERNIGHT.map((t, i) => (
         <div key={i} className="flex items-center gap-3.5 rounded-2xl px-4 py-3.5">
           {t.done ? <Check size={22} /> : <span className="h-[22px] w-[22px] flex-none rounded-full bg-[#ececec]" />}
@@ -288,7 +288,7 @@ function MorningCard() {
 
 function MacWindowCard() {
   return (
-    <Reveal className={`mx-auto mt-14 w-full max-w-[760px] overflow-hidden rounded-3xl bg-white ${CARD}`}>
+    <Reveal className={`mx-auto mt-14 w-full max-w-[760px] overflow-hidden rounded-3xl ${CARD}`}>
       <Chrome title="App.xcodeproj — Xcode" />
       <div className="grid gap-5 p-6 sm:grid-cols-[1.3fr_1fr]">
         <div>
@@ -302,13 +302,13 @@ function MacWindowCard() {
             <div><span className="text-stone-400">▸</span> Linking App.app…</div>
           </div>
           <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-black/[0.08]">
-            <motion.div initial={{ width: 0 }} whileInView={{ width: "78%" }} viewport={{ once: true }} transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1] }} className="h-full rounded-full bg-gradient-to-r from-signal-500 to-signal-400" />
+            <motion.div initial={{ width: 0 }} whileInView={{ width: "78%" }} viewport={{ once: true }} transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1] }} className="h-full rounded-full bg-signal-500" />
           </div>
           <div className="mt-2 text-[11px] text-stone-400">Building… 78%</div>
         </div>
         <div className={`grid grid-cols-2 gap-2 rounded-2xl ${INSET} p-3`}>
           {["Xcode", "Simulators", "Codesign", "AppleScript", "Homebrew", "Metal"].map((t) => (
-            <span key={t} className="rounded-lg bg-white px-3 py-2 text-center font-mono text-[11px] text-stone-600 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">{t}</span>
+            <span key={t} className="rounded-lg bg-[#f3f2ee] px-3 py-2 text-center font-mono text-[11px] text-stone-600">{t}</span>
           ))}
         </div>
       </div>
@@ -361,7 +361,7 @@ const PIPELINE = [
 
 function ShipCard() {
   return (
-    <Reveal className={`mx-auto mt-14 w-full max-w-[560px] overflow-hidden rounded-3xl bg-white p-6 ${CARD}`}>
+    <Reveal className={`mx-auto mt-14 w-full max-w-[560px] overflow-hidden rounded-3xl p-6 ${CARD}`}>
       <div className="flex items-center justify-between">
         <span className="text-[13px] font-semibold tracking-tight text-stone-800">Pipeline · m3max</span>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-signal-500/10 px-2.5 py-1 text-[11px] font-medium text-signal-600"><span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-500" /> shipping</span>
@@ -385,18 +385,18 @@ function ShipCard() {
 
 function ExposeCard() {
   return (
-    <Reveal className={`mx-auto mt-14 w-full max-w-[720px] overflow-hidden rounded-3xl bg-white ${CARD}`}>
+    <Reveal className={`mx-auto mt-14 w-full max-w-[720px] overflow-hidden rounded-3xl ${CARD}`}>
       <Chrome title="app.you.herds.run" />
       <div className="relative">
         {/* faux preview */}
-        <div className="bg-gradient-to-b from-[#f6f5f1] to-white px-8 py-12 text-center">
+        <div className="bg-[#f3f2ee] px-8 py-12 text-center">
           <div className="mx-auto h-2.5 w-24 rounded-full bg-signal-500/30" />
           <div className="mx-auto mt-4 h-5 w-2/3 rounded-md bg-black/[0.08]" />
           <div className="mx-auto mt-2.5 h-5 w-1/2 rounded-md bg-black/[0.06]" />
           <div className="mx-auto mt-6 h-9 w-32 rounded-full bg-signal-500/80" />
         </div>
         {/* mapping chip */}
-        <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-white px-4 py-2 font-mono text-[12px] shadow-[0_4px_16px_-4px_rgba(20,20,16,0.25)]">
+        <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-white px-4 py-2 font-mono text-[12px]">
           <span className="text-stone-500">localhost:3000</span>
           <span className="text-stone-300">→</span>
           <span className="text-signal-600">app.you.herds.run</span>
@@ -423,14 +423,14 @@ function Meter({ label, value, pct }: { label: string; value: string; pct: numbe
   return (
     <div>
       <div className="flex items-center justify-between text-[11px]"><span className="text-stone-400">{label}</span><span className="tnum font-mono text-stone-600">{value}</span></div>
-      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-black/[0.08]"><motion.div initial={{ width: 0 }} whileInView={{ width: `${pct}%` }} viewport={{ once: true }} transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }} className="h-full rounded-full bg-gradient-to-r from-signal-500 to-signal-400" /></div>
+      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-black/[0.08]"><motion.div initial={{ width: 0 }} whileInView={{ width: `${pct}%` }} viewport={{ once: true }} transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }} className="h-full rounded-full bg-signal-500" /></div>
     </div>
   );
 }
 
 function ObserveCard() {
   return (
-    <Reveal className={`mx-auto mt-14 grid w-full max-w-[820px] gap-px overflow-hidden rounded-3xl ${CARD} sm:grid-cols-[1.4fr_1fr]`}>
+    <Reveal className={`mx-auto mt-14 grid w-full max-w-[820px] overflow-hidden rounded-3xl ${CARD} sm:grid-cols-[1.4fr_1fr]`}>
       <div className="bg-[#0f141a] p-5">
         <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.16em] text-stone-500">live logs</div>
         <div className="space-y-1.5 font-mono text-[11.5px] leading-relaxed text-stone-300">
@@ -438,7 +438,7 @@ function ObserveCard() {
           <div className="inline-block h-[12px] w-[6px] translate-y-[2px] animate-breathe bg-signal-400/80" />
         </div>
       </div>
-      <div className="bg-white p-5">
+      <div className="p-5">
         <div className="mb-4 text-[12px] font-semibold tracking-tight text-stone-700">m3max · metrics</div>
         <div className="space-y-4">
           <Meter label="CPU" value="38%" pct={38} />
@@ -462,7 +462,7 @@ function LifecycleCard() {
     { k: "Resume", d: "back in < 2s" },
   ];
   return (
-    <Reveal className={`mx-auto mt-14 w-full max-w-[720px] rounded-3xl bg-white p-7 ${CARD}`}>
+    <Reveal className={`mx-auto mt-14 w-full max-w-[720px] rounded-3xl p-7 ${CARD}`}>
       <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
         {states.map((s, i) => (
           <div key={s.k} className="flex flex-1 items-center gap-3">
@@ -491,7 +491,7 @@ function LifecycleCard() {
 
 function CodeCard() {
   return (
-    <Reveal className={`mx-auto mt-14 w-full max-w-[640px] overflow-hidden rounded-3xl bg-white font-mono text-[12.5px] sm:text-[13px] ${CARD}`}>
+    <Reveal className={`mx-auto mt-14 w-full max-w-[640px] overflow-hidden rounded-3xl font-mono text-[12.5px] sm:text-[13px] ${CARD}`}>
       <Chrome title="agent.py" />
       <pre className="overflow-x-auto px-6 py-6 leading-[1.9] text-stone-600">
         <code>
@@ -523,7 +523,7 @@ const SCOPE_TONE: Record<string, string> = {
 
 function TokensCard() {
   return (
-    <Reveal className={`mx-auto mt-14 w-full max-w-[640px] overflow-hidden rounded-3xl bg-white p-5 ${CARD}`}>
+    <Reveal className={`mx-auto mt-14 w-full max-w-[640px] overflow-hidden rounded-3xl p-5 ${CARD}`}>
       <div className="mb-3 flex items-center justify-between px-1">
         <span className="text-[13px] font-semibold tracking-tight text-stone-800">API keys</span>
         <span className="text-[11px] text-stone-400">scoped · revocable</span>
@@ -552,12 +552,11 @@ function FinalCTA() {
     <Section>
       <Reveal>
         <div className="relative overflow-hidden rounded-[28px] bg-stone-900 px-8 py-16 text-center sm:px-16 sm:py-20">
-          <div aria-hidden className="pointer-events-none absolute left-1/2 top-0 h-[300px] w-[600px] -translate-x-1/2 rounded-full bg-signal-500/20 blur-[110px]" />
           <div className="relative">
             <h2 className="ed text-[32px] leading-[1.05] text-white sm:text-[46px]">Connect your Mac in <span className="italic">60 seconds.</span></h2>
             <p className="ed-soft mx-auto mt-4 max-w-md text-[18px] leading-relaxed text-stone-400">Every Mac becomes an API. Your own machine, your own infra — live with one command.</p>
             <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-              <Link href="/signup" className="inline-flex items-center rounded-full bg-signal-500 px-6 py-3 text-[14px] font-medium text-white shadow-sm transition-colors hover:bg-signal-400">Start free</Link>
+              <Link href="/signup" className="inline-flex items-center rounded-full bg-signal-500 px-6 py-3 text-[14px] font-medium text-white transition-colors hover:bg-signal-400">Start free</Link>
               <Link href="/login" className="inline-flex items-center rounded-full bg-white/[0.08] px-6 py-3 text-[14px] font-medium text-stone-200 transition-colors hover:bg-white/[0.14]">Log in</Link>
             </div>
             <div className="mt-6 font-mono text-[12.5px] text-stone-500"><span className="text-signal-400">$</span> herds host</div>
@@ -595,7 +594,7 @@ function Footer() {
 
 export function Landing() {
   return (
-    <div className="min-h-screen bg-[#faf9f6] font-sans text-stone-900 antialiased">
+    <div className="min-h-screen bg-white font-sans text-stone-900 antialiased">
       <TopBar />
       <main>
         <Hero />
