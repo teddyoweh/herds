@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
 
@@ -114,46 +115,89 @@ function Prompt() {
   return <span className="text-signal-400">$</span>;
 }
 
+const TERM_LINES: { cmd?: boolean; node: React.ReactNode }[] = [
+  { cmd: true, node: <><Prompt /> <span className="text-zinc-100">herds auth</span></> },
+  { node: <><span className="text-signal-400">✓</span> Authenticated as <span className="text-zinc-300">teddy@spawnlabs.ai</span></> },
+  { cmd: true, node: <><Prompt /> <span className="text-zinc-100">herds host</span></> },
+  { node: <><span className="text-zinc-600">→</span> Registering this Mac · M3 Max · macOS 15.4</> },
+  { node: <><span className="text-signal-400">✓</span> Live at <span className="text-signal-400 underline decoration-signal-500/40 underline-offset-2">https://you.herds.run</span></> },
+  { cmd: true, node: <><Prompt /> <span className="text-zinc-100">herds.mac().run(&quot;xcodebuild&quot;)</span></> },
+  { node: <><span className="text-signal-400">✓</span> Build succeeded · <span className="text-zinc-300">42.1s</span></> },
+];
+
 function Terminal() {
   return (
-    <div className="surface overflow-hidden font-mono text-[12.5px] sm:text-[13px]">
-      {/* window chrome */}
-      <div className="flex items-center gap-2 bg-white/[0.03] px-4 py-3">
-        <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
-        <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
-        <span className="h-3 w-3 rounded-full bg-[#28c840]" />
-        <span className="ml-2 text-[11px] tracking-tight text-zinc-600">herds — bash — 80×24</span>
-      </div>
-      <div className="space-y-1 px-5 py-5 tnum">
-        <TerminalLine className="text-zinc-300">
-          <Prompt /> <span className="text-zinc-100">herds auth</span>
-        </TerminalLine>
-        <TerminalLine className="text-zinc-500">
-          <span className="text-signal-400">✓</span> Authenticated as{" "}
-          <span className="text-zinc-300">teddy@spawnlabs.ai</span>
-        </TerminalLine>
-        <TerminalLine className="pt-2 text-zinc-300">
-          <Prompt /> <span className="text-zinc-100">herds host</span>
-        </TerminalLine>
-        <TerminalLine className="text-zinc-500">
-          <span className="text-zinc-600">→</span> Registering this Mac · M3 Max · macOS 15.4
-        </TerminalLine>
-        <TerminalLine className="text-zinc-500">
-          <span className="text-signal-400">✓</span> Live at{" "}
-          <span className="text-signal-400 underline decoration-signal-500/40 underline-offset-2">
-            https://you.herds.run
-          </span>
-        </TerminalLine>
-        <TerminalLine className="pt-2 text-zinc-300">
-          <Prompt /> <span className="text-zinc-100">herds.mac().run(&quot;xcodebuild&quot;)</span>
-        </TerminalLine>
-        <TerminalLine className="text-zinc-500">
-          <span className="text-signal-400">✓</span> Build succeeded ·{" "}
-          <span className="text-zinc-300">42.1s</span>
-          <span className="ml-1 inline-block h-[15px] w-[7px] translate-y-[2px] animate-breathe bg-signal-400/80 align-middle" />
-        </TerminalLine>
+    <div className="relative">
+      {/* ambient glow + reflection under the window */}
+      <div aria-hidden className="absolute -inset-6 rounded-[32px] bg-signal-500/[0.07] blur-[44px]" />
+      <div
+        aria-hidden
+        className="absolute -inset-x-6 -bottom-10 h-24 rounded-full bg-signal-500/[0.06] blur-3xl"
+      />
+      <div className="relative overflow-hidden rounded-2xl bg-ink-900/80 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_2px_8px_rgba(0,0,0,0.5),0_40px_90px_-32px_rgba(0,0,0,0.95)]">
+        {/* top sheen */}
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+        {/* window chrome */}
+        <div className="flex items-center gap-2 bg-white/[0.025] px-4 py-3">
+          <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
+          <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
+          <span className="h-3 w-3 rounded-full bg-[#28c840]" />
+          <span className="mx-auto pr-12 text-[11px] tracking-tight text-zinc-600">herds — zsh</span>
+        </div>
+        <motion.div
+          className="space-y-1 px-5 py-6 font-mono text-[12.5px] leading-[1.85] tnum sm:text-[13px]"
+          initial="hidden"
+          animate="show"
+          variants={{ show: { transition: { staggerChildren: 0.33, delayChildren: 0.45 } } }}
+        >
+          {TERM_LINES.map((l, i) => (
+            <motion.div
+              key={i}
+              variants={{ hidden: { opacity: 0, y: 3 }, show: { opacity: 1, y: 0 } }}
+              transition={{ duration: 0.22 }}
+              className={l.cmd ? "pt-2 text-zinc-300 first:pt-0" : "text-zinc-500"}
+            >
+              {l.node}
+              {i === TERM_LINES.length - 1 && (
+                <span className="ml-1 inline-block h-[15px] w-[7px] translate-y-[2px] animate-breathe bg-signal-400/80 align-middle" />
+              )}
+            </motion.div>
+          ))}
+        </motion.div>
       </div>
     </div>
+  );
+}
+
+function HeroBackground() {
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+      {/* masked dot grid */}
+      <div className="absolute inset-0 [background-image:radial-gradient(circle,rgba(255,255,255,0.05)_1px,transparent_1px)] [background-size:30px_30px] [mask-image:radial-gradient(ellipse_72%_56%_at_50%_-2%,black,transparent)]" />
+      {/* primary signal aurora */}
+      <div className="absolute -top-52 left-1/2 h-[600px] w-[980px] -translate-x-1/2 rounded-full bg-signal-500/[0.10] blur-[140px]" />
+      {/* secondary cool wash */}
+      <div className="absolute top-4 right-[6%] h-[380px] w-[380px] rounded-full bg-[#7c93f5]/[0.06] blur-[120px]" />
+      {/* fade into the page */}
+      <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-b from-transparent to-ink-950" />
+    </div>
+  );
+}
+
+function CurlPill() {
+  const [copied, setCopied] = useState(false);
+  const cmd = "curl -fsSL herds.run/install | sh";
+  return (
+    <button
+      onClick={() => { navigator.clipboard?.writeText(cmd); setCopied(true); setTimeout(() => setCopied(false), 1400); }}
+      className="surface surface-hover group inline-flex items-center gap-2.5 px-3 py-2 font-mono text-[12.5px] text-zinc-400"
+    >
+      <span className="text-signal-400">$</span>
+      <span>{cmd}</span>
+      <span className={`text-[11px] ${copied ? "text-signal-400" : "text-zinc-600 group-hover:text-zinc-400"}`}>
+        {copied ? "copied" : "copy"}
+      </span>
+    </button>
   );
 }
 
@@ -164,15 +208,11 @@ function Terminal() {
 function Hero() {
   return (
     <section className="relative overflow-hidden">
-      {/* faint accent bloom, top-left — color used very sparingly */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-40 left-1/2 h-[440px] w-[760px] -translate-x-1/2 rounded-full bg-signal-500/[0.07] blur-[120px]"
-      />
-      <div className="relative mx-auto grid max-w-[1100px] grid-cols-1 items-center gap-14 px-6 pb-20 pt-20 lg:grid-cols-[1.05fr_1fr] lg:pb-28 lg:pt-28">
+      <HeroBackground />
+      <div className="relative mx-auto grid max-w-[1140px] grid-cols-1 items-center gap-14 px-6 pb-24 pt-24 lg:grid-cols-[1.05fr_1fr] lg:pb-32 lg:pt-32">
         <motion.div variants={stagger} initial="hidden" animate="show">
           <motion.div variants={fadeUp}>
-            <span className="inline-flex items-center gap-2 rounded-full bg-white/[0.05] px-3 py-1 text-[12px] text-zinc-400 shadow-e1">
+            <span className="inline-flex items-center gap-2 rounded-full bg-white/[0.05] px-3 py-1 text-[12px] text-zinc-300 shadow-e1">
               <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-400 shadow-[0_0_8px_1px_rgba(52,211,158,0.45)]" />
               Modal, for Macs
             </span>
@@ -180,16 +220,18 @@ function Hero() {
 
           <motion.h1
             variants={fadeUp}
-            className="mt-6 text-[44px] font-semibold leading-[1.04] tracking-tightest text-white sm:text-[58px]"
+            className="mt-6 text-[48px] font-semibold leading-[1.02] tracking-tightest text-white sm:text-[68px]"
           >
             Give your agents
             <br />
-            <span className="text-signal-400">real Macs.</span>
+            <span className="bg-gradient-to-br from-signal-400 to-signal-600 bg-clip-text text-transparent [filter:drop-shadow(0_0_36px_rgba(52,211,158,0.35))]">
+              real Macs.
+            </span>
           </motion.h1>
 
           <motion.p
             variants={fadeUp}
-            className="mt-6 max-w-[34rem] text-[16px] leading-relaxed text-zinc-400 sm:text-[17px]"
+            className="mt-7 max-w-[34rem] text-[16px] leading-relaxed text-zinc-400 sm:text-[17.5px]"
           >
             Connect any Mac you own and it becomes a programmable cloud runtime — Xcode builds,
             native app testing, real macOS automation — that agents, SDKs, CLIs, and apps drive
@@ -199,7 +241,7 @@ function Hero() {
           <motion.div variants={fadeUp} className="mt-9 flex flex-wrap items-center gap-3">
             <Link
               href="/signup"
-              className="inline-flex items-center rounded-full bg-zinc-100 px-5 py-2.5 text-[14px] font-medium text-ink-950 shadow-e1 transition-colors hover:bg-white"
+              className="inline-flex items-center rounded-full bg-zinc-100 px-5 py-2.5 text-[14px] font-medium text-ink-950 shadow-[0_1px_2px_rgba(0,0,0,0.4),0_8px_24px_-8px_rgba(255,255,255,0.25)] transition-all hover:-translate-y-px hover:bg-white"
             >
               Start free
             </Link>
@@ -208,17 +250,12 @@ function Hero() {
               className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-5 py-2.5 text-[14px] font-medium text-zinc-200 transition-colors hover:bg-white/[0.1]"
             >
               Read the docs
-              <span aria-hidden className="text-zinc-500">
-                →
-              </span>
+              <span aria-hidden className="text-zinc-500">→</span>
             </Link>
           </motion.div>
 
-          <motion.div
-            variants={fadeUp}
-            className="mt-8 flex items-center gap-2 text-[12.5px] text-zinc-600"
-          >
-            <span className="font-mono text-zinc-500">curl -fsSL herds.run/install | sh</span>
+          <motion.div variants={fadeUp} className="mt-8">
+            <CurlPill />
           </motion.div>
         </motion.div>
 
@@ -226,7 +263,7 @@ function Hero() {
           variants={fadeUp}
           initial="hidden"
           animate="show"
-          transition={{ delay: 0.18 }}
+          transition={{ delay: 0.12 }}
         >
           <Terminal />
         </motion.div>
