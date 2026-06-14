@@ -6,27 +6,27 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useToast } from "@/components/Toast";
-import { provisionAccount, setSession, slugify } from "@/lib/platform";
+import { registerWithEmail } from "@/lib/platform";
 
 export default function SignupPage() {
   const router = useRouter();
   const toast = useToast();
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const emailValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
+  const valid = emailValid && password.length >= 8;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!emailValid || loading) return;
+    if (!valid || loading) return;
     setLoading(true);
     setError(null);
     try {
-      const suggested = slugify(email);
-      const session = await provisionAccount(suggested || undefined);
-      setSession(session);
-      router.push("/welcome");
+      await registerWithEmail(email, password);
+      router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
       setLoading(false);
@@ -67,16 +67,34 @@ export default function SignupPage() {
           />
         </div>
 
+        <div>
+          <label htmlFor="password" className="label mb-1.5 block">
+            Password
+          </label>
+          <input
+            id="password"
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              if (error) setError(null);
+            }}
+            placeholder="at least 8 characters"
+            className="w-full rounded-lg bg-black/30 px-3 py-2.5 text-[14px] text-zinc-100 outline-none ring-1 ring-white/[0.08] transition focus:ring-signal-500/50 placeholder:text-zinc-700"
+          />
+        </div>
+
         {error && <ErrorNote>{error}</ErrorNote>}
 
         <button
           type="submit"
-          disabled={!emailValid || loading}
+          disabled={!valid || loading}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-zinc-100 py-2.5 text-[14px] font-medium text-ink-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           {loading ? (
             <>
-              <Spinner /> Provisioning…
+              <Spinner /> Creating account…
             </>
           ) : (
             "Create account"
@@ -85,7 +103,7 @@ export default function SignupPage() {
       </form>
 
       <p className="mt-5 text-center text-[12.5px] text-zinc-600">
-        We&apos;ll create an account and hand you a token — no password to remember.
+        Free to start. No card required.
       </p>
     </AuthShell>
   );

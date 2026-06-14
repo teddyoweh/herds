@@ -86,6 +86,60 @@ export async function signInWithToken(token: string): Promise<Session> {
   return { token: trimmed, account: data.account, url: data.url };
 }
 
+/** Create an account with email + password. POST `/relay/register`. */
+export async function registerWithEmail(email: string, password: string): Promise<Session> {
+  let res: Response;
+  try {
+    res = await fetch(`${RELAY_API}/relay/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim(), password, name: slugify(email) }),
+    });
+  } catch {
+    throw new Error("Couldn't reach the relay. Check your connection and try again.");
+  }
+  if (!res.ok) throw new Error(await readError(res));
+  const data = (await res.json()) as Partial<Session>;
+  if (!data.token || !data.account || !data.url) throw new Error("The relay returned an unexpected response.");
+  const s = { token: data.token, account: data.account, url: data.url };
+  setSession(s);
+  return s;
+}
+
+/** Sign in with email + password. POST `/relay/login`. */
+export async function loginWithEmail(email: string, password: string): Promise<Session> {
+  let res: Response;
+  try {
+    res = await fetch(`${RELAY_API}/relay/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim(), password }),
+    });
+  } catch {
+    throw new Error("Couldn't reach the relay. Check your connection and try again.");
+  }
+  if (res.status === 401) throw new Error("Invalid email or password.");
+  if (!res.ok) throw new Error(await readError(res));
+  const data = (await res.json()) as Partial<Session>;
+  if (!data.token || !data.account || !data.url) throw new Error("The relay returned an unexpected response.");
+  const s = { token: data.token, account: data.account, url: data.url };
+  setSession(s);
+  return s;
+}
+
+export type AccountStatus = { account: string; url: string; email: string | null; online: boolean };
+
+/** Live account status (is the Mac connected?). GET `/relay/status?token=…`. */
+export async function getStatus(token: string): Promise<AccountStatus | null> {
+  try {
+    const res = await fetch(`${RELAY_API}/relay/status?token=${encodeURIComponent(token)}`);
+    if (!res.ok) return null;
+    return (await res.json()) as AccountStatus;
+  } catch {
+    return null;
+  }
+}
+
 export function getSession(): Session | null {
   if (typeof window === "undefined") return null;
   try {

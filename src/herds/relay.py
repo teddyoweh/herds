@@ -52,26 +52,61 @@ def http_base(relay_ws_url: str) -> str:
 # --------------------------------------------------------------------------- #
 
 
+import base64 as _b64
+import hashlib
+import hmac
+import time as _time
+
+
+def _hash_pw(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    dk = hashlib.scrypt(password.encode(), salt=salt, n=16384, r=8, p=1, dklen=32)
+    return "scrypt$" + _b64.b64encode(salt).decode() + "$" + _b64.b64encode(dk).decode()
+
+
+def _verify_pw(password: str, stored: str) -> bool:
+    try:
+        _algo, salt_b64, dk_b64 = stored.split("$")
+        salt, dk = _b64.b64decode(salt_b64), _b64.b64decode(dk_b64)
+        test = hashlib.scrypt(password.encode(), salt=salt, n=16384, r=8, p=1, dklen=32)
+        return hmac.compare_digest(test, dk)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 class _Accounts:
-    """Token → account map. Simple JSON-backed store (the relay's own state)."""
+    """Account store: name → {token, email, pwhash}. JSON-backed (the relay's state).
+
+    Two ways in: `provision` (CLI, passwordless token) and `register`/`login`
+    (web, email + password). Both yield the same {token, account} identity."""
 
     def __init__(self, path: Path):
         self.path = path
-        self.by_token: dict[str, str] = {}
+        self.records: dict[str, dict] = {}     # account -> {token, email, pwhash, created}
+        self.by_token: dict[str, str] = {}     # token -> account
+        self.by_email: dict[str, str] = {}     # email -> account
         self.taken: set[str] = set()
         if path.exists():
             raw = json.loads(path.read_text())
-            self.by_token = raw.get("by_token", {})
-            self.taken = set(self.by_token.values())
+            if "records" in raw:
+                self.records = raw["records"]
+            else:  # migrate old {by_token: {token: account}}
+                for tok, acct in raw.get("by_token", {}).items():
+                    self.records[acct] = {"token": tok, "email": None, "pwhash": None}
+            for acct, rec in self.records.items():
+                self.by_token[rec["token"]] = acct
+                if rec.get("email"):
+                    self.by_email[rec["email"]] = acct
+                self.taken.add(acct)
 
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps({"by_token": self.by_token}, indent=2))
+        self.path.write_text(json.dumps({"records": self.records}, indent=2))
 
     def whoami(self, token: str) -> Optional[str]:
         return self.by_token.get(token or "")
 
-    def provision(self, want: str = "") -> dict:
+    def _new_name(self, want: str) -> str:
         name = _slug(want) or ("m" + secrets.token_hex(4))
         if name in RESERVED or not _NAME_RE.match(name):
             name = "m" + secrets.token_hex(4)
@@ -79,11 +114,39 @@ class _Accounts:
         while name in self.taken:
             i += 1
             name = f"{base}-{i}"
+        return name
+
+    def _create(self, name: str, email: Optional[str], pwhash: Optional[str]) -> dict:
         token = "hx_" + secrets.token_urlsafe(24)
+        self.records[name] = {"token": token, "email": email, "pwhash": pwhash, "created": int(_time.time())}
         self.by_token[token] = name
+        if email:
+            self.by_email[email] = name
         self.taken.add(name)
         self._save()
         return {"token": token, "account": name}
+
+    def provision(self, want: str = "") -> dict:
+        return self._create(self._new_name(want), None, None)
+
+    def register(self, email: str, password: str, want: str = "") -> dict:
+        email = (email or "").strip().lower()
+        if "@" not in email or "." not in email.split("@")[-1]:
+            raise ValueError("Enter a valid email address.")
+        if len(password or "") < 8:
+            raise ValueError("Password must be at least 8 characters.")
+        if email in self.by_email:
+            raise ValueError("That email already has an account — log in instead.")
+        return self._create(self._new_name(want or email.split("@")[0]), email, _hash_pw(password))
+
+    def login(self, email: str, password: str) -> Optional[dict]:
+        acct = self.by_email.get((email or "").strip().lower())
+        if not acct:
+            return None
+        rec = self.records.get(acct) or {}
+        if not rec.get("pwhash") or not _verify_pw(password or "", rec["pwhash"]):
+            return None
+        return {"token": rec["token"], "account": acct}
 
 
 class _HostConn:
@@ -118,6 +181,35 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
         info = accounts.provision(want)
         info["url"] = f"https://{info['account']}.{domain}"
         return JSONResponse(info)
+
+    @app.post("/relay/register")
+    async def register(request: Request):
+        body = json.loads(await request.body() or b"{}") or {}
+        try:
+            info = accounts.register(body.get("email", ""), body.get("password", ""), body.get("name", ""))
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        info["url"] = f"https://{info['account']}.{domain}"
+        return JSONResponse(info)
+
+    @app.post("/relay/login")
+    async def login(request: Request):
+        body = json.loads(await request.body() or b"{}") or {}
+        info = accounts.login(body.get("email", ""), body.get("password", ""))
+        if not info:
+            return JSONResponse({"error": "Invalid email or password."}, status_code=401)
+        info["url"] = f"https://{info['account']}.{domain}"
+        return JSONResponse(info)
+
+    @app.get("/relay/status")
+    def status(token: str = ""):
+        # Lets the platform dashboard show whether the account's Mac is connected.
+        acct = accounts.whoami(token)
+        if not acct:
+            return JSONResponse({"error": "invalid token"}, status_code=401)
+        rec = accounts.records.get(acct) or {}
+        return {"account": acct, "url": f"https://{acct}.{domain}",
+                "email": rec.get("email"), "online": acct in hosts}
 
     @app.get("/relay/whoami")
     def whoami(token: str = ""):
