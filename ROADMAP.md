@@ -1,6 +1,6 @@
 # Herds — Roadmap
 
-## ✅ Now (MVP — works end-to-end locally)
+## ✅ Shipped
 
 - Daemon dials home over a persistent WebSocket; reconnects with backoff.
 - Control plane: register machines, dispatch `exec`, fan out streamed logs,
@@ -12,21 +12,31 @@
 - Executor: per-sandbox dir, env isolation, toolchain-cache redirection,
   process-group kill-tree, timeouts, `sandbox-exec` write-fence, graceful
   toolchain degradation.
-- CLI: `serve`, `connect`, `machines`, `run`, `shell`, `logs`, `status`,
-  `volume {ls,create,rm}`, `image ls`, `install`/`uninstall` (launchd).
+- CLI: `auth`, `host`, `skill`, `serve`, `connect`, `machines`, `run`, `shell`,
+  `logs`, `status`, `volume {ls,create,rm}`, `image ls`, `install`/`uninstall`.
+
+### Hosted platform & agents
+
+- **`pip install herds`** on [PyPI](https://pypi.org/project/herds/) — the full
+  dashboard is bundled into the wheel (no Node.js at runtime).
+- **Hosted relay**: `herds auth` + `herds host` → a permanent, branded link
+  (`you.relay.herds.run`) with no inbound ports; magic-link dashboard auto-auth.
+- **Accounts**: email + password (scrypt) on a Neon **Postgres** store, or
+  passwordless CLI tokens; web platform dashboard at [herds.run](https://herds.run).
+- **Agents anywhere**: a remote agent holding only a token runs `mac.run()` and
+  streams logs over the relay — HTTP *and* WebSocket tunnelled through the host
+  socket, so no SSH/VPN/inbound ports.
 
 ## 🔜 Next
 
-- **Auth & accounts**: OAuth device-authorization flow for `herds connect`,
-  per-machine device tokens, API keys, machine-ownership ACLs (the `Store`
-  already models all of this; flip on `HERDS_REQUIRE_AUTH`). `herds login` /
-  `herds token new`.
-- **Hosted control plane**: deploy the FastAPI app; swap in-memory fan-out for
-  Redis pub/sub and SQLite for Postgres (both isolated behind existing
-  boundaries). Public TLS endpoint so Macs anywhere can connect.
+- **Per-token scopes & revocation**: an agent token is full shell access today —
+  add scoped, expiring tokens and a revoke list.
+- **Slim SDK install**: move `fastapi`/`uvicorn` to a `[host]` extra so agents get
+  a tiny `pip install herds`.
+- **Scale-out**: Redis pub/sub fan-out + connection-stability hardening for many
+  concurrent hosts on one relay.
 - **Robust function shipping**: package dependencies + module context (beyond
-  single-file `getsource`) so `@app.function` runs richer code remotely;
-  `.spawn()` → `FunctionCall.get()`, `.map()` fan-out.
+  single-file `getsource`); `.spawn()` → `FunctionCall.get()`, `.map()` fan-out.
 - **`herds shell`**: a true interactive PTY session, not just `-c`.
 - **Scheduled jobs**: `@app.function(schedule=herds.Cron("0 9 * * *"))` driven by
   the control plane.
