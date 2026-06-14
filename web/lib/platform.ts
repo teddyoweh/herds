@@ -129,6 +129,25 @@ export async function loginWithEmail(email: string, password: string): Promise<S
 
 export type AccountStatus = { account: string; url: string; email: string | null; online: boolean };
 
+export type MachineLive = {
+  name: string;
+  status: string;
+  info?: { chip?: string; model?: string; cpu_count?: number; memory_gb?: number };
+  live_cpu?: number | null;
+  live_mem?: number | null;
+};
+
+/** Live machines (specs + CPU/mem) from the connected Mac's control plane. */
+export async function getMachines(url: string, token: string): Promise<MachineLive[]> {
+  try {
+    const res = await fetch(`${url}/v1/machines`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return [];
+    return ((await res.json()).machines || []) as MachineLive[];
+  } catch {
+    return [];
+  }
+}
+
 export type ApiToken = { label: string; scope: string; masked: string };
 
 /** Manage scoped tokens on the connected Mac's control plane (CORS is open). */

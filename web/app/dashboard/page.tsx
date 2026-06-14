@@ -6,8 +6,8 @@ import { motion } from "framer-motion";
 import { Logo } from "@/components/Logo";
 import { useToast } from "@/components/Toast";
 import {
-  getSession, clearSession, getStatus, listTokens, createToken, revokeToken,
-  type Session, type AccountStatus, type ApiToken,
+  getSession, clearSession, getStatus, getMachines, listTokens, createToken, revokeToken,
+  type Session, type AccountStatus, type ApiToken, type MachineLive,
 } from "@/lib/platform";
 
 export default function DashboardPage() {
@@ -15,6 +15,7 @@ export default function DashboardPage() {
   const toast = useToast();
   const [session, setSession] = useState<Session | null>(null);
   const [status, setStatus] = useState<AccountStatus | null>(null);
+  const [machines, setMachines] = useState<MachineLive[]>([]);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -33,7 +34,9 @@ export default function DashboardPage() {
     let alive = true;
     const tick = async () => {
       const st = await getStatus(session.token);
-      if (alive && st) setStatus(st);
+      if (!alive) return;
+      if (st) setStatus(st);
+      if (st?.online) setMachines(await getMachines(session.url, session.token));
     };
     tick();
     const id = setInterval(tick, 4000);
@@ -88,6 +91,21 @@ export default function DashboardPage() {
             <>Run two commands on any Mac and it goes live at <span className="text-zinc-200">{session.url.replace("https://", "")}</span>.</>
           )}
         </p>
+
+        {/* live specs */}
+        {online && machines.length > 0 && (
+          <div className="mt-5 flex flex-wrap gap-2.5">
+            {machines.map((m) => (
+              <div key={m.name} className="surface flex flex-wrap items-center gap-x-3.5 gap-y-1 px-3.5 py-2 text-[12.5px]">
+                <span className="font-medium text-zinc-200">{m.info?.chip || m.name}</span>
+                {m.info?.cpu_count ? <span className="text-zinc-500">{m.info.cpu_count} cores</span> : null}
+                {m.info?.memory_gb ? <span className="text-zinc-500">{m.info.memory_gb} GB</span> : null}
+                {m.live_cpu != null ? <span className="tnum text-zinc-400">CPU {m.live_cpu}%</span> : null}
+                {m.live_mem != null ? <span className="tnum text-zinc-400">MEM {m.live_mem}%</span> : null}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* primary CTA */}
         <div className="mt-7 flex flex-wrap gap-3">
