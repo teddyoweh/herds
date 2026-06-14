@@ -10,7 +10,19 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 authors = [{ name = "Spawn Labs", email = "teddy@spawnlabs.ai" }]
-keywords = ["mac", "macos", "runtime", "sandbox", "modal", "ci", "xcode"]
+keywords = ["mac", "macos", "runtime", "sandbox", "modal", "ci", "xcode", "agents"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: MacOS X",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: System :: Distributed Computing",
+]
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
@@ -31,11 +43,17 @@ herds = "herds.cli:app"
 herdsd = "herds.daemon:main"
 
 [project.urls]
-Homepage = "https://github.com/teddyoweh/herds"
+Homepage = "https://herds.run"
+Repository = "https://github.com/teddyoweh/herds"
+Issues = "https://github.com/teddyoweh/herds/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/herds"]
 # Bundle the pre-built static dashboard so `pip install` ships the full UI.
+artifacts = ["src/herds/web_dist/**/*"]
+
+[tool.hatch.build.targets.sdist]
+# Keep the bundled dashboard in the sdist too, so a wheel built from it isn't UI-less.
 artifacts = ["src/herds/web_dist/**/*"]
 
 [tool.pytest.ini_options]

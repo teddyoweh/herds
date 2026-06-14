@@ -8,7 +8,7 @@
 
 <br/>
 
-![Herds dashboard](assets/dashboard.png)
+![Herds dashboard](https://raw.githubusercontent.com/teddyoweh/herds/main/assets/dashboard.png)
 
 </div>
 
@@ -186,9 +186,9 @@ run history — all polling the same API the SDK and CLI use.
 
 | | |
 |:--:|:--:|
-| ![Machine](assets/machine.png) | ![Sandbox](assets/sandbox.png) |
+| ![Machine](https://raw.githubusercontent.com/teddyoweh/herds/main/assets/machine.png) | ![Sandbox](https://raw.githubusercontent.com/teddyoweh/herds/main/assets/sandbox.png) |
 | *Per-Mac live gauges* | *Sandboxes — activity + exposed ports* |
-| ![Volumes](assets/volumes.png) | |
+| ![Volumes](https://raw.githubusercontent.com/teddyoweh/herds/main/assets/volumes.png) | |
 | *Volumes — a real file explorer* | |
 
 ## The CLI
