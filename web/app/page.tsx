@@ -57,12 +57,21 @@ function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <header className="flex items-end justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-[12px] text-zinc-600">
-            <LiveDot size={6} /> Live workspace
+      <header className="relative flex items-end justify-between gap-4">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -left-8 -top-10 h-40 w-[460px] rounded-full bg-signal-500/[0.07] blur-[90px]"
+        />
+        <div className="relative">
+          <div className="flex items-center gap-2 text-[12px]">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-signal-500/10 px-2 py-0.5 text-[11px] font-medium text-signal-400">
+              <LiveDot size={5} /> Live
+            </span>
+            <span className="tracking-tight text-zinc-600">Workspace</span>
           </div>
-          <h1 className="mt-3 text-[26px] font-semibold tracking-tightest text-white">Your Macs, programmable.</h1>
+          <h1 className="mt-3 bg-gradient-to-br from-white via-white to-zinc-500 bg-clip-text text-[32px] font-semibold leading-none tracking-tightest text-transparent">
+            Your Macs, programmable.
+          </h1>
         </div>
         <div className="flex gap-1 rounded-lg bg-white/[0.04] p-0.5">
           {RANGES.map((r) => (
