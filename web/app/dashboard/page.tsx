@@ -89,7 +89,7 @@ export default function DashboardPage() {
         {/* primary CTA */}
         <div className="mt-7 flex flex-wrap gap-3">
           <a
-            href={online ? `${session.url}/?token=` : "#"}
+            href={online ? `${session.url}/?token=${encodeURIComponent(session.token)}` : "#"}
             onClick={(e) => { if (!online) { e.preventDefault(); toast("Connect a Mac first — run the commands below.", "default"); } }}
             target={online ? "_blank" : undefined}
             className={`inline-flex items-center gap-1.5 rounded-full px-5 py-2.5 text-[14px] font-medium transition ${online ? "bg-signal-400 text-ink-950 hover:bg-signal-300" : "cursor-default bg-white/[0.06] text-zinc-500"}`}

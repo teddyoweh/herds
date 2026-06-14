@@ -264,8 +264,13 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True, 
 
     # 1. Stable host token (persisted) usable by dashboard + SDK + daemons.
     token = _persistent_token()
+    auth = config.Auth.load()
     store = Store(db_path)
     store.put_api_key(token, "host", "host")
+    # Bridge: the account token (`herds auth`) also unlocks this Mac's dashboard, so the
+    # platform dashboard's "Open my Mac dashboard" opens already signed in for the owner.
+    if auth.signed_in and auth.token:
+        store.put_api_key(auth.token, "host", "account")
     store.db.close()
 
     procs: list[subprocess.Popen] = []
@@ -280,7 +285,6 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True, 
 
     # 3. Public link. Signed in → our relay (stable, branded, invisible). Else
     #    fall back to a Cloudflare/Tailscale tunnel.
-    auth = config.Auth.load()
     use_relay = tunnel and not quick and auth.signed_in
     public_url, provider, permanent = f"http://127.0.0.1:{port}", "local", True
     if use_relay:
