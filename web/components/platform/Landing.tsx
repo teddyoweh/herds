@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Logo } from "@/components/Logo";
+import { WorldMap } from "./WorldMap";
 import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
 
@@ -201,12 +202,29 @@ function CurlPill() {
  * Hero
  * ------------------------------------------------------------------ */
 
+function HeroStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="label">{label}</div>
+      <div className="tnum mt-2 font-mono text-[30px] font-semibold leading-none tracking-tightest text-white sm:text-[38px]">
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function Hero() {
   return (
     <section className="relative overflow-hidden">
       <HeroBackground />
-      <div className="relative mx-auto grid max-w-[1140px] grid-cols-1 items-center gap-14 px-6 pb-24 pt-24 lg:grid-cols-[1.05fr_1fr] lg:pb-32 lg:pt-32">
-        <motion.div variants={stagger} initial="hidden" animate="show">
+
+      {/* the global herd — a dotted world map of live Macs, right-weighted + faded */}
+      <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-[74%] items-center [mask-image:linear-gradient(to_right,transparent,black_28%,black_94%,transparent)] lg:flex">
+        <WorldMap className="h-auto w-full" />
+      </div>
+
+      <div className="relative mx-auto max-w-[1140px] px-6 pb-20 pt-20 lg:pb-28 lg:pt-28">
+        <motion.div variants={stagger} initial="hidden" animate="show" className="max-w-xl">
           <motion.div variants={fadeUp}>
             <span className="inline-flex items-center gap-2 rounded-full bg-white/[0.05] px-3 py-1 text-[12px] text-zinc-300 shadow-e1">
               <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-400 shadow-[0_0_8px_1px_rgba(52,211,158,0.45)]" />
@@ -216,7 +234,7 @@ function Hero() {
 
           <motion.h1
             variants={fadeUp}
-            className="mt-6 text-[48px] font-semibold leading-[1.02] tracking-tightest text-white sm:text-[68px]"
+            className="mt-6 text-[46px] font-semibold leading-[1.02] tracking-tightest text-white sm:text-[66px]"
           >
             Give your agents
             <br />
@@ -227,7 +245,7 @@ function Hero() {
 
           <motion.p
             variants={fadeUp}
-            className="mt-7 max-w-[34rem] text-[16px] leading-relaxed text-zinc-400 sm:text-[17.5px]"
+            className="mt-7 max-w-[33rem] text-[16px] leading-relaxed text-zinc-400 sm:text-[17px]"
           >
             Connect any Mac you own and it becomes a programmable cloud runtime — Xcode builds,
             native app testing, real macOS automation — that agents, SDKs, CLIs, and apps drive
@@ -250,19 +268,29 @@ function Hero() {
             </Link>
           </motion.div>
 
-          <motion.div variants={fadeUp} className="mt-8">
+          <motion.div variants={fadeUp} className="mt-7">
             <CurlPill />
           </motion.div>
         </motion.div>
 
+        {/* the network, in numbers */}
         <motion.div
           variants={fadeUp}
           initial="hidden"
           animate="show"
-          transition={{ delay: 0.12 }}
+          transition={{ delay: 0.4 }}
+          className="mt-16 grid max-w-md grid-cols-3 gap-8 sm:max-w-lg"
         >
-          <Terminal />
+          <HeroStat label="Setup time" value="60s" />
+          <HeroStat label="Inbound ports" value="0" />
+          <HeroStat label="Your hardware" value="100%" />
         </motion.div>
+      </div>
+
+      {/* legend */}
+      <div className="absolute bottom-5 right-6 z-10 hidden items-center gap-2 rounded-full bg-ink-900/60 px-3 py-1.5 text-[11px] text-zinc-400 backdrop-blur lg:flex">
+        <span className="h-2 w-2 rounded-full bg-signal-400 shadow-[0_0_6px_1px_rgba(52,211,158,0.6)]" />
+        Macs in the herd
       </div>
     </section>
   );
@@ -545,6 +573,21 @@ function BuiltForAgents() {
               </li>
             ))}
           </ul>
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <Link
+              href="/skill"
+              className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-4 py-2 text-[13.5px] font-medium text-zinc-200 transition-colors hover:bg-white/[0.1]"
+            >
+              Get the skill
+              <span aria-hidden className="text-zinc-500">→</span>
+            </Link>
+            <a
+              href="/skill.md"
+              className="font-mono text-[12.5px] text-zinc-600 transition-colors hover:text-zinc-400"
+            >
+              herds.run/skill.md
+            </a>
+          </div>
         </Reveal>
 
         <Reveal delay={0.1}>
