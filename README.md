@@ -120,8 +120,15 @@ herds.configure(url="https://you.relay.herds.run", token="hx_…")
 ```
 
 Commands **and live log streams** tunnel through the relay — control plane → your
-Mac → back — so the agent needs no SSH, no VPN, and no inbound ports. The token is
-full shell access to the Mac, so treat it exactly like an SSH key.
+Mac → back — so the agent needs no SSH, no VPN, and no inbound ports.
+
+Don't hand an agent your full token — mint a **scoped, revocable** one:
+
+```bash
+herds token new my-agent --scope run    # can run commands, can't mint keys or read secrets
+herds token ls                          # read | run | admin
+herds token revoke herds_sk_…           # kill it anytime, without locking yourself out
+```
 
 ## The SDK
 
@@ -235,6 +242,7 @@ run history — all polling the same API the SDK and CLI use.
 herds auth               sign in (free) — get a stable, branded link
 herds host               self-host: control plane + dashboard + public link
 herds skill [--install]  print/install the agent skill (SKILL.md) for Claude Code
+herds token new|ls|revoke   scoped, revocable tokens (read|run|admin) for agents/CI
 herds connect <link> <token>   join another Mac to a host
 herds serve              run a bare control plane locally
 herds machines           list your connected Macs

@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS machines (
 CREATE TABLE IF NOT EXISTS api_keys (
     key        TEXT PRIMARY KEY,
     owner      TEXT NOT NULL,
-    label      TEXT
+    label      TEXT,
+    scope      TEXT NOT NULL DEFAULT 'admin'
 );
 CREATE TABLE IF NOT EXISTS device_tokens (
     token      TEXT PRIMARY KEY,
@@ -151,6 +152,7 @@ class Store:
         self.db = _SafeDB(conn)
         self.db.executescript(_SCHEMA)
         self.db.commit()
+        self._ensure_scope_column()
 
     # -- machines ----------------------------------------------------------- #
 
@@ -206,19 +208,27 @@ class Store:
 
     # -- auth --------------------------------------------------------------- #
 
-    def create_api_key(self, owner: str, label: str = "") -> str:
+    def _ensure_scope_column(self) -> None:
+        try:  # migrate pre-scope databases
+            self.db.execute("ALTER TABLE api_keys ADD COLUMN scope TEXT NOT NULL DEFAULT 'admin'")
+            self.db.commit()
+        except Exception:  # noqa: BLE001 — column already exists
+            pass
+
+    def create_api_key(self, owner: str, label: str = "", scope: str = "admin") -> str:
         key = "herds_sk_" + secrets.token_urlsafe(24)
         self.db.execute(
-            "INSERT INTO api_keys (key, owner, label) VALUES (?, ?, ?)", (key, owner, label)
+            "INSERT INTO api_keys (key, owner, label, scope) VALUES (?, ?, ?, ?)",
+            (key, owner, label, scope),
         )
         self.db.commit()
         return key
 
-    def put_api_key(self, key: str, owner: str, label: str = "") -> None:
+    def put_api_key(self, key: str, owner: str, label: str = "", scope: str = "admin") -> None:
         """Insert a specific (already-known) key — used for the stable host token."""
         self.db.execute(
-            "INSERT OR IGNORE INTO api_keys (key, owner, label) VALUES (?, ?, ?)",
-            (key, owner, label),
+            "INSERT OR IGNORE INTO api_keys (key, owner, label, scope) VALUES (?, ?, ?, ?)",
+            (key, owner, label, scope),
         )
         self.db.commit()
 
@@ -226,15 +236,19 @@ class Store:
         r = self.db.execute("SELECT owner FROM api_keys WHERE key=?", (key,)).fetchone()
         return r["owner"] if r else None
 
+    def scope_for_api_key(self, key: str) -> str:
+        r = self.db.execute("SELECT scope FROM api_keys WHERE key=?", (key,)).fetchone()
+        return (r["scope"] if r and r["scope"] else "admin")
+
     def list_api_keys(self, owner: str) -> list[dict]:
-        """Returns masked keys (never the full secret) + label."""
+        """Returns masked keys (never the full secret) + label + scope."""
         rows = self.db.execute(
-            "SELECT key, label FROM api_keys WHERE owner=?", (owner,)
+            "SELECT key, label, scope FROM api_keys WHERE owner=?", (owner,)
         ).fetchall()
         out = []
         for r in rows:
             k = r["key"]
-            out.append({"label": r["label"], "masked": k[:13] + "…" + k[-4:]})
+            out.append({"label": r["label"], "scope": r["scope"] or "admin", "masked": k[:13] + "…" + k[-4:]})
         return out
 
     def delete_api_key_by_masked(self, owner: str, masked_prefix: str) -> bool:

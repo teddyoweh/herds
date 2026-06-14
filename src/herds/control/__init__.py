@@ -180,6 +180,19 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
             return DEFAULT_OWNER
         return owner
 
+    _SCOPE_RANK = {"read": 0, "run": 1, "admin": 2}
+
+    def require_scope(authorization: Optional[str], minimum: str = "read") -> str:
+        """Validate the key and enforce its scope. read < run < admin."""
+        owner = owner_from_key(authorization)
+        if not REQUIRE_AUTH:
+            return owner
+        key = (authorization or "").removeprefix("Bearer ").strip()
+        scope = store.scope_for_api_key(key) if key else "admin"
+        if _SCOPE_RANK.get(scope, 2) < _SCOPE_RANK.get(minimum, 0):
+            raise HTTPException(403, f"token scope '{scope}' cannot perform a '{minimum}' action")
+        return owner
+
     # -- agent socket ------------------------------------------------------- #
 
     @app.websocket("/agent/ws")
@@ -322,7 +335,7 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
     async def start_exec(
         machine_id: str, req: ExecRequest, authorization: Optional[str] = Header(None)
     ):
-        owner = owner_from_key(authorization)
+        owner = require_scope(authorization, "run")  # read-only tokens can't execute
         machine_id = _resolve_machine(machine_id, owner)
         request_id = await _dispatch(machine_id, req, owner)
         return ExecAccepted(request_id=request_id, machine_id=machine_id)
@@ -530,7 +543,7 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
 
     @app.post("/v1/secrets")
     def create_secret(body: SecretBody, authorization: Optional[str] = Header(None)):
-        owner = owner_from_key(authorization)
+        owner = require_scope(authorization, "admin")
         if not body.name or not body.values:
             raise HTTPException(400, "name and values are required")
         store.put_secret(body.name, owner, body.values, config.now_ms())
@@ -631,14 +644,15 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
 
     @app.post("/v1/keys")
     def create_key(body: KeyBody, authorization: Optional[str] = Header(None)):
-        owner = owner_from_key(authorization)
-        key = store.create_api_key(owner, body.label or "default")
+        owner = require_scope(authorization, "admin")
+        scope = body.scope if body.scope in ("read", "run", "admin") else "run"
+        key = store.create_api_key(owner, body.label or "default", scope)
         # Full key returned exactly once, at creation.
-        return {"key": key, "label": body.label or "default"}
+        return {"key": key, "label": body.label or "default", "scope": scope}
 
     @app.delete("/v1/keys/{prefix}")
     def revoke_key(prefix: str, authorization: Optional[str] = Header(None)):
-        owner = owner_from_key(authorization)
+        owner = require_scope(authorization, "admin")
         if not store.delete_api_key_by_masked(owner, prefix):
             raise HTTPException(404, "no such key")
         return {"revoked": prefix}
@@ -810,6 +824,7 @@ class CreateSandboxBody(BaseModel):
 
 class KeyBody(BaseModel):
     label: str = ""
+    scope: str = "run"   # read | run | admin (default: run — execute, but can't mint keys)
 
 
 class PortBody(BaseModel):

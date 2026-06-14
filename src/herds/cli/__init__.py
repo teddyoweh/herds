@@ -36,8 +36,72 @@ app = typer.Typer(
 )
 volume_app = typer.Typer(help="Manage volumes (persistent directories on the Mac).")
 image_app = typer.Typer(help="Inspect toolchain images available on this Mac.")
+token_app = typer.Typer(help="Mint scoped, revocable tokens (e.g. for agents/CI).")
 app.add_typer(volume_app, name="volume")
 app.add_typer(image_app, name="image")
+app.add_typer(token_app, name="token")
+
+
+def _control_http(url: Optional[str], tok: Optional[str]):
+    from ..sdk.client import HerdsClient
+    return HerdsClient(control_plane=url, api_key=tok)._http
+
+
+@token_app.command("new")
+def token_new(
+    label: str = typer.Argument("agent", help="A name for this token."),
+    scope: str = typer.Option("run", "--scope", help="read | run | admin."),
+    url: Optional[str] = typer.Option(None, "--url", help="Control-plane / relay URL."),
+    token: Optional[str] = typer.Option(None, "--token", help="An admin token."),
+):
+    """Mint a scoped, revocable token — give it to an agent, revoke it anytime."""
+    r = _control_http(url, token).post("/v1/keys", json={"label": label, "scope": scope})
+    if r.status_code >= 400:
+        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        raise typer.Exit(1)
+    d = r.json()
+    console.print(Panel.fit(
+        f"[green]✓ New [bold]{d['scope']}[/bold] token[/green]\n\n  [yellow]{d['key']}[/yellow]\n\n"
+        f"[dim]Shown once. Hand it to your agent; revoke with `herds token revoke {d['key'][:13]}`.[/dim]",
+        title=f"token · {d['label']}", border_style="green",
+    ))
+
+
+@token_app.command("ls")
+def token_ls(
+    url: Optional[str] = typer.Option(None, "--url"),
+    token: Optional[str] = typer.Option(None, "--token"),
+):
+    """List your tokens (masked) and their scopes."""
+    r = _control_http(url, token).get("/v1/keys")
+    if r.status_code >= 400:
+        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        raise typer.Exit(1)
+    keys = r.json().get("keys", [])
+    if not keys:
+        console.print("[dim]No tokens yet.[/dim]")
+        return
+    table = Table(title="Tokens")
+    table.add_column("Token", style="cyan")
+    table.add_column("Scope")
+    table.add_column("Label", style="dim")
+    for k in keys:
+        table.add_row(k["masked"], k.get("scope", "admin"), k.get("label") or "")
+    console.print(table)
+
+
+@token_app.command("revoke")
+def token_revoke(
+    prefix: str,
+    url: Optional[str] = typer.Option(None, "--url"),
+    token: Optional[str] = typer.Option(None, "--token"),
+):
+    """Revoke a token by its visible prefix (from `herds token ls`)."""
+    r = _control_http(url, token).delete(f"/v1/keys/{prefix.split('…')[0]}")
+    if r.status_code >= 400:
+        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        raise typer.Exit(1)
+    console.print(f"[green]✓[/green] revoked [cyan]{prefix}[/cyan]")
 
 console = Console()
 err = Console(stderr=True)
