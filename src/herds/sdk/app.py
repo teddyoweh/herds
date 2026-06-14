@@ -37,7 +37,13 @@ class RemoteExecutionError(RuntimeError):
 
 
 def _driver_source(fn: Callable) -> str:
-    src = textwrap.dedent(inspect.getsource(fn))
+    try:
+        src = textwrap.dedent(inspect.getsource(fn))
+    except (OSError, TypeError) as exc:  # -c, REPL, exec, lambdas have no readable source
+        raise RemoteExecutionError(
+            f"can't read the source of {getattr(fn, '__name__', fn)!r} to ship it — "
+            "define @app.function in a .py file (not a REPL, `python -c`, or a lambda)."
+        ) from exc
     # Strip the decorator lines so the bare function body remains.
     lines = src.splitlines()
     while lines and lines[0].lstrip().startswith("@"):
