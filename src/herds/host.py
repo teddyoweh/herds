@@ -394,7 +394,15 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
     store.db.close()
 
     procs: list[subprocess.Popen] = []
+    supervised: list[dict] = []  # critical children — auto-restarted if they crash
     base_env = {**os.environ, "HERDS_HOME": str(config.HERDS_HOME)}
+
+    def _spawn_supervised(name: str, cmd: list, env: dict) -> subprocess.Popen:
+        p = _spawn(cmd, env=env)
+        procs.append(p)
+        supervised.append({"name": name, "cmd": cmd, "env": env, "proc": p,
+                           "restarts": 0, "started": time.monotonic()})
+        return p
 
     # 2. Dashboard: the control plane serves the bundled static export
     #    (src/herds/web_dist) directly — no Node.js needed at runtime.
@@ -427,26 +435,29 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
         "HERDS_PUBLIC_URL": public_url,
         "HERDS_HOST_TOKEN": token,
     }
-    procs.append(_spawn(
+    _spawn_supervised(
+        "control plane",
         [sys.executable, "-c",
          f"from herds.control import serve; serve(port={port}, db_path={db_path!r})"],
-        env=cp_env,
-    ))
+        cp_env,
+    )
     time.sleep(3)
 
     # 5. This Mac's own daemon (local, authed with the host token).
-    procs.append(_spawn(
+    _spawn_supervised(
+        "daemon",
         [sys.executable, "-m", "herds.daemon"],
-        env={**base_env, "HERDS_CONTROL_PLANE": f"http://127.0.0.1:{port}", "HERDS_DEVICE_TOKEN": token},
-    ))
+        {**base_env, "HERDS_CONTROL_PLANE": f"http://127.0.0.1:{port}", "HERDS_DEVICE_TOKEN": token},
+    )
 
     # 6. Connect the public link. Relay = our infra (dial out, expose this control
     #    plane at your account's subdomain). Tunnel = verify it actually serves.
     if use_relay:
-        procs.append(_spawn(
+        _spawn_supervised(
+            "relay link",
             [sys.executable, "-m", "herds.relay", "client", auth.relay, auth.token, f"http://127.0.0.1:{port}"],
-            env=base_env,
-        ))
+            base_env,
+        )
         time.sleep(1.5)
     elif provider != "local":
         console.print("[dim]Verifying the link is live (quick tunnels take a few seconds)…[/dim]")
@@ -490,9 +501,21 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
+    # Supervise: a long-horizon host should survive a crashed child. Restart any
+    # critical child that dies; give up only if one crash-loops (5×/min).
     while True:
-        time.sleep(1)
-        if all(p.poll() is not None for p in procs):
-            break
-    # All children exited on their own — clear state so re-runs start fresh.
-    _clear_host_state()
+        time.sleep(2)
+        for s in supervised:
+            if s["proc"].poll() is None:
+                continue
+            now = time.monotonic()
+            if now - s["started"] > 60:
+                s["restarts"] = 0  # ran fine for a while — not a crash loop
+            if s["restarts"] >= 5:
+                err.print(f"[red]✗ {s['name']} keeps crashing — shutting down the host.[/red]")
+                shutdown()
+            s["restarts"] += 1
+            err.print(f"[yellow]{s['name']} exited — restarting ({s['restarts']}/5)…[/yellow]")
+            s["proc"] = _spawn(s["cmd"], env=s["env"])
+            s["started"] = now
+            procs.append(s["proc"])
