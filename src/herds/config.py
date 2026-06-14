@@ -32,7 +32,9 @@ DEFAULT_CONTROL_PLANE = os.environ.get("HERDS_CONTROL_PLANE", "http://127.0.0.1:
 
 AUTH_PATH = HERDS_HOME / "auth.json"
 # The relay is invisible infra — baked in, overridable only for our own testing.
-DEFAULT_RELAY = os.environ.get("HERDS_RELAY", "wss://relay.herds.run")
+# Use a *.relay.herds.run subdomain (not the apex): fresh subdomains always resolve
+# straight to the relay box; the apex can get stale-cached to the wildcard.
+DEFAULT_RELAY = os.environ.get("HERDS_RELAY", "wss://api.relay.herds.run")
 
 
 def ensure_dirs() -> None:
@@ -149,6 +151,8 @@ class Auth:
             account = account or raw.get("account")
             url = raw.get("url")
             relay = os.environ.get("HERDS_RELAY") or raw.get("relay") or DEFAULT_RELAY
+            if relay in ("wss://relay.herds.run", "ws://relay.herds.run"):
+                relay = DEFAULT_RELAY  # migrate off the apex
         return cls(token=token, account=account, url=url, relay=relay)
 
     @property
