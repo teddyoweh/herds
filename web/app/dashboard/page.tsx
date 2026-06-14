@@ -6,8 +6,8 @@ import { motion } from "framer-motion";
 import { Logo } from "@/components/Logo";
 import { useToast } from "@/components/Toast";
 import {
-  getSession, clearSession, getStatus, getMachines, listTokens, createToken, revokeToken,
-  type Session, type AccountStatus, type ApiToken, type MachineLive,
+  getSession, clearSession, getStatus, getMachines, getJobs, listTokens, createToken, revokeToken,
+  type Session, type AccountStatus, type ApiToken, type MachineLive, type Job,
 } from "@/lib/platform";
 
 export default function DashboardPage() {
@@ -16,6 +16,7 @@ export default function DashboardPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [status, setStatus] = useState<AccountStatus | null>(null);
   const [machines, setMachines] = useState<MachineLive[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -36,7 +37,13 @@ export default function DashboardPage() {
       const st = await getStatus(session.token);
       if (!alive) return;
       if (st) setStatus(st);
-      if (st?.online) setMachines(await getMachines(session.url, session.token));
+      if (st?.online) {
+        const [m, j] = await Promise.all([
+          getMachines(session.url, session.token),
+          getJobs(session.url, session.token),
+        ]);
+        if (alive) { setMachines(m); setJobs(j); }
+      }
     };
     tick();
     const id = setInterval(tick, 4000);
@@ -138,6 +145,9 @@ export default function DashboardPage() {
         {/* run from an agent */}
         <AgentCard url={session.url} token={session.token} onCopy={() => toast("Copied", "default")} />
 
+        {/* recent activity */}
+        {online && <RecentCard jobs={jobs} />}
+
         {/* scoped agent tokens */}
         {online && <TokensCard url={session.url} token={session.token} toast={toast} />}
 
@@ -152,6 +162,44 @@ export default function DashboardPage() {
           <Row label="Token" mono copyable value={session.token} onCopy={() => toast("Token copied", "default")} />
         </div>
       </motion.main>
+    </div>
+  );
+}
+
+function ago(ms: number | null): string {
+  if (!ms) return "";
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
+}
+
+const STATE_COLOR: Record<string, string> = {
+  succeeded: "text-signal-400", failed: "text-rose-400", running: "text-amber-400",
+  queued: "text-zinc-400", dispatched: "text-amber-400", canceled: "text-zinc-500", lost: "text-rose-400",
+};
+
+function RecentCard({ jobs }: { jobs: Job[] }) {
+  return (
+    <div className="surface mt-6 px-6 py-6">
+      <div className="label">Recent activity</div>
+      {jobs.length === 0 ? (
+        <p className="mt-3 text-[12.5px] text-zinc-600">
+          No runs yet — your first <code className="font-mono text-zinc-400">mac.run()</code> shows up here.
+        </p>
+      ) : (
+        <div className="mt-3 divide-y divide-white/[0.05]">
+          {jobs.map((j) => (
+            <div key={j.request_id} className="flex items-center gap-3 py-2.5">
+              <span className={`w-[72px] shrink-0 text-[11px] uppercase tracking-wide ${STATE_COLOR[j.state] || "text-zinc-400"}`}>{j.state}</span>
+              <code className="min-w-0 flex-1 truncate font-mono text-[12px] text-zinc-300">{j.command || "—"}</code>
+              {j.duration_ms != null && <span className="tnum hidden shrink-0 text-[11px] text-zinc-600 sm:inline">{(j.duration_ms / 1000).toFixed(1)}s</span>}
+              <span className="shrink-0 text-[11px] text-zinc-600">{ago(j.created_ms)}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

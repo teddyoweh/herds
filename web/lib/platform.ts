@@ -148,6 +148,25 @@ export async function getMachines(url: string, token: string): Promise<MachineLi
   }
 }
 
+export type Job = {
+  request_id: string;
+  command: string | null;
+  state: string;
+  duration_ms: number | null;
+  created_ms: number | null;
+};
+
+/** Recent runs on the connected Mac (newest first). */
+export async function getJobs(url: string, token: string, limit = 8): Promise<Job[]> {
+  try {
+    const res = await fetch(`${url}/v1/jobs?limit=${limit}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return [];
+    return ((await res.json()).jobs || []) as Job[];
+  } catch {
+    return [];
+  }
+}
+
 export type ApiToken = { label: string; scope: string; masked: string };
 
 /** Manage scoped tokens on the connected Mac's control plane (CORS is open). */

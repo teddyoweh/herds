@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/Logo";
+import { getSession } from "@/lib/platform";
 import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
 
@@ -66,6 +67,11 @@ function Mark({ size = 22 }: { size?: number }) {
  * ------------------------------------------------------------------ */
 
 function TopBar() {
+  const [account, setAccount] = useState<string | null>(null);
+  useEffect(() => {
+    const s = getSession();
+    if (s) setAccount(s.account);
+  }, []);
   return (
     <header className="sticky top-0 z-40 bg-ink-950/70 backdrop-blur-xl">
       <div className="mx-auto flex h-[60px] max-w-[1100px] items-center justify-between px-6">
@@ -74,18 +80,29 @@ function TopBar() {
           <span className="text-[16px] font-semibold tracking-tightest text-white">Herds</span>
         </Link>
         <div className="flex items-center gap-2.5">
-          <Link
-            href="/login"
-            className="hidden rounded-lg px-3 py-1.5 text-[13px] text-zinc-400 transition-colors hover:text-zinc-100 sm:inline-flex"
-          >
-            Log in
-          </Link>
-          <Link
-            href="/signup"
-            className="inline-flex items-center rounded-full bg-zinc-100 px-4 py-1.5 text-[13px] font-medium text-ink-950 shadow-e1 transition-colors hover:bg-white"
-          >
-            Start free
-          </Link>
+          {account ? (
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-4 py-1.5 text-[13px] font-medium text-ink-950 shadow-e1 transition-colors hover:bg-white"
+            >
+              Dashboard <span aria-hidden className="text-ink-950/45">→</span>
+            </Link>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className="hidden rounded-lg px-3 py-1.5 text-[13px] text-zinc-400 transition-colors hover:text-zinc-100 sm:inline-flex"
+              >
+                Log in
+              </Link>
+              <Link
+                href="/signup"
+                className="inline-flex items-center rounded-full bg-zinc-100 px-4 py-1.5 text-[13px] font-medium text-ink-950 shadow-e1 transition-colors hover:bg-white"
+              >
+                Start free
+              </Link>
+            </>
+          )}
         </div>
       </div>
       <div className="h-px w-full bg-white/[0.05]" />
@@ -389,7 +406,7 @@ function Hero() {
     <section className="relative overflow-hidden">
       <HeroBackground />
 
-      <div className="relative mx-auto max-w-[1080px] px-6 pb-20 pt-16 text-center lg:pt-20">
+      <div className="relative mx-auto max-w-[1080px] px-6 pb-14 pt-11 text-center lg:pt-14">
         {/* eyebrow */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-center">
           <span className="inline-flex items-center gap-2 rounded-full bg-white/[0.05] px-3 py-1 text-[11.5px] text-zinc-300 shadow-e1">
@@ -401,7 +418,7 @@ function Hero() {
         {/* headline */}
         <motion.h1
           variants={stagger} initial="hidden" animate="show"
-          className="mx-auto mt-5 max-w-[15ch] text-[11vw] font-semibold leading-[0.9] tracking-tightest text-white sm:text-[64px] lg:text-[76px]"
+          className="mx-auto mt-4 max-w-[15ch] text-[10vw] font-semibold leading-[0.92] tracking-tightest text-white sm:text-[54px] lg:text-[64px]"
         >
           <motion.span variants={fadeUp} className="block">Give your agents</motion.span>
           <motion.span variants={fadeUp} className="block"><Highlight>real Macs.</Highlight></motion.span>
@@ -410,7 +427,7 @@ function Hero() {
         {/* subhead */}
         <motion.p
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}
-          className="mx-auto mt-5 max-w-[34rem] text-[14.5px] leading-relaxed text-zinc-400 sm:text-[15.5px]"
+          className="mx-auto mt-4 max-w-[32rem] text-[14px] leading-relaxed text-zinc-400 sm:text-[15px]"
         >
           Connect any Mac you own and it becomes a programmable cloud runtime — Xcode builds,
           native app testing, real macOS automation — driven by agents, SDKs, and CLIs from
@@ -420,24 +437,24 @@ function Hero() {
         {/* the cluster — interactive command bar + CTAs */}
         <motion.div
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.34 }}
-          className="mx-auto mt-7 max-w-[34rem]"
+          className="mx-auto mt-6 max-w-[34rem]"
         >
           <CommandBar />
-          <div className="mt-3.5 flex flex-wrap items-center justify-center gap-3">
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-3">
             <Link href="/signup" className="inline-flex items-center rounded-full bg-zinc-100 px-5 py-2.5 text-[14px] font-medium text-ink-950 shadow-[0_1px_2px_rgba(0,0,0,0.4),0_8px_24px_-8px_rgba(255,255,255,0.25)] transition-all hover:-translate-y-px hover:bg-white">Start free</Link>
             <CurlPill />
           </div>
         </motion.div>
 
         {/* centerpiece product artifact */}
-        <div className="mt-12">
+        <div className="mt-9">
           <HeroArtifact />
         </div>
 
         {/* trust stats */}
         <motion.div
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
-          className="mx-auto mt-10 grid max-w-md grid-cols-3 gap-8 text-center"
+          className="mx-auto mt-8 grid max-w-md grid-cols-3 gap-8 text-center"
         >
           <HeroStat label="Setup time" value="60s" />
           <HeroStat label="Inbound ports" value="0" />

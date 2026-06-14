@@ -1,16 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Logo } from "@/components/Logo";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { useToast } from "@/components/Toast";
-import { registerWithEmail } from "@/lib/platform";
+import { registerWithEmail, getSession } from "@/lib/platform";
 
 export default function SignupPage() {
   const router = useRouter();
   const toast = useToast();
+  useEffect(() => {
+    if (getSession()) router.replace("/dashboard");
+  }, [router]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
