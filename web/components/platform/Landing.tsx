@@ -236,7 +236,7 @@ function Hero() {
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-center"><Eyebrow>Modal, for Macs</Eyebrow></motion.div>
         <motion.h1 variants={stagger} initial="hidden" animate="show" className="ed mx-auto mt-6 max-w-[16ch] text-[12.5vw] leading-[0.98] text-stone-900 sm:text-[64px] lg:text-[80px]">
           <motion.span variants={fadeUp} className="block">Give your agents</motion.span>
-          <motion.span variants={fadeUp} className="block italic">real Macs.</motion.span>
+          <motion.span variants={fadeUp} className="block">real Macs.</motion.span>
         </motion.h1>
         <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }} className="ed-soft mx-auto mt-6 max-w-[37rem] text-[18px] leading-[1.5] text-stone-500 sm:text-[20px]">
           Connect any Mac you own and it becomes a programmable cloud runtime — driven by agents, SDKs, and CLIs from anywhere. One command to go live.
@@ -553,7 +553,7 @@ function FinalCTA() {
       <Reveal>
         <div className="relative overflow-hidden rounded-[28px] bg-stone-900 px-8 py-16 text-center sm:px-16 sm:py-20">
           <div className="relative">
-            <h2 className="ed text-[32px] leading-[1.05] text-white sm:text-[46px]">Connect your Mac in <span className="italic">60 seconds.</span></h2>
+            <h2 className="ed text-[32px] leading-[1.05] text-white sm:text-[46px]">Connect your Mac in 60 seconds.</h2>
             <p className="ed-soft mx-auto mt-4 max-w-md text-[18px] leading-relaxed text-stone-400">Every Mac becomes an API. Your own machine, your own infra — live with one command.</p>
             <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
               <Link href="/signup" className="inline-flex items-center rounded-full bg-signal-500 px-6 py-3 text-[14px] font-medium text-white transition-colors hover:bg-signal-400">Start free</Link>
@@ -611,32 +611,32 @@ export function Landing() {
         </Section>
 
         <Section>
-          <Statement eyebrow="End to end" title={<>Ship iOS apps, <span className="italic">autonomously.</span></>} sub="From clone to TestFlight in one run — build, test, sign, notarize, deploy. No CI runners to babysit." />
+          <Statement eyebrow="End to end" title={<>Ship iOS apps, autonomously.</>} sub="From clone to TestFlight in one run — build, test, sign, notarize, deploy. No CI runners to babysit." />
           <ShipCard />
         </Section>
 
         <Section>
-          <Statement eyebrow="Networking" title={<>Expose a port. <span className="italic">Get a link.</span></>} sub="Run a server inside a sandbox and share it instantly — a named subdomain, real TLS, zero inbound ports opened." />
+          <Statement eyebrow="Networking" title={<>Expose a port. Get a link.</>} sub="Run a server inside a sandbox and share it instantly — a named subdomain, real TLS, zero inbound ports opened." />
           <ExposeCard />
         </Section>
 
         <Section>
-          <Statement eyebrow="Observability" title={<>Every run, fully <span className="italic">observable.</span></>} sub="Stream logs, metrics, and status in real time. Nothing hidden, nothing stale — the machine narrates itself." />
+          <Statement eyebrow="Observability" title={<>Every run, fully observable.</>} sub="Stream logs, metrics, and status in real time. Nothing hidden, nothing stale — the machine narrates itself." />
           <ObserveCard />
         </Section>
 
         <Section>
-          <Statement eyebrow="Stateful" title={<>Snapshot. Suspend. <span className="italic">Resume.</span></>} sub="Freeze a machine mid-task and bring it back in seconds. Mount durable volumes so caches and builds persist." />
+          <Statement eyebrow="Stateful" title={<>Snapshot. Suspend. Resume.</>} sub="Freeze a machine mid-task and bring it back in seconds. Mount durable volumes so caches and builds persist." />
           <LifecycleCard />
         </Section>
 
         <Section>
-          <Statement eyebrow="Built for agents" title={<>One API call. <span className="italic">A whole machine.</span></>} sub="Your agents already write the code. Now they build it, run it, click through the app, and verify it — on real macOS." />
+          <Statement eyebrow="Built for agents" title={<>One API call. A whole machine.</>} sub="Your agents already write the code. Now they build it, run it, click through the app, and verify it — on real macOS." />
           <CodeCard />
         </Section>
 
         <Section>
-          <Statement eyebrow="Security" title={<>A scoped key for <span className="italic">every agent.</span></>} sub="Mint read, run, or admin tokens per task. Hand one to an agent, watch what it does, revoke it the moment you're done." />
+          <Statement eyebrow="Security" title={<>A scoped key for every agent.</>} sub="Mint read, run, or admin tokens per task. Hand one to an agent, watch what it does, revoke it the moment you're done." />
           <TokensCard />
         </Section>
 
