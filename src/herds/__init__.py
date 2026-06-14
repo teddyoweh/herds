@@ -26,11 +26,12 @@ from .sdk import (
     Sandbox,
     Secret,
     Volume,
+    configure,
     mac,
     machines,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "App",
@@ -45,6 +46,7 @@ __all__ = [
     "Sandbox",
     "Secret",
     "Volume",
+    "configure",
     "mac",
     "machines",
     "__version__",

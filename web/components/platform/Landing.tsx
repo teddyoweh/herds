@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/Logo";
-import { WorldMap } from "./WorldMap";
 import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
 
@@ -260,87 +259,240 @@ function CommandBar() {
   );
 }
 
+/** One machine row inside the hero dashboard artifact. */
+function ArtifactMachine({ name, kind, load, delay }: { name: string; kind: string; load: number; delay: number }) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl bg-white/[0.04] px-3.5 py-3 ring-1 ring-white/[0.05]">
+      <span className="grid h-8 w-8 flex-none place-items-center rounded-lg bg-signal-500/15">
+        <Logo size={16} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between">
+          <span className="text-[12.5px] font-semibold tracking-tight text-white">{name}</span>
+          <span className="tnum font-mono text-[11px] text-zinc-400">{load}%</span>
+        </div>
+        <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/[0.12]">
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: `${load}%` }}
+            transition={{ delay, duration: 1, ease: [0.22, 1, 0.36, 1] }}
+            className="h-full rounded-full bg-gradient-to-r from-signal-500 to-signal-400"
+          />
+        </div>
+        <div className="mt-1.5 text-[10px] text-zinc-500">{kind}</div>
+      </div>
+    </div>
+  );
+}
+
+const RUN_LINES: { node: React.ReactNode; cmd?: boolean }[] = [
+  { cmd: true, node: <><span className="text-signal-400">$</span> <span className="text-zinc-200">herds.mac(&quot;m3max&quot;).run(&quot;xcodebuild&quot;)</span></> },
+  { node: <><span className="text-zinc-600">→</span> building · M3 Max · Mac Studio</> },
+  { node: <><span className="text-signal-400">✓</span> Build succeeded · <span className="text-zinc-300">42.1s</span></> },
+  { node: <><span className="text-signal-400">↗</span> exposed <span className="text-zinc-400">:3000</span> → <span className="text-signal-400 underline decoration-signal-500/40 underline-offset-2">app.you.herds.run</span></> },
+];
+
+/** The hero centerpiece — a browser-chromed live dashboard (fleet + a streaming run). */
+function HeroArtifact() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 34, scale: 0.985 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ delay: 0.42, duration: 0.95, ease: [0.22, 1, 0.36, 1] }}
+      className="relative mx-auto w-full max-w-[1000px]"
+    >
+      {/* ambient bloom behind the window */}
+      <div aria-hidden className="pointer-events-none absolute -inset-x-12 -top-10 bottom-0 -z-10 rounded-[44px] bg-signal-500/[0.10] blur-[72px]" />
+      <div className="relative overflow-hidden rounded-2xl bg-[#0f141a] ring-1 ring-white/[0.1] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08),0_2px_8px_rgba(0,0,0,0.5),0_60px_120px_-40px_rgba(0,0,0,0.95)]">
+        {/* top sheen */}
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+        {/* browser chrome */}
+        <div className="relative flex items-center gap-2 border-b border-white/[0.06] bg-white/[0.03] px-4 py-3">
+          <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
+          <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
+          <span className="h-3 w-3 rounded-full bg-[#28c840]" />
+          <div className="mx-auto flex items-center gap-1.5 rounded-md bg-black/40 px-3 py-1 text-[11px] text-zinc-400 ring-1 ring-white/[0.05]">
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" className="text-zinc-500"><rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" strokeWidth="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="currentColor" strokeWidth="2" /></svg>
+            <span className="font-mono">you.herds.run</span>
+          </div>
+        </div>
+        {/* dashboard body — fleet | live run */}
+        <div className="grid gap-px bg-white/[0.07] sm:grid-cols-[1.05fr_1fr]">
+          {/* fleet panel */}
+          <div className="bg-[#0f141a] p-5 text-left">
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] font-semibold tracking-tight text-zinc-200">Your fleet</span>
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-zinc-400">
+                <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-400 shadow-[0_0_6px_1px_rgba(52,211,158,0.5)]" />
+                3 online
+              </span>
+            </div>
+            <div className="mt-4 space-y-2.5">
+              <ArtifactMachine name="M3 Max" kind="Mac Studio · 3 sandboxes" load={38} delay={0.7} />
+              <ArtifactMachine name="M2 Pro" kind="Mac mini · 5 sandboxes" load={71} delay={0.85} />
+              <ArtifactMachine name="M3" kind="MacBook Air · 1 sandbox" load={12} delay={1.0} />
+            </div>
+          </div>
+          {/* live run panel */}
+          <div className="bg-[#0f141a] p-5 text-left">
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] font-semibold tracking-tight text-zinc-200">Live run</span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-500">m3max</span>
+            </div>
+            <motion.div
+              className="mt-4 space-y-1.5 font-mono text-[11.5px] leading-[1.7] tnum"
+              initial="hidden" animate="show"
+              variants={{ show: { transition: { staggerChildren: 0.5, delayChildren: 0.9 } } }}
+            >
+              {RUN_LINES.map((l, i) => (
+                <motion.div
+                  key={i}
+                  variants={{ hidden: { opacity: 0, y: 3 }, show: { opacity: 1, y: 0 } }}
+                  transition={{ duration: 0.25 }}
+                  className={l.cmd ? "text-zinc-200" : "text-zinc-400"}
+                >
+                  {l.node}
+                  {i === RUN_LINES.length - 1 && (
+                    <span className="ml-1 inline-block h-[13px] w-[6px] translate-y-[2px] animate-breathe bg-signal-400/80 align-middle" />
+                  )}
+                </motion.div>
+              ))}
+            </motion.div>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 function Hero() {
   return (
     <section className="relative overflow-hidden">
       <HeroBackground />
-      {/* faint global herd behind everything */}
-      <div className="pointer-events-none absolute inset-0 hidden opacity-[0.5] [mask-image:radial-gradient(ellipse_60%_70%_at_72%_42%,black,transparent)] lg:block">
-        <WorldMap className="absolute right-0 top-1/2 w-[80%] -translate-y-1/2" />
-      </div>
 
-      <div className="relative mx-auto max-w-[1140px] px-6 pb-24 pt-20 lg:pb-28">
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+      <div className="relative mx-auto max-w-[1080px] px-6 pb-24 pt-24 text-center lg:pt-28">
+        {/* eyebrow */}
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-center">
           <span className="inline-flex items-center gap-2 rounded-full bg-white/[0.05] px-3 py-1 text-[12px] text-zinc-300 shadow-e1">
             <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-400 shadow-[0_0_8px_1px_rgba(52,211,158,0.45)]" />
             Modal, for Macs
           </span>
         </motion.div>
 
-        {/* editorial headline + floating product collage */}
-        <div className="relative mt-7">
-          <motion.h1
-            variants={stagger} initial="hidden" animate="show"
-            className="relative z-10 text-[15.5vw] font-semibold leading-[0.92] tracking-tightest text-white sm:text-[88px] lg:text-[104px]"
-          >
-            <motion.span variants={fadeUp} className="block">Give your</motion.span>
-            <motion.span variants={fadeUp} className="block">agents <Highlight>real Macs.</Highlight></motion.span>
-          </motion.h1>
+        {/* headline */}
+        <motion.h1
+          variants={stagger} initial="hidden" animate="show"
+          className="mx-auto mt-7 max-w-[16ch] text-[12.5vw] font-semibold leading-[0.92] tracking-tightest text-white sm:text-[78px] lg:text-[92px]"
+        >
+          <motion.span variants={fadeUp} className="block">Give your agents</motion.span>
+          <motion.span variants={fadeUp} className="block"><Highlight>real Macs.</Highlight></motion.span>
+        </motion.h1>
 
-          {/* floating terminal, lower-right, rotated — the collage */}
-          <motion.div
-            initial={{ opacity: 0, y: 28, rotate: 3.4 }}
-            animate={{ opacity: 1, y: 0, rotate: 2 }}
-            transition={{ delay: 0.3, duration: 0.85, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute right-[-16px] top-[112%] hidden w-[400px] xl:block"
-          >
-            <Terminal />
-          </motion.div>
-
-          {/* floating live chips, clear of the headline */}
-          <FloatChip className="right-[1%] top-[18%] gap-2" delay={0.55}>
-            <span className="h-2 w-2 rounded-full bg-signal-400 shadow-[0_0_8px_1px_rgba(52,211,158,0.6)]" />
-            <span className="font-mono text-[12px] text-zinc-300">you.herds.run</span>
-            <span className="text-[11px] font-medium text-signal-400">live</span>
-          </FloatChip>
-          <FloatChip className="right-[6%] top-[104%] gap-2.5" delay={0.8}>
-            <Logo size={20} />
-            <div className="leading-none">
-              <div className="text-[9px] uppercase tracking-[0.14em] text-zinc-600">M3 Max · online</div>
-              <div className="tnum mt-1 text-[13px] font-semibold text-white">3 sandboxes</div>
-            </div>
-          </FloatChip>
-        </div>
-
+        {/* subhead */}
         <motion.p
-          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
-          className="relative z-10 mt-8 max-w-[34rem] text-[16px] leading-relaxed text-zinc-400 sm:text-[17.5px]"
+          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}
+          className="mx-auto mt-7 max-w-[40rem] text-[16.5px] leading-relaxed text-zinc-400 sm:text-[18px]"
         >
           Connect any Mac you own and it becomes a programmable cloud runtime — Xcode builds,
-          native app testing, real macOS automation — that agents, SDKs, CLIs, and apps drive
-          from anywhere. <span className="text-zinc-200">One command to go live.</span>
+          native app testing, real macOS automation — driven by agents, SDKs, and CLIs from
+          anywhere. <span className="text-zinc-200">One command to go live.</span>
         </motion.p>
 
+        {/* the cluster — interactive command bar + CTAs */}
         <motion.div
-          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.36 }}
-          className="relative z-10 mt-9 max-w-[34rem]"
+          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.34 }}
+          className="mx-auto mt-9 max-w-[36rem]"
         >
           <CommandBar />
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
             <Link href="/signup" className="inline-flex items-center rounded-full bg-zinc-100 px-5 py-2.5 text-[14px] font-medium text-ink-950 shadow-[0_1px_2px_rgba(0,0,0,0.4),0_8px_24px_-8px_rgba(255,255,255,0.25)] transition-all hover:-translate-y-px hover:bg-white">Start free</Link>
             <CurlPill />
           </div>
         </motion.div>
 
+        {/* centerpiece product artifact */}
+        <div className="mt-16">
+          <HeroArtifact />
+        </div>
+
+        {/* trust stats */}
         <motion.div
-          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
-          className="relative z-10 mt-16 grid max-w-md grid-cols-3 gap-8"
+          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
+          className="mx-auto mt-14 grid max-w-lg grid-cols-3 gap-8 text-center"
         >
           <HeroStat label="Setup time" value="60s" />
           <HeroStat label="Inbound ports" value="0" />
           <HeroStat label="Your hardware" value="100%" />
         </motion.div>
       </div>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * The gap — the narrative beat: agents have brains, not hands.
+ * ------------------------------------------------------------------ */
+
+function TheGap() {
+  return (
+    <section className="relative mx-auto max-w-[1100px] px-6 py-28">
+      <Reveal>
+        <div className="label !text-signal-500">The gap</div>
+        <h2 className="mt-5 max-w-[18ch] text-[32px] font-semibold leading-[1.05] tracking-tightest text-white sm:text-[52px]">
+          Your agent writes a flawless iOS app. Then it just{" "}
+          <span className="text-zinc-600">…stops.</span>
+        </h2>
+        <p className="mt-7 max-w-[44rem] text-[17px] leading-relaxed text-zinc-400">
+          It can&rsquo;t build it. Can&rsquo;t open the simulator. Can&rsquo;t tap a button or read a
+          crash log. The model has a brain — what it&rsquo;s missing is{" "}
+          <span className="text-zinc-100">hands</span>. Every other sandbox hands it Linux. Real apps
+          need a <span className="text-zinc-100">real Mac</span>.
+        </p>
+      </Reveal>
+
+      {/* before / after contrast */}
+      <motion.div
+        variants={stagger}
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, margin: "-80px" }}
+        className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-2"
+      >
+        <motion.div variants={fadeUp} className="surface flex flex-col p-7">
+          <span className="label !text-zinc-600">Without Herds</span>
+          <ul className="mt-5 space-y-3.5">
+            {[
+              "A Linux box that can't run Xcode",
+              "No simulator, no codesigning, no GUI",
+              "“Works on my machine” — but the agent has no machine",
+              "You babysit CI runners and Dockerfiles",
+            ].map((t) => (
+              <li key={t} className="flex items-start gap-3 text-[14px] text-zinc-500">
+                <span className="mt-[6px] h-1.5 w-1.5 flex-none rounded-full bg-zinc-700" />
+                {t}
+              </li>
+            ))}
+          </ul>
+        </motion.div>
+
+        <motion.div variants={fadeUp} className="surface relative flex flex-col overflow-hidden p-7">
+          <div aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-signal-500/[0.10] blur-[70px]" />
+          <span className="label !text-signal-500">With Herds</span>
+          <ul className="mt-5 space-y-3.5">
+            {[
+              "The real macOS your users actually run",
+              "Xcode, simulators, codesigning, AppleScript",
+              "The Mac on your desk — exposed as an API",
+              "One command. No infra to babysit.",
+            ].map((t) => (
+              <li key={t} className="flex items-start gap-3 text-[14px] text-zinc-200">
+                <span className="mt-[6px] h-1.5 w-1.5 flex-none rounded-full bg-signal-400 shadow-[0_0_8px_1px_rgba(52,211,158,0.45)]" />
+                {t}
+              </li>
+            ))}
+          </ul>
+        </motion.div>
+      </motion.div>
     </section>
   );
 }
@@ -431,6 +583,97 @@ function HowItWorks() {
           </motion.div>
         ))}
       </motion.div>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Fleet — the connection narrative: your Macs, one network.
+ * ------------------------------------------------------------------ */
+
+const FLEET = [
+  { name: "M3 Max", kind: "Mac Studio", load: 38, sandboxes: 3 },
+  { name: "M2 Pro", kind: "Mac mini", load: 71, sandboxes: 5 },
+  { name: "M3", kind: "MacBook Air", load: 12, sandboxes: 1 },
+];
+
+function FleetNode({ m, delay }: { m: (typeof FLEET)[number]; delay: number }) {
+  return (
+    <motion.div variants={fadeUp} className="surface surface-hover relative flex flex-col p-5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <Logo size={18} />
+          <div className="leading-none">
+            <div className="text-[14px] font-semibold tracking-tight text-white">{m.name}</div>
+            <div className="mt-1 text-[11px] text-zinc-600">{m.kind}</div>
+          </div>
+        </div>
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-signal-500/10 px-2 py-1 text-[10px] font-medium text-signal-400">
+          <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-400 shadow-[0_0_6px_1px_rgba(52,211,158,0.55)]" />
+          online
+        </span>
+      </div>
+      {/* load bar */}
+      <div className="mt-5 flex items-center justify-between text-[11px]">
+        <span className="text-zinc-600">CPU</span>
+        <span className="tnum font-mono text-zinc-400">{m.load}%</span>
+      </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+        <motion.div
+          initial={{ width: 0 }}
+          whileInView={{ width: `${m.load}%` }}
+          viewport={{ once: true }}
+          transition={{ delay: delay + 0.2, duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+          className="h-full rounded-full bg-gradient-to-r from-signal-500 to-signal-400"
+        />
+      </div>
+      <div className="mt-4 font-mono text-[11px] text-zinc-600">
+        <span className="tnum text-zinc-400">{m.sandboxes}</span> sandboxes ·{" "}
+        <span className="text-signal-400">{m.name.toLowerCase().replace(/\s/g, "")}.herds.run</span>
+      </div>
+    </motion.div>
+  );
+}
+
+function Fleet() {
+  return (
+    <section className="relative overflow-hidden">
+      <div aria-hidden className="pointer-events-none absolute left-1/2 top-1/2 h-[420px] w-[820px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-signal-500/[0.05] blur-[140px]" />
+      <div className="relative mx-auto max-w-[1100px] px-6 py-28">
+        <Reveal>
+          <div className="grid items-end gap-6 md:grid-cols-[1fr_auto]">
+            <div>
+              <div className="label !text-signal-500">Connection</div>
+              <h2 className="mt-4 max-w-[16ch] text-[32px] font-semibold leading-[1.05] tracking-tightest text-white sm:text-[48px]">
+                Every Mac you own. <Highlight>One fleet.</Highlight>
+              </h2>
+            </div>
+            <p className="max-w-sm text-[15px] leading-relaxed text-zinc-500 md:text-right">
+              The Studio under your desk, the mini in the closet, the laptop in your bag — sign each
+              one in and they join a private fleet you drive from anywhere.
+            </p>
+          </div>
+        </Reveal>
+
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: "-80px" }}
+          className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        >
+          {FLEET.map((m, i) => (
+            <FleetNode key={m.name} m={m} delay={i * 0.1} />
+          ))}
+        </motion.div>
+
+        <Reveal delay={0.1}>
+          <div className="mt-4 flex items-center justify-center gap-2 font-mono text-[12.5px] text-zinc-600">
+            <span className="text-signal-400">$</span> herds host
+            <span className="text-zinc-700">— and the Mac is in the fleet.</span>
+          </div>
+        </Reveal>
+      </div>
     </section>
   );
 }
@@ -766,7 +1009,9 @@ export function Landing() {
       <TopBar />
       <main>
         <Hero />
+        <TheGap />
         <HowItWorks />
+        <Fleet />
         <Features />
         <BuiltForAgents />
         <FinalCTA />

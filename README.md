@@ -107,13 +107,16 @@ herds skill --install      # installs SKILL.md so Claude Code can drive your Mac
 ```
 
 ```python
-# the agent has only your token + URL:
-#   HERDS_CONTROL_PLANE=https://you.relay.herds.run
-#   HERDS_API_KEY=hx_…
 import herds
 
-herds.mac().run("uname -msr")                    # → Darwin 25.2.0 arm64
-herds.mac().run("xcodebuild -scheme App test")   # real Xcode, real macOS
+# hand the agent just a URL + token — no SSH, no setup:
+mac = herds.mac(url="https://you.relay.herds.run", token="hx_…")
+mac.run("uname -msr")                    # → Darwin 25.2.0 arm64
+mac.run("xcodebuild -scheme App test")   # real Xcode, real macOS
+
+# or set it once for the whole process:
+herds.configure(url="https://you.relay.herds.run", token="hx_…")
+# (env works too: HERDS_CONTROL_PLANE, HERDS_API_KEY)
 ```
 
 Commands **and live log streams** tunnel through the relay — control plane → your

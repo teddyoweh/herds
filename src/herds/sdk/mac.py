@@ -160,12 +160,32 @@ class Mac:
         return f"Mac({self.machine_id!r})"
 
 
-def mac(machine_id: str = "default", *, client: Optional[HerdsClient] = None) -> Mac:
-    """Get a handle to one of your Macs. With no id, picks your online Mac."""
+def mac(
+    machine_id: str = "default",
+    *,
+    url: Optional[str] = None,
+    token: Optional[str] = None,
+    client: Optional[HerdsClient] = None,
+) -> Mac:
+    """Get a handle to one of your Macs. With no id, picks your online Mac.
+
+    Pass ``url`` + ``token`` to target a remote host directly (great for agents)::
+
+        herds.mac(url="https://you.relay.herds.run", token="hx_…").run("uname")
+    """
+    if client is None and (url or token):
+        client = HerdsClient(control_plane=url, api_key=token)
     return Mac(machine_id, client=client)
 
 
-def machines(client: Optional[HerdsClient] = None) -> list[Mac]:
+def machines(
+    *,
+    url: Optional[str] = None,
+    token: Optional[str] = None,
+    client: Optional[HerdsClient] = None,
+) -> list[Mac]:
     """List all your connected Macs as :class:`Mac` handles."""
+    if client is None and (url or token):
+        client = HerdsClient(control_plane=url, api_key=token)
     c = client or default_client()
     return [Mac(m["machine_id"], client=c) for m in c.list_machines()]

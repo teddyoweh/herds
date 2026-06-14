@@ -177,3 +177,18 @@ def default_client() -> HerdsClient:
     if _default_client is None:
         _default_client = HerdsClient()
     return _default_client
+
+
+def configure(url: Optional[str] = None, token: Optional[str] = None) -> HerdsClient:
+    """Point the SDK at a Mac for this process — the agent-friendly one-liner::
+
+        import herds
+        herds.configure(url="https://you.relay.herds.run", token="hx_…")
+        herds.mac().run("uname -msr")
+
+    Equivalent to setting ``HERDS_CONTROL_PLANE`` / ``HERDS_API_KEY``. Either
+    argument may be omitted to keep the env/credentials default.
+    """
+    global _default_client
+    _default_client = HerdsClient(control_plane=url, api_key=token)
+    return _default_client
