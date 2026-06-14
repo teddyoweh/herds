@@ -334,15 +334,17 @@ function HeroArtifact() {
             </div>
           </div>
           {/* live run panel */}
-          <div className="bg-[#0f141a] p-5 text-left">
+          <div className="flex flex-col bg-[#0f141a] p-5 text-left">
             <div className="flex items-center justify-between">
               <span className="text-[12px] font-semibold tracking-tight text-zinc-200">Live run</span>
-              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-500">m3max</span>
+              <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-500">
+                <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-400" /> m3max
+              </span>
             </div>
             <motion.div
               className="mt-4 space-y-1.5 font-mono text-[11.5px] leading-[1.7] tnum"
               initial="hidden" animate="show"
-              variants={{ show: { transition: { staggerChildren: 0.5, delayChildren: 0.9 } } }}
+              variants={{ show: { transition: { staggerChildren: 0.45, delayChildren: 0.7 } } }}
             >
               {RUN_LINES.map((l, i) => (
                 <motion.div
@@ -358,6 +360,23 @@ function HeroArtifact() {
                 </motion.div>
               ))}
             </motion.div>
+
+            {/* exposed endpoints — fills the panel, adds product depth */}
+            <div className="mt-auto pt-5">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-600">Exposed</div>
+              <div className="mt-2.5 space-y-1.5">
+                {[
+                  { port: ":3000", url: "app.you.herds.run" },
+                  { port: ":8000", url: "api.you.herds.run" },
+                ].map((e) => (
+                  <div key={e.port} className="flex items-center gap-2 rounded-lg bg-white/[0.03] px-2.5 py-1.5 font-mono text-[11px] ring-1 ring-white/[0.05]">
+                    <span className="text-zinc-500">{e.port}</span>
+                    <span className="text-zinc-700">→</span>
+                    <span className="truncate text-signal-400">{e.url}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
