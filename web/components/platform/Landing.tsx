@@ -205,7 +205,7 @@ function HeroStat({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <div className="label">{label}</div>
-      <div className="tnum mt-2 font-mono text-[30px] font-semibold leading-none tracking-tightest text-white sm:text-[38px]">
+      <div className="tnum mt-1.5 font-mono text-[26px] font-semibold leading-none tracking-tightest text-white sm:text-[32px]">
         {value}
       </div>
     </div>
@@ -389,10 +389,10 @@ function Hero() {
     <section className="relative overflow-hidden">
       <HeroBackground />
 
-      <div className="relative mx-auto max-w-[1080px] px-6 pb-24 pt-24 text-center lg:pt-28">
+      <div className="relative mx-auto max-w-[1080px] px-6 pb-20 pt-16 text-center lg:pt-20">
         {/* eyebrow */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-center">
-          <span className="inline-flex items-center gap-2 rounded-full bg-white/[0.05] px-3 py-1 text-[12px] text-zinc-300 shadow-e1">
+          <span className="inline-flex items-center gap-2 rounded-full bg-white/[0.05] px-3 py-1 text-[11.5px] text-zinc-300 shadow-e1">
             <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-400 shadow-[0_0_8px_1px_rgba(52,211,158,0.45)]" />
             Modal, for Macs
           </span>
@@ -401,7 +401,7 @@ function Hero() {
         {/* headline */}
         <motion.h1
           variants={stagger} initial="hidden" animate="show"
-          className="mx-auto mt-7 max-w-[16ch] text-[12.5vw] font-semibold leading-[0.92] tracking-tightest text-white sm:text-[78px] lg:text-[92px]"
+          className="mx-auto mt-5 max-w-[15ch] text-[11vw] font-semibold leading-[0.9] tracking-tightest text-white sm:text-[64px] lg:text-[76px]"
         >
           <motion.span variants={fadeUp} className="block">Give your agents</motion.span>
           <motion.span variants={fadeUp} className="block"><Highlight>real Macs.</Highlight></motion.span>
@@ -410,7 +410,7 @@ function Hero() {
         {/* subhead */}
         <motion.p
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}
-          className="mx-auto mt-7 max-w-[40rem] text-[16.5px] leading-relaxed text-zinc-400 sm:text-[18px]"
+          className="mx-auto mt-5 max-w-[34rem] text-[14.5px] leading-relaxed text-zinc-400 sm:text-[15.5px]"
         >
           Connect any Mac you own and it becomes a programmable cloud runtime — Xcode builds,
           native app testing, real macOS automation — driven by agents, SDKs, and CLIs from
@@ -420,24 +420,24 @@ function Hero() {
         {/* the cluster — interactive command bar + CTAs */}
         <motion.div
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.34 }}
-          className="mx-auto mt-9 max-w-[36rem]"
+          className="mx-auto mt-7 max-w-[34rem]"
         >
           <CommandBar />
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+          <div className="mt-3.5 flex flex-wrap items-center justify-center gap-3">
             <Link href="/signup" className="inline-flex items-center rounded-full bg-zinc-100 px-5 py-2.5 text-[14px] font-medium text-ink-950 shadow-[0_1px_2px_rgba(0,0,0,0.4),0_8px_24px_-8px_rgba(255,255,255,0.25)] transition-all hover:-translate-y-px hover:bg-white">Start free</Link>
             <CurlPill />
           </div>
         </motion.div>
 
         {/* centerpiece product artifact */}
-        <div className="mt-16">
+        <div className="mt-12">
           <HeroArtifact />
         </div>
 
         {/* trust stats */}
         <motion.div
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
-          className="mx-auto mt-14 grid max-w-lg grid-cols-3 gap-8 text-center"
+          className="mx-auto mt-10 grid max-w-md grid-cols-3 gap-8 text-center"
         >
           <HeroStat label="Setup time" value="60s" />
           <HeroStat label="Inbound ports" value="0" />
