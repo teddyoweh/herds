@@ -114,7 +114,10 @@ class HerdsClient:
         """Start a job and yield every frame as it arrives, until EXIT."""
         request_id = self._start(machine_id, req)
         ws_url = self.control_plane.replace("http://", "ws://").replace("https://", "wss://")
-        with ws_connect(f"{ws_url}/v1/jobs/{request_id}/logs", max_size=None) as ws:
+        # The control plane authenticates the log stream via a ?token= query param
+        # when auth is enforced (it can't read an Authorization header on a WS upgrade).
+        q = f"?token={self.api_key}" if self.api_key else ""
+        with ws_connect(f"{ws_url}/v1/jobs/{request_id}/logs{q}", max_size=None) as ws:
             for raw in ws:
                 frame = Frame.load(raw)
                 if on_output and frame.type in (FrameType.STDOUT, FrameType.STDERR):

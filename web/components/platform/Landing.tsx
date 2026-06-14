@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Logo } from "@/components/Logo";
 import { WorldMap } from "./WorldMap";
 import Link from "next/link";
@@ -213,84 +213,133 @@ function HeroStat({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** Marker-highlight behind text — the town.com move, in signal green. */
+function Highlight({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="relative inline-block whitespace-nowrap text-white">
+      <span
+        aria-hidden
+        className="absolute inset-x-[-0.1em] bottom-[0.1em] top-[0.2em] -z-10 -rotate-[0.9deg] rounded-[5px] bg-gradient-to-r from-signal-500/40 to-signal-400/25 shadow-[0_0_48px_10px_rgba(52,211,158,0.16)]"
+      />
+      {children}
+    </span>
+  );
+}
+
+/** A floating glass chip with a soft entrance — scattered around the collage. */
+function FloatChip({ children, className = "", delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ delay, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+      className={`absolute z-20 hidden items-center rounded-2xl bg-ink-900/75 px-3.5 py-2.5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08),0_28px_70px_-28px_rgba(0,0,0,0.95)] ring-1 ring-white/[0.06] backdrop-blur-xl lg:flex ${className}`}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/** Interactive command line — town's "Ask Bud anything", for Macs. */
+function CommandBar() {
+  const EX = ["xcodebuild -scheme App build", "swift test --parallel", "npm run build && ./deploy.sh", "open -a Simulator"];
+  const [i, setI] = useState(0);
+  useEffect(() => { const t = setInterval(() => setI((v) => (v + 1) % EX.length), 2800); return () => clearInterval(t); }, []);
+  return (
+    <div className="surface flex items-center gap-3 px-4 py-3">
+      <span className="font-mono text-[13px] text-signal-400">$</span>
+      <div className="min-w-0 flex-1 overflow-hidden whitespace-nowrap font-mono text-[13px] text-zinc-500">
+        herds.mac().run(<span className="text-zinc-300">&quot;</span>
+        <motion.span key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.45 }} className="text-zinc-200">{EX[i]}</motion.span>
+        <span className="text-zinc-300">&quot;</span>)
+      </div>
+      <Link href="/signup" className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-signal-500 text-ink-950 transition hover:bg-signal-400" aria-label="run">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </Link>
+    </div>
+  );
+}
+
 function Hero() {
   return (
     <section className="relative overflow-hidden">
       <HeroBackground />
-
-      {/* the global herd — a dotted world map of live Macs, right-weighted + faded */}
-      <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-[74%] items-center [mask-image:linear-gradient(to_right,transparent,black_28%,black_94%,transparent)] lg:flex">
-        <WorldMap className="h-auto w-full" />
+      {/* faint global herd behind everything */}
+      <div className="pointer-events-none absolute inset-0 hidden opacity-[0.5] [mask-image:radial-gradient(ellipse_60%_70%_at_72%_42%,black,transparent)] lg:block">
+        <WorldMap className="absolute right-0 top-1/2 w-[80%] -translate-y-1/2" />
       </div>
 
-      <div className="relative mx-auto max-w-[1140px] px-6 pb-20 pt-20 lg:pb-28 lg:pt-28">
-        <motion.div variants={stagger} initial="hidden" animate="show" className="max-w-xl">
-          <motion.div variants={fadeUp}>
-            <span className="inline-flex items-center gap-2 rounded-full bg-white/[0.05] px-3 py-1 text-[12px] text-zinc-300 shadow-e1">
-              <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-400 shadow-[0_0_8px_1px_rgba(52,211,158,0.45)]" />
-              Modal, for Macs
-            </span>
-          </motion.div>
-
-          <motion.h1
-            variants={fadeUp}
-            className="mt-6 text-[46px] font-semibold leading-[1.02] tracking-tightest text-white sm:text-[66px]"
-          >
-            Give your agents
-            <br />
-            <span className="bg-gradient-to-br from-signal-400 to-signal-600 bg-clip-text text-transparent [filter:drop-shadow(0_0_36px_rgba(52,211,158,0.35))]">
-              real Macs.
-            </span>
-          </motion.h1>
-
-          <motion.p
-            variants={fadeUp}
-            className="mt-7 max-w-[33rem] text-[16px] leading-relaxed text-zinc-400 sm:text-[17px]"
-          >
-            Connect any Mac you own and it becomes a programmable cloud runtime — Xcode builds,
-            native app testing, real macOS automation — that agents, SDKs, CLIs, and apps drive
-            from anywhere. One command to go live. Your Mac, your infra.
-          </motion.p>
-
-          <motion.div variants={fadeUp} className="mt-9 flex flex-wrap items-center gap-3">
-            <Link
-              href="/signup"
-              className="inline-flex items-center rounded-full bg-zinc-100 px-5 py-2.5 text-[14px] font-medium text-ink-950 shadow-[0_1px_2px_rgba(0,0,0,0.4),0_8px_24px_-8px_rgba(255,255,255,0.25)] transition-all hover:-translate-y-px hover:bg-white"
-            >
-              Start free
-            </Link>
-            <Link
-              href={GITHUB}
-              className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-5 py-2.5 text-[14px] font-medium text-zinc-200 transition-colors hover:bg-white/[0.1]"
-            >
-              Read the docs
-              <span aria-hidden className="text-zinc-500">→</span>
-            </Link>
-          </motion.div>
-
-          <motion.div variants={fadeUp} className="mt-7">
-            <CurlPill />
-          </motion.div>
+      <div className="relative mx-auto max-w-[1140px] px-6 pb-24 pt-20 lg:pb-28">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <span className="inline-flex items-center gap-2 rounded-full bg-white/[0.05] px-3 py-1 text-[12px] text-zinc-300 shadow-e1">
+            <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-400 shadow-[0_0_8px_1px_rgba(52,211,158,0.45)]" />
+            Modal, for Macs
+          </span>
         </motion.div>
 
-        {/* the network, in numbers */}
+        {/* editorial headline + floating product collage */}
+        <div className="relative mt-7">
+          <motion.h1
+            variants={stagger} initial="hidden" animate="show"
+            className="relative z-10 text-[15.5vw] font-semibold leading-[0.92] tracking-tightest text-white sm:text-[88px] lg:text-[104px]"
+          >
+            <motion.span variants={fadeUp} className="block">Give your</motion.span>
+            <motion.span variants={fadeUp} className="block">agents <Highlight>real Macs.</Highlight></motion.span>
+          </motion.h1>
+
+          {/* floating terminal, lower-right, rotated — the collage */}
+          <motion.div
+            initial={{ opacity: 0, y: 28, rotate: 3.4 }}
+            animate={{ opacity: 1, y: 0, rotate: 2 }}
+            transition={{ delay: 0.3, duration: 0.85, ease: [0.22, 1, 0.36, 1] }}
+            className="absolute right-[-12px] top-[44%] hidden w-[392px] xl:block"
+          >
+            <Terminal />
+          </motion.div>
+
+          {/* floating live chips */}
+          <FloatChip className="right-[20%] top-[2%] gap-2" delay={0.55}>
+            <span className="h-2 w-2 rounded-full bg-signal-400 shadow-[0_0_8px_1px_rgba(52,211,158,0.6)]" />
+            <span className="font-mono text-[12px] text-zinc-300">you.herds.run</span>
+            <span className="text-[11px] font-medium text-signal-400">live</span>
+          </FloatChip>
+          <FloatChip className="bottom-[-26px] right-[34%] gap-2.5" delay={0.8}>
+            <Logo size={20} />
+            <div className="leading-none">
+              <div className="text-[9px] uppercase tracking-[0.14em] text-zinc-600">M3 Max · online</div>
+              <div className="tnum mt-1 text-[13px] font-semibold text-white">3 sandboxes</div>
+            </div>
+          </FloatChip>
+        </div>
+
+        <motion.p
+          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
+          className="relative z-10 mt-8 max-w-[34rem] text-[16px] leading-relaxed text-zinc-400 sm:text-[17.5px]"
+        >
+          Connect any Mac you own and it becomes a programmable cloud runtime — Xcode builds,
+          native app testing, real macOS automation — that agents, SDKs, CLIs, and apps drive
+          from anywhere. <span className="text-zinc-200">One command to go live.</span>
+        </motion.p>
+
         <motion.div
-          variants={fadeUp}
-          initial="hidden"
-          animate="show"
-          transition={{ delay: 0.4 }}
-          className="mt-16 grid max-w-md grid-cols-3 gap-8 sm:max-w-lg"
+          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.36 }}
+          className="relative z-10 mt-9 max-w-[34rem]"
+        >
+          <CommandBar />
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Link href="/signup" className="inline-flex items-center rounded-full bg-zinc-100 px-5 py-2.5 text-[14px] font-medium text-ink-950 shadow-[0_1px_2px_rgba(0,0,0,0.4),0_8px_24px_-8px_rgba(255,255,255,0.25)] transition-all hover:-translate-y-px hover:bg-white">Start free</Link>
+            <CurlPill />
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
+          className="relative z-10 mt-16 grid max-w-md grid-cols-3 gap-8"
         >
           <HeroStat label="Setup time" value="60s" />
           <HeroStat label="Inbound ports" value="0" />
           <HeroStat label="Your hardware" value="100%" />
         </motion.div>
-      </div>
-
-      {/* legend */}
-      <div className="absolute bottom-5 right-6 z-10 hidden items-center gap-2 rounded-full bg-ink-900/60 px-3 py-1.5 text-[11px] text-zinc-400 backdrop-blur lg:flex">
-        <span className="h-2 w-2 rounded-full bg-signal-400 shadow-[0_0_6px_1px_rgba(52,211,158,0.6)]" />
-        Macs in the herd
       </div>
     </section>
   );
