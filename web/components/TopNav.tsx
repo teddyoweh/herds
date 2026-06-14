@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Logo } from "@/components/Logo";
 import { usePathname } from "next/navigation";
 import { useHealth, useMetrics } from "@/lib/api";
 import { LiveDot } from "./ui";
@@ -28,9 +29,7 @@ export function TopNav() {
       <div className="mx-auto flex h-[60px] max-w-[1240px] items-center justify-between px-8">
         <div className="flex items-center gap-2.5">
           <Link href="/" className="flex items-center gap-2">
-            <span className="grid h-[22px] w-[22px] place-items-center rounded-md bg-gradient-to-br from-signal-400 to-signal-600 text-[11px]">
-              🍎
-            </span>
+            <Logo size={22} />
             <span className="text-[15px] font-semibold tracking-tightest text-white">Herds</span>
           </Link>
           <Slash />

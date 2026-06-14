@@ -1,6 +1,7 @@
 "use client";
 
 import { API } from "@/lib/api";
+import { Logo } from "@/components/Logo";
 import { Copy, LiveDot } from "./ui";
 
 const STEPS = [
@@ -12,8 +13,8 @@ export function Onboarding() {
   return (
     <div className="mx-auto max-w-xl py-10">
       <div className="text-center">
-        <div className="mx-auto mb-5 grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-signal-400 to-signal-600 text-xl shadow-e2">
-          🍎
+        <div className="mb-5 flex justify-center">
+          <Logo size={48} className="shadow-e2" />
         </div>
         <h2 className="text-[20px] font-semibold tracking-tight text-white">Connect your first Mac</h2>
         <p className="mx-auto mt-2 max-w-sm text-[13px] leading-relaxed text-zinc-500">

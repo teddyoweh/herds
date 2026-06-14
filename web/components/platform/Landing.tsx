@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Logo } from "@/components/Logo";
 import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
 
@@ -56,12 +57,7 @@ function Reveal({
 /** Apple glyph mark used in the wordmark and footer. */
 function Mark({ size = 22 }: { size?: number }) {
   return (
-    <span
-      className="grid place-items-center rounded-md bg-gradient-to-br from-signal-400 to-signal-600 text-ink-950 shadow-e1"
-      style={{ width: size, height: size, fontSize: size * 0.5 }}
-    >
-      🍎
-    </span>
+    <Logo size={size} />
   );
 }
 

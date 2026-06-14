@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Logo } from "@/components/Logo";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -115,9 +116,7 @@ function AuthShell({ children }: { children: React.ReactNode }) {
         className="w-full max-w-sm"
       >
         <Link href="/" className="mb-8 flex items-center justify-center gap-2.5">
-          <span className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-signal-400 to-signal-600 text-base">
-            🍎
-          </span>
+          <Logo size={32} />
           <span className="text-[16px] font-semibold tracking-tightest text-white">Herds</span>
         </Link>
 

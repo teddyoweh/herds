@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Logo } from "@/components/Logo";
 import { useMetrics, getToken, setToken, isUnauthorized } from "@/lib/api";
 
 /** When the control plane requires auth and we have no valid token, prompt for it. */
@@ -21,7 +22,7 @@ export function TokenGate({ children }: { children: React.ReactNode }) {
         <div className="fixed inset-0 z-[90] grid place-items-center bg-ink-950/90 px-4 backdrop-blur-xl">
           <div className="w-full max-w-sm rounded-2xl bg-ink-850 p-7 shadow-e2">
             <div className="flex items-center gap-2.5">
-              <span className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-signal-400 to-signal-600 text-base">🍎</span>
+              <Logo size={32} />
               <span className="text-[15px] font-semibold tracking-tightest text-white">Herds</span>
             </div>
             <h2 className="mt-5 text-[15px] font-semibold text-white">This host is protected</h2>
