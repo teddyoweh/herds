@@ -208,7 +208,12 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
 def serve_relay(host: str = "0.0.0.0", port: int = 8888, domain: str = "herds.run") -> None:
     import uvicorn
 
-    uvicorn.run(create_relay_app(domain), host=host, port=port, log_level="warning")
+    # The server pings hosts to keep links warm; a generous timeout tolerates a host
+    # whose loop is briefly busy serving a burst of dashboard assets.
+    uvicorn.run(
+        create_relay_app(domain), host=host, port=port, log_level="warning",
+        ws_ping_interval=20, ws_ping_timeout=60,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -244,7 +249,10 @@ async def _run_client(relay_ws_url: str, token: str, local_url: str) -> None:
     backoff = 1.0
     while True:
         try:
-            async with websockets.connect(url, max_size=None, ping_interval=25, ping_timeout=90, close_timeout=5) as ws:
+            # No client-initiated pings: under burst load (serving the dashboard's
+            # assets) the client loop can miss its own ping deadline and self-close.
+            # The relay server pings us instead, which keeps the link alive + detects death.
+            async with websockets.connect(url, max_size=None, ping_interval=None, close_timeout=5) as ws:
                 backoff = 1.0
                 send_lock = asyncio.Lock()
                 async with httpx.AsyncClient(base_url=local_url, timeout=30.0) as client:
