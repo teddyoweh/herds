@@ -9,7 +9,7 @@ import { TokenGate } from "./TokenGate";
 
 const PLATFORM = process.env.NEXT_PUBLIC_HERDS_MODE === "platform";
 // Marketing + auth pages render bare (their own layout, no dashboard chrome).
-const BARE = new Set(["/login", "/signup", "/welcome"]);
+const BARE = new Set(["/login", "/signup", "/welcome", "/skill"]);
 
 export function AppChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
