@@ -599,6 +599,13 @@ async def _tunnel_ws(ws, send_lock, local_url: str, frame: Frame, streams: dict)
             pass
 
 
+def _encode_response(request_id, status, headers, content) -> str:
+    return Frame(type=FrameType.HTTP_RESPONSE, request_id=request_id, data={
+        "status": status, "headers": headers,
+        "body_b64": base64.b64encode(content).decode(),
+    }).dump()
+
+
 async def _serve_one(ws, send_lock, client, frame: Frame) -> None:
     d = frame.data
     path = d.get("path", "/")
@@ -609,12 +616,14 @@ async def _serve_one(ws, send_lock, client, frame: Frame) -> None:
     try:
         r = await client.request(d.get("method", "GET"), path + (f"?{query}" if query else ""),
                                  headers=headers, content=body)
-        data = {"status": r.status_code, "headers": dict(r.headers),
-                "body_b64": base64.b64encode(r.content[: 16 * 1024 * 1024]).decode()}
+        status, rheaders, content = r.status_code, dict(r.headers), r.content[: 16 * 1024 * 1024]
     except Exception as exc:  # noqa: BLE001
-        data = {"status": 502, "body_b64": base64.b64encode(f"host unreachable: {exc}".encode()).decode()}
+        status, rheaders, content = 502, {}, f"host unreachable: {exc}".encode()
+    # Encode off the event loop: base64 + JSON of a large asset would otherwise
+    # block it, stalling keepalive pongs and other requests (→ dropped relay link).
+    payload = await asyncio.to_thread(_encode_response, frame.request_id, status, rheaders, content)
     async with send_lock:
-        await ws.send(Frame(type=FrameType.HTTP_RESPONSE, request_id=frame.request_id, data=data).dump())
+        await ws.send(payload)
 
 
 def run_relay_client(relay_ws_url: str, token: str, local_url: str) -> None:
