@@ -26,7 +26,7 @@ const W = Math.ceil(Math.max(...points.map((p) => p.x)));
 const H = Math.ceil(Math.max(...points.map((p) => p.y)));
 const dots = points.map((p) => [r1(p.x), r1(p.y)]);
 
-const out = path.resolve(import.meta.dirname, "../components/platform/worldmap.ts");
+const out = path.resolve(import.meta.dirname, "../components/platform/world-grid.ts");
 fs.writeFileSync(
   out,
   `// AUTO-GENERATED (scripts/gen_map.mjs) — dotted world map dots + city pins.

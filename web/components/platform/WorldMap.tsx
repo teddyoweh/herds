@@ -1,6 +1,6 @@
 "use client";
 
-import { MAP_W, MAP_H, MAP_DOTS, MAP_PINS } from "./worldmap";
+import { MAP_W, MAP_H, MAP_DOTS, MAP_PINS } from "./world-grid";
 
 /** Dotted world map with pulsing "Mac" nodes — the global herd. */
 export function WorldMap({ className = "" }: { className?: string }) {
