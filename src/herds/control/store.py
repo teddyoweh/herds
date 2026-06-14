@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import secrets
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -88,10 +89,66 @@ CREATE TABLE IF NOT EXISTS exposed_ports (
 """
 
 
+class _Result:
+    """Detached query result — rows are fetched eagerly so callers can iterate
+    after the connection lock is released (safe across FastAPI's threadpool)."""
+
+    def __init__(self, rows: list, rowcount: int, lastrowid):
+        self._rows = rows
+        self.rowcount = rowcount
+        self.lastrowid = lastrowid
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def fetchall(self):
+        return self._rows
+
+    def __iter__(self):
+        return iter(self._rows)
+
+
+class _SafeDB:
+    """One sqlite connection, serialized across threads. FastAPI runs sync
+    endpoints in a worker threadpool, so concurrent dashboard requests would
+    otherwise race on a single shared connection (`sqlite3.InterfaceError:
+    bad parameter or other API misuse`). Every op runs under one re-entrant lock,
+    and ``execute`` fetches eagerly so the returned result is connection-free."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self._conn = conn
+        self._lock = threading.RLock()
+
+    def execute(self, sql: str, params=()) -> _Result:
+        with self._lock:
+            cur = self._conn.execute(sql, params)
+            try:
+                rows = cur.fetchall()
+            except sqlite3.Error:
+                rows = []
+            return _Result(rows, cur.rowcount, cur.lastrowid)
+
+    def executescript(self, sql: str) -> None:
+        with self._lock:
+            self._conn.executescript(sql)
+
+    def commit(self) -> None:
+        with self._lock:
+            self._conn.commit()
+
+    def close(self) -> None:
+        with self._lock:
+            self._conn.close()
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
 class Store:
     def __init__(self, path: str | Path = ":memory:"):
-        self.db = sqlite3.connect(str(path), check_same_thread=False)
-        self.db.row_factory = sqlite3.Row
+        conn = sqlite3.connect(str(path), check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        self.db = _SafeDB(conn)
         self.db.executescript(_SCHEMA)
         self.db.commit()
 
