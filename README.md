@@ -1,10 +1,13 @@
 <div align="center">
 
-# 🍎 Herds
+# Herds
 
 **Connect your Mac to the internet and turn it into a programmable runtime.**
 
 *Modal, for Macs.*
+
+[![PyPI](https://img.shields.io/pypi/v/herds?color=34d39e&label=pip%20install%20herds)](https://pypi.org/project/herds/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 <br/>
 
@@ -63,27 +66,28 @@ is the cloud.
 
 ```bash
 pip install herds      # or: uv tool install herds
+herds auth             # sign in (free) — gives you a stable, branded link
+herds host             # your Mac goes live
 ```
 
-### Self-host in one command
-
-`herds host` turns this Mac into a self-hosted Herds: control plane + the full
-web dashboard + a secure public link + this Mac as a compute node — one process,
-one SQLite file, no managed infrastructure.
-
-```bash
-herds host
-# ✓ Herds host is live
-#   Dashboard   https://<you>.trycloudflare.com   (or a permanent Tailscale Funnel link)
-#   Host token  herds_sk_…
-#   Add a Mac   herds connect https://… herds_sk_…
+```
+✓ Herds host is live
+  Dashboard   https://you.relay.herds.run        ← permanent, zero setup
+  Host token  herds_sk_…
+→ Open your dashboard (opens already signed in)
+  https://you.relay.herds.run/?token=…
 ```
 
-Open the link, paste the token once, and you're in. Other Macs join the pool with
-`herds connect <link> <token>`. For a **permanent** link, run `herds host setup`
-once to enable Tailscale Funnel (free).
+`herds auth` gives you a free account and a **permanent, branded link** —
+no Cloudflare, no Tailscale, no port forwarding. Click the magic link and the
+dashboard opens already signed in. Other Macs join the pool with
+`herds connect <link> <token>`. (No account? `herds host` still works with a
+temporary tunnel.)
 
-### Or drive it from Python
+Prefer the web? Sign up at **[herds.run](https://herds.run)** (email + password)
+and manage everything from the platform dashboard.
+
+### Drive it from Python
 
 ```python
 import herds
@@ -92,6 +96,29 @@ mac = herds.mac()
 print(mac.run("sw_vers").stdout)
 print(mac.run("xcodebuild -version").stdout)
 ```
+
+## Give an agent a real Mac
+
+This is the point. Hand an AI agent the Herds **skill** + a **token** + your
+**URL**, and it can run anything on your Mac — from anywhere, over the public link:
+
+```bash
+herds skill --install      # installs SKILL.md so Claude Code can drive your Mac
+```
+
+```python
+# the agent has only your token + URL:
+#   HERDS_CONTROL_PLANE=https://you.relay.herds.run
+#   HERDS_API_KEY=hx_…
+import herds
+
+herds.mac().run("uname -msr")                    # → Darwin 25.2.0 arm64
+herds.mac().run("xcodebuild -scheme App test")   # real Xcode, real macOS
+```
+
+Commands **and live log streams** tunnel through the relay — control plane → your
+Mac → back — so the agent needs no SSH, no VPN, and no inbound ports. The token is
+full shell access to the Mac, so treat it exactly like an SSH key.
 
 ## The SDK
 
@@ -154,7 +181,7 @@ an optional `sandbox-exec` write-fence. Files persist between `exec` calls.
 
 ```python
 sbx.spawn("python -m http.server 8000", keep_alive=True)
-url = sbx.expose(8000)            # → https://<you>.trycloudflare.com/p/<sbx>/8000/
+url = sbx.expose(8000)            # → https://you.relay.herds.run/p/<sbx>/8000/
 ```
 
 Run a web app or API inside a sandbox and get a hittable public link. Requests
@@ -194,8 +221,9 @@ run history — all polling the same API the SDK and CLI use.
 ## The CLI
 
 ```
+herds auth               sign in (free) — get a stable, branded link
 herds host               self-host: control plane + dashboard + public link
-herds host setup         enable a permanent Tailscale Funnel link
+herds skill [--install]  print/install the agent skill (SKILL.md) for Claude Code
 herds connect <link> <token>   join another Mac to a host
 herds serve              run a bare control plane locally
 herds machines           list your connected Macs
@@ -245,11 +273,20 @@ exports it and bundles it into the wheel, so `pip install` ships the whole UI.
 
 ## Status
 
-Works today, end-to-end: `herds host` (control plane + bundled dashboard +
-public tunnel + token auth), connect Macs, run commands, stream logs, mount
-volumes, drive sandboxes, expose ports as URLs, run remote Python. See
-[`ROADMAP.md`](ROADMAP.md) for what's next (self-hostable tunnel relay, Tart VM
-backend, code-shipping for functions).
+Live today, end-to-end:
+
+- **`pip install herds`** — on [PyPI](https://pypi.org/project/herds/), dashboard bundled in.
+- **`herds auth` + `herds host`** — a free account and a permanent, branded link
+  (`you.relay.herds.run`) over our hosted relay — no Cloudflare/Tailscale needed.
+- **Agents over the relay** — a remote agent with a token runs `mac.run()` and
+  streams logs from anywhere; HTTP *and* WebSocket tunnel through the relay.
+- **The platform** — sign up at [herds.run](https://herds.run) (email + password)
+  → manage your Macs from the web dashboard.
+- Connect Macs, run/stream commands, mount volumes, drive sandboxes, expose ports
+  as URLs, run remote Python.
+
+See [`ROADMAP.md`](ROADMAP.md) for what's next (Tart VM backend, per-token scopes,
+code-shipping for functions).
 
 ## License
 
