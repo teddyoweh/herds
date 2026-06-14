@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Logo } from "@/components/Logo";
 import { useToast } from "@/components/Toast";
-import { getSession, clearSession, getStatus, type Session, type AccountStatus } from "@/lib/platform";
+import {
+  getSession, clearSession, getStatus, listTokens, createToken, revokeToken,
+  type Session, type AccountStatus, type ApiToken,
+} from "@/lib/platform";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -117,6 +120,9 @@ export default function DashboardPage() {
         {/* run from an agent */}
         <AgentCard url={session.url} token={session.token} onCopy={() => toast("Copied", "default")} />
 
+        {/* scoped agent tokens */}
+        {online && <TokensCard url={session.url} token={session.token} toast={toast} />}
+
         {/* account details */}
         <div className="surface mt-6 px-6 py-6">
           <div className="label mb-4">Account</div>
@@ -128,6 +134,92 @@ export default function DashboardPage() {
           <Row label="Token" mono copyable value={session.token} onCopy={() => toast("Token copied", "default")} />
         </div>
       </motion.main>
+    </div>
+  );
+}
+
+function TokensCard({ url, token, toast }: { url: string; token: string; toast: (m: string, t?: "default" | "error") => void }) {
+  const [tokens, setTokens] = useState<ApiToken[]>([]);
+  const [label, setLabel] = useState("");
+  const [scope, setScope] = useState("run");
+  const [minting, setMinting] = useState(false);
+  const [fresh, setFresh] = useState<string | null>(null);
+
+  const load = async () => { try { setTokens(await listTokens(url, token)); } catch { /* offline */ } };
+  useEffect(() => { load(); }, [url, token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function mint() {
+    if (minting) return;
+    setMinting(true);
+    try {
+      const r = await createToken(url, token, label.trim() || "agent", scope);
+      setFresh(r.key);
+      setLabel("");
+      await load();
+    } catch (e) { toast(e instanceof Error ? e.message : "Failed", "error"); }
+    setMinting(false);
+  }
+  async function revoke(masked: string) {
+    try { await revokeToken(url, token, masked); await load(); toast("Token revoked", "default"); }
+    catch (e) { toast(e instanceof Error ? e.message : "Failed", "error"); }
+  }
+
+  return (
+    <div className="surface mt-6 px-6 py-6">
+      <div className="label">Agent tokens</div>
+      <p className="mt-2 text-[12.5px] leading-relaxed text-zinc-500">
+        Scoped, revocable keys — hand an agent a <span className="text-zinc-300">run</span> token, never your account.
+      </p>
+
+      {fresh && (
+        <div className="mt-3 rounded-lg bg-signal-500/[0.08] px-3.5 py-3">
+          <div className="text-[10.5px] uppercase tracking-[0.12em] text-signal-400">New token — shown once</div>
+          <button
+            onClick={() => { navigator.clipboard?.writeText(fresh); toast("Token copied", "default"); }}
+            className="mt-1.5 flex w-full items-center justify-between gap-3 font-mono text-[12px] text-zinc-200"
+          >
+            <span className="truncate">{fresh}</span>
+            <span className="shrink-0 text-[11px] text-zinc-500">Copy</span>
+          </button>
+        </div>
+      )}
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <input
+          value={label} onChange={(e) => setLabel(e.target.value)} placeholder="label (e.g. my-agent)"
+          className="min-w-0 flex-1 rounded-lg bg-black/30 px-3 py-2 text-[13px] text-zinc-100 outline-none ring-1 ring-white/[0.08] transition focus:ring-signal-500/50 placeholder:text-zinc-700"
+        />
+        <select
+          value={scope} onChange={(e) => setScope(e.target.value)}
+          className="rounded-lg bg-black/30 px-2.5 py-2 text-[13px] text-zinc-200 outline-none ring-1 ring-white/[0.08]"
+        >
+          <option value="read">read</option>
+          <option value="run">run</option>
+          <option value="admin">admin</option>
+        </select>
+        <button
+          onClick={mint} disabled={minting}
+          className="rounded-lg bg-zinc-100 px-4 py-2 text-[13px] font-medium text-ink-950 transition hover:bg-white disabled:opacity-40"
+        >
+          {minting ? "…" : "Mint"}
+        </button>
+      </div>
+
+      <div className="mt-4 divide-y divide-white/[0.05]">
+        {tokens.map((t) => (
+          <div key={t.masked} className="flex items-center justify-between gap-3 py-2.5">
+            <div className="min-w-0">
+              <span className="font-mono text-[12px] text-zinc-300">{t.masked}</span>
+              <span className="ml-2 rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400">{t.scope}</span>
+              {t.label && <span className="ml-2 text-[12px] text-zinc-600">{t.label}</span>}
+            </div>
+            <button onClick={() => revoke(t.masked)} className="shrink-0 text-[11px] text-zinc-600 transition hover:text-rose-400">
+              Revoke
+            </button>
+          </div>
+        ))}
+        {tokens.length === 0 && <div className="py-3 text-[12.5px] text-zinc-600">No agent tokens yet.</div>}
+      </div>
     </div>
   );
 }

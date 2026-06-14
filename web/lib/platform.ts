@@ -129,6 +129,34 @@ export async function loginWithEmail(email: string, password: string): Promise<S
 
 export type AccountStatus = { account: string; url: string; email: string | null; online: boolean };
 
+export type ApiToken = { label: string; scope: string; masked: string };
+
+/** Manage scoped tokens on the connected Mac's control plane (CORS is open). */
+export async function listTokens(url: string, token: string): Promise<ApiToken[]> {
+  const res = await fetch(`${url}/v1/keys`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error("Couldn't load tokens");
+  return ((await res.json()).keys || []) as ApiToken[];
+}
+
+export async function createToken(url: string, token: string, label: string, scope: string): Promise<{ key: string; scope: string; label: string }> {
+  const res = await fetch(`${url}/v1/keys`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ label, scope }),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+export async function revokeToken(url: string, token: string, prefix: string): Promise<void> {
+  const head = prefix.split("…")[0];
+  const res = await fetch(`${url}/v1/keys/${encodeURIComponent(head)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(await readError(res));
+}
+
 /** Live account status (is the Mac connected?). GET `/relay/status?token=…`. */
 export async function getStatus(token: string): Promise<AccountStatus | null> {
   try {
