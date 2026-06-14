@@ -364,13 +364,14 @@ def shell(
 @app.command()
 def logs(machine: Optional[str] = typer.Option(None, "--machine", "-m")):
     """Show recent jobs."""
-    import httpx
-
-    cfg = config.Config.load()
     try:
         params = {"machine_id": machine} if machine else {}
-        r = httpx.get(f"{cfg.control_plane}/v1/jobs", params=params, timeout=10)
-        jobs = r.json()["jobs"]
+        # Use the SDK client so the API key is sent (the host enforces auth).
+        r = _client()._http.get("/v1/jobs", params=params, timeout=10)
+        if r.status_code >= 400:
+            detail = r.json().get("detail", r.text) if r.headers.get("content-type", "").startswith("application/json") else r.text
+            raise RuntimeError(detail)
+        jobs = r.json().get("jobs", [])
     except Exception as exc:  # noqa: BLE001
         err.print(f"[red]Could not reach control plane:[/red] {exc}")
         raise typer.Exit(1)
