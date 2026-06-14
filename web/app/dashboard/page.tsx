@@ -114,6 +114,9 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* run from an agent */}
+        <AgentCard url={session.url} token={session.token} onCopy={() => toast("Copied", "default")} />
+
         {/* account details */}
         <div className="surface mt-6 px-6 py-6">
           <div className="label mb-4">Account</div>
@@ -125,6 +128,46 @@ export default function DashboardPage() {
           <Row label="Token" mono copyable value={session.token} onCopy={() => toast("Token copied", "default")} />
         </div>
       </motion.main>
+    </div>
+  );
+}
+
+function AgentCard({ url, token, onCopy }: { url: string; token: string; onCopy: () => void }) {
+  const [reveal, setReveal] = useState(false);
+  const shown = reveal ? token : token.slice(0, 7) + "…" + token.slice(-4);
+  const snippet = `import herds
+herds.configure(url="${url}", token="${token}")
+
+mac = herds.mac()
+mac.run("uname -msr")                  # run anything, from anywhere
+
+# ship a whole codebase, then run it:
+herds.Volume.from_name("repo").put("./my-app")
+mac.run("python3 app/main.py", volumes={"app": herds.Volume.from_name("repo")})`;
+  const display = snippet.replace(token, shown);
+  return (
+    <div className="surface mt-6 overflow-hidden px-6 py-6">
+      <div className="flex items-center justify-between">
+        <div className="label">Run it from an agent</div>
+        <button onClick={() => setReveal((r) => !r)} className="text-[11px] text-zinc-600 transition hover:text-zinc-300">
+          {reveal ? "hide token" : "reveal token"}
+        </button>
+      </div>
+      <p className="mt-2 text-[12.5px] leading-relaxed text-zinc-500">
+        Hand an agent these two strings and it runs on your Mac — no SSH, no setup.
+      </p>
+      <div className="mt-3 flex items-center gap-2 font-mono text-[12px] text-zinc-500">
+        <span className="text-signal-400">$</span> pip install herds
+      </div>
+      <div className="relative mt-2">
+        <pre className="overflow-x-auto rounded-lg bg-black/40 px-4 py-3.5 font-mono text-[12px] leading-[1.7] text-zinc-300">{display}</pre>
+        <button
+          onClick={() => { navigator.clipboard?.writeText(snippet); onCopy(); }}
+          className="absolute right-2.5 top-2.5 rounded-md bg-white/[0.06] px-2 py-1 text-[11px] text-zinc-400 transition hover:bg-white/[0.1] hover:text-zinc-200"
+        >
+          Copy
+        </button>
+      </div>
     </div>
   );
 }
