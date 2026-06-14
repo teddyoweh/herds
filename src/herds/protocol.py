@@ -34,6 +34,10 @@ class FrameType(str, Enum):
     FS_LIST = "fs_list"                # list a directory (request → single result)
     FS_READ = "fs_read"                # read a file (request → single result)
     HTTP_REQUEST = "http_request"      # proxy an HTTP request to a sandbox port
+    # WebSocket tunnelling over the relay control channel (multiplexed by stream_id):
+    WS_OPEN = "ws_open"                # relay -> host: open a local WS at {path, query}
+    WS_DATA = "ws_data"                # both ways: a text message on {stream_id}
+    WS_CLOSE = "ws_close"              # both ways: close {stream_id}
     PING = "ping"
 
     # agent -> control-plane (results streamed back up the socket)

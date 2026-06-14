@@ -294,7 +294,8 @@ class _HostConn:
     def __init__(self, account: str, ws):
         self.account = account
         self.ws = ws
-        self.pending: dict[str, asyncio.Future] = {}
+        self.pending: dict[str, asyncio.Future] = {}      # request_id -> HTTP response future
+        self.ws_streams: dict[str, object] = {}            # stream_id -> tunnelled agent WebSocket
         self._lock = asyncio.Lock()
 
     async def send(self, frame: Frame) -> None:
@@ -392,11 +393,58 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
                     fut = conn.pending.pop(frame.request_id, None)
                     if fut and not fut.done():
                         fut.set_result(frame.data)
+                elif frame.type == FrameType.WS_DATA:
+                    aws = conn.ws_streams.get(frame.data.get("stream_id"))
+                    if aws is not None:
+                        try:
+                            await aws.send_text(frame.data.get("text", ""))
+                        except Exception:  # noqa: BLE001
+                            pass
+                elif frame.type == FrameType.WS_CLOSE:
+                    aws = conn.ws_streams.pop(frame.data.get("stream_id"), None)
+                    if aws is not None:
+                        try:
+                            await aws.close()
+                        except Exception:  # noqa: BLE001
+                            pass
         except WebSocketDisconnect:
             pass
         finally:
             if hosts.get(account) is conn:
                 hosts.pop(account, None)
+
+    @app.websocket("/{ws_path:path}")
+    async def proxy_ws(ws: WebSocket, ws_path: str):
+        # Tunnel a subdomain WebSocket (e.g. you.relay.herds.run/v1/jobs/…/logs)
+        # through the host's control channel — so remote agents get live streams.
+        import uuid
+
+        sub = _subdomain(ws.headers.get("host", ""))
+        conn = hosts.get(sub) if (sub and sub not in RESERVED) else None
+        if conn is None:
+            await ws.close(code=4404)
+            return
+        await ws.accept()
+        sid = "ws_" + uuid.uuid4().hex[:12]
+        conn.ws_streams[sid] = ws
+        await conn.send(Frame(type=FrameType.WS_OPEN, data={
+            "stream_id": sid, "path": "/" + ws_path, "query": ws.url.query,
+            "headers": {k: v for k, v in ws.headers.items() if k.lower() != "host"},
+        }))
+        try:
+            while True:
+                msg = await ws.receive_text()
+                await conn.send(Frame(type=FrameType.WS_DATA, data={"stream_id": sid, "text": msg}))
+        except WebSocketDisconnect:
+            pass
+        except Exception:  # noqa: BLE001
+            pass
+        finally:
+            conn.ws_streams.pop(sid, None)
+            try:
+                await conn.send(Frame(type=FrameType.WS_CLOSE, data={"stream_id": sid}))
+            except Exception:  # noqa: BLE001
+                pass
 
     def _subdomain(host_header: str) -> Optional[str]:
         h = (host_header or "").split(":")[0].lower()
@@ -488,15 +536,67 @@ async def _run_client(relay_ws_url: str, token: str, local_url: str) -> None:
             async with websockets.connect(url, max_size=None, ping_interval=None, close_timeout=5) as ws:
                 backoff = 1.0
                 send_lock = asyncio.Lock()
+                streams: dict[str, object] = {}  # stream_id -> local WebSocket connection
                 async with httpx.AsyncClient(base_url=local_url, timeout=30.0) as client:
                     async for raw in ws:
                         frame = Frame.load(raw)
                         if frame.type == FrameType.HTTP_REQUEST:
                             asyncio.create_task(_serve_one(ws, send_lock, client, frame))
+                        elif frame.type == FrameType.WS_OPEN:
+                            asyncio.create_task(_tunnel_ws(ws, send_lock, local_url, frame, streams))
+                        elif frame.type == FrameType.WS_DATA:
+                            local = streams.get(frame.data.get("stream_id"))
+                            if local is not None:
+                                try:
+                                    await local.send(frame.data.get("text", ""))
+                                except Exception:  # noqa: BLE001
+                                    pass
+                        elif frame.type == FrameType.WS_CLOSE:
+                            local = streams.pop(frame.data.get("stream_id"), None)
+                            if local is not None:
+                                try:
+                                    await local.close()
+                                except Exception:  # noqa: BLE001
+                                    pass
         except Exception as exc:  # noqa: BLE001 — reconnect on anything
             print(f"herds relay: link lost ({exc}); retrying in {backoff:.0f}s", file=sys.stderr)
         await asyncio.sleep(backoff)
         backoff = min(backoff * 2, 30.0)
+
+
+async def _tunnel_ws(ws, send_lock, local_url: str, frame: Frame, streams: dict) -> None:
+    """Open a WS to the local control plane and pump it to the agent via the relay."""
+    import websockets
+
+    d = frame.data
+    sid = d["stream_id"]
+    base = local_url.replace("http://", "ws://").replace("https://", "wss://").rstrip("/")
+    url = f"{base}{d.get('path', '/')}" + (f"?{d['query']}" if d.get("query") else "")
+    try:
+        local = await websockets.connect(url, max_size=None, open_timeout=10)
+    except Exception:  # noqa: BLE001
+        async with send_lock:
+            await ws.send(Frame(type=FrameType.WS_CLOSE, data={"stream_id": sid}).dump())
+        return
+    streams[sid] = local
+    try:
+        async for msg in local:
+            text = msg if isinstance(msg, str) else msg.decode("utf-8", "ignore")
+            async with send_lock:
+                await ws.send(Frame(type=FrameType.WS_DATA, data={"stream_id": sid, "text": text}).dump())
+    except Exception:  # noqa: BLE001
+        pass
+    finally:
+        streams.pop(sid, None)
+        try:
+            await local.close()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            async with send_lock:
+                await ws.send(Frame(type=FrameType.WS_CLOSE, data={"stream_id": sid}).dump())
+        except Exception:  # noqa: BLE001
+            pass
 
 
 async def _serve_one(ws, send_lock, client, frame: Frame) -> None:
