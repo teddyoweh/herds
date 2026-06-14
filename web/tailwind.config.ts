@@ -23,9 +23,9 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ["var(--font-geist-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        sans: ["Google Sans", "var(--font-geist-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
         mono: ["var(--font-geist-mono)", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
-        serif: ["Tiempos", "Georgia", "Cambria", "Times New Roman", "serif"],
+        serif: ["Georgia", "Cambria", "Times New Roman", "serif"],
       },
       letterSpacing: {
         tightest: "-0.03em",
