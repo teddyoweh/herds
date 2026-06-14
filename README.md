@@ -245,6 +245,7 @@ run history — all polling the same API the SDK and CLI use.
 herds auth               sign in (free) — get a stable, branded link
 herds host               self-host: control plane + dashboard + public link
 herds skill [--install]  print/install the agent skill (SKILL.md) for Claude Code
+herds open               open your live dashboard in the browser
 herds token new|ls|revoke   scoped, revocable tokens (read|run|admin) for agents/CI
 herds connect <link> <token>   join another Mac to a host
 herds serve              run a bare control plane locally

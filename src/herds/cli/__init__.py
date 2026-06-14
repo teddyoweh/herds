@@ -214,6 +214,22 @@ def auth(
     ))
 
 
+@app.command("open")
+def open_dashboard():
+    """Open your live Herds dashboard in the browser (signed in)."""
+    import webbrowser
+
+    auth = config.Auth.load()
+    if not auth.signed_in:
+        err.print("[yellow]Not signed in.[/yellow] Run [bold]herds auth[/bold] first.")
+        raise typer.Exit(1)
+    url = auth.url or f"https://{auth.account}.relay.herds.run"
+    tf = config.HERDS_HOME / "host_token"
+    open_url = f"{url}/?token={tf.read_text().strip()}" if tf.exists() else url
+    console.print(f"[dim]Opening[/dim] [cyan]{url}[/cyan] …")
+    webbrowser.open(open_url)
+
+
 @app.command()
 def relay(
     port: int = typer.Option(8888, help="Relay port."),
