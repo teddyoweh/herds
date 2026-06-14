@@ -151,6 +151,25 @@ class Mac:
             elif frame.type == FrameType.STDERR:
                 yield "stderr", frame.data.get("text", "")
 
+    def map(self, command, items, *, max_workers: int = 8, **run_kwargs) -> list["Result"]:
+        """Run a command across many inputs in parallel (Modal-style fan-out)::
+
+            mac.map("pytest {}", ["tests/a", "tests/b", "tests/c"])     # format string
+            mac.map(lambda v: f"swift build -c {v}", ["debug", "release"])  # callable
+
+        `command` is a format string (``{}`` ← item) or a callable (item → command).
+        Returns one ``Result`` per item, in input order.
+        """
+        import concurrent.futures as cf
+
+        def _one(item):
+            cmd = command(item) if callable(command) else command.format(item)
+            return self.run(cmd, **run_kwargs)
+
+        items = list(items)
+        with cf.ThreadPoolExecutor(max_workers=min(max_workers, max(1, len(items)))) as ex:
+            return list(ex.map(_one, items))
+
     def sandbox(self, image: ImageLike = None, volumes: VolumesLike = None) -> "Sandbox":
         from .sandbox import Sandbox
 

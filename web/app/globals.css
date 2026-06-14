@@ -109,3 +109,18 @@ body {
 .hairline {
   @apply divide-y divide-white/[0.06];
 }
+
+/* Editorial display serif (Orchid-grade): high optical contrast, sharp serifs,
+   no wonky alternates. Used for every marketing statement. */
+.ed {
+  font-family: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  font-variation-settings: "opsz" 144, "SOFT" 0, "WONK" 0;
+  font-weight: 430;
+  letter-spacing: -0.014em;
+}
+.ed-soft {
+  font-family: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  font-variation-settings: "opsz" 72, "SOFT" 0, "WONK" 0;
+  font-weight: 400;
+  letter-spacing: -0.004em;
+}

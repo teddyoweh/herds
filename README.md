@@ -146,7 +146,14 @@ mac.run("npm test", stream=True)
 # iterate output yourself
 for stream, line in mac.stream("xcodebuild build"):
     handle(line)
+
+# fan out across inputs, in parallel (Modal-style .map):
+results = mac.map("pytest {}", ["tests/unit", "tests/integration", "tests/e2e"])
+results = mac.map(lambda v: f"swift build -c {v}", ["debug", "release"])
 ```
+
+One Mac handles many concurrent commands — verified at 10 parallel runs — so a
+fleet of agents can share it.
 
 ### Images — environment recipes resolved on the Mac
 

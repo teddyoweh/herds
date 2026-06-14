@@ -7,10 +7,12 @@ import { ToastProvider } from "@/components/Toast";
 import { AppChrome } from "@/components/AppChrome";
 
 // Editorial display serif for the marketing landing (warm, high-contrast).
+// Loads true roman + italic; axes tuned per-element via the .ed class.
 const fraunces = Fraunces({
   subsets: ["latin"],
   variable: "--font-fraunces",
   display: "swap",
+  style: ["normal", "italic"],
 });
 
 export const metadata: Metadata = {
