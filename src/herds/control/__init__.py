@@ -445,7 +445,7 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
 
     # -- filesystem RPC to the agent (browse files on the Mac) ------------- #
 
-    async def _fs_rpc(machine_id: str, frame_type: FrameType, data: dict) -> dict:
+    async def _fs_rpc(machine_id: str, frame_type: FrameType, data: dict, timeout: float = 10) -> dict:
         agent = hub.agent(machine_id)
         if agent is None:
             raise HTTPException(409, "machine offline")
@@ -455,7 +455,7 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
         hub.pending[request_id] = fut
         await agent.send(Frame(type=frame_type, request_id=request_id, data=data))
         try:
-            result = await asyncio.wait_for(fut, timeout=10)
+            result = await asyncio.wait_for(fut, timeout=timeout)
         except asyncio.TimeoutError:
             hub.pending.pop(request_id, None)
             raise HTTPException(504, "agent did not respond")
@@ -490,6 +490,29 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
     async def volume_file(name: str, machine_id: str, path: str, authorization: Optional[str] = Header(None)):
         owner_from_key(authorization)
         return await _fs_rpc(machine_id, FrameType.FS_READ, {"kind": "volume", "id": name, "path": path})
+
+    @app.put("/v1/volumes/{name}/put")
+    async def volume_put(name: str, body: FsWriteBody, authorization: Optional[str] = Header(None)):
+        """Push a file or an entire directory (tar) into a volume on the Mac."""
+        owner_from_key(authorization)
+        data: dict = {"kind": "volume", "id": name, "path": body.path}
+        if body.tar_b64 is not None:
+            data["tar_b64"], data["clean"] = body.tar_b64, body.clean
+        else:
+            data["content_b64"] = body.content_b64 or ""
+        return await _fs_rpc(body.machine_id, FrameType.FS_WRITE, data, timeout=240)
+
+    @app.put("/v1/sandboxes/{sandbox_id}/put")
+    async def sandbox_put(sandbox_id: str, body: FsWriteBody, authorization: Optional[str] = Header(None)):
+        """Push a file or directory (tar) into a sandbox on the Mac."""
+        owner_from_key(authorization)
+        mid = _machine_for_sandbox(sandbox_id)
+        data: dict = {"kind": "sandbox", "id": sandbox_id, "path": body.path}
+        if body.tar_b64 is not None:
+            data["tar_b64"], data["clean"] = body.tar_b64, body.clean
+        else:
+            data["content_b64"] = body.content_b64 or ""
+        return await _fs_rpc(mid, FrameType.FS_WRITE, data, timeout=240)
 
     # -- SDK/dashboard: volumes -------------------------------------------- #
 
@@ -767,6 +790,14 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
 class SecretBody(BaseModel):
     name: str
     values: dict[str, str]
+
+
+class FsWriteBody(BaseModel):
+    machine_id: str
+    path: str = ""
+    content_b64: Optional[str] = None   # write one file
+    tar_b64: Optional[str] = None       # …or extract a tar (codebase push)
+    clean: bool = False                 # wipe the destination dir first
 
 
 class CreateSandboxBody(BaseModel):

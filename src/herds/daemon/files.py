@@ -9,11 +9,15 @@ or read (capped) file contents.
 from __future__ import annotations
 
 import base64
+import io
+import shutil
+import tarfile
 from pathlib import Path
 
 from .. import config
 
 _READ_CAP = 256 * 1024  # 256 KB
+_WRITE_CAP = 512 * 1024 * 1024  # 512 MB per upload
 
 
 def _root(kind: str, ident: str) -> Path:
@@ -77,3 +81,39 @@ def read_file(kind: str, ident: str, rel: str) -> dict:
         "content": raw.decode("utf-8", errors="replace"),
         "mtime_ms": int(st.st_mtime * 1000),
     }
+
+
+def write_file(kind: str, ident: str, rel: str, content_b64: str) -> dict:
+    """Write a single file into a volume/sandbox at ``rel`` (parents created)."""
+    _root, target = _resolve(kind, ident, rel)
+    data = base64.b64decode(content_b64 or "")
+    if len(data) > _WRITE_CAP:
+        raise ValueError("file exceeds size limit")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    return {"path": rel, "size": len(data), "ok": True}
+
+
+def extract_tar(kind: str, ident: str, rel: str, tar_b64: str, clean: bool = False) -> dict:
+    """Extract a tarball into a volume/sandbox dir — the codebase-push path.
+
+    Safe: every member is resolved and rejected if it escapes the destination,
+    and symlinks/hardlinks/devices are skipped."""
+    _root, dest = _resolve(kind, ident, rel)
+    raw = base64.b64decode(tar_b64 or "")
+    if len(raw) > _WRITE_CAP:
+        raise ValueError("archive exceeds size limit")
+    if clean and dest.exists() and dest.is_dir():
+        shutil.rmtree(dest, ignore_errors=True)
+    dest.mkdir(parents=True, exist_ok=True)
+    n = 0
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:*") as tf:
+        for m in tf.getmembers():
+            if not (m.isfile() or m.isdir()):
+                continue  # skip symlinks/devices/hardlinks
+            mp = (dest / m.name).resolve()
+            if dest != mp and dest not in mp.parents:
+                continue  # refuse traversal outside dest
+            tf.extract(m, path=dest)
+            n += 1
+    return {"path": rel, "members": n, "ok": True}

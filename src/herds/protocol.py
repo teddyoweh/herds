@@ -33,6 +33,7 @@ class FrameType(str, Enum):
     CANCEL = "cancel"                  # cancel an in-flight request
     FS_LIST = "fs_list"                # list a directory (request → single result)
     FS_READ = "fs_read"                # read a file (request → single result)
+    FS_WRITE = "fs_write"              # write a file / extract a tar into a volume or sandbox
     HTTP_REQUEST = "http_request"      # proxy an HTTP request to a sandbox port
     # WebSocket tunnelling over the relay control channel (multiplexed by stream_id):
     WS_OPEN = "ws_open"                # relay -> host: open a local WS at {path, query}

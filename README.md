@@ -161,7 +161,15 @@ vol = herds.Volume.from_name("ios-builds")
 # Reachable as ./builds (relative to the working dir) and via the env var.
 mac.run("xcodebuild archive -archivePath $HERDS_VOLUME_IOS_BUILDS/App.xcarchive",
         volumes={"builds": vol})
+
+# Push an entire local codebase onto the Mac (tarred + extracted, junk pruned) —
+# the way you'd ship a repo to a long-running agent. Like `modal volume put`:
+herds.Volume.from_name("repo").put("./my-project")        # dir → volume root
+herds.Volume.from_name("data").put("model.bin", "weights/")  # one file
+mac.run("python3 app/main.py", volumes={"app": herds.Volume.from_name("repo")})
 ```
+
+…or from the CLI: `herds volume put repo ./my-project --url https://you.relay.herds.run --token hx_…`
 
 On a bare Mac there's no container, so a volume is mounted under the working
 directory at the mount name *and* exposed as an absolute path through

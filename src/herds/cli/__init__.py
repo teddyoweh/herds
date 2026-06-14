@@ -377,6 +377,37 @@ def volume_create(name: str):
     console.print(f"[green]✓[/green] created volume [cyan]{name}[/cyan]")
 
 
+@volume_app.command("put")
+def volume_put(
+    name: str,
+    local: str,
+    remote: str = typer.Argument("", help="Destination path inside the volume."),
+    clean: bool = typer.Option(False, "--clean", help="Wipe the destination dir first."),
+    url: Optional[str] = typer.Option(None, "--url", help="Control-plane / relay URL (default: local / $HERDS_CONTROL_PLANE)."),
+    token: Optional[str] = typer.Option(None, "--token", help="API token (default: $HERDS_API_KEY / saved creds)."),
+):
+    """Copy a local file or directory into a volume on a Mac (like `modal volume put`)."""
+    from pathlib import Path
+    from ..sdk import Volume
+
+    src = Path(local).expanduser()
+    if not src.exists():
+        err.print(f"[red]No such path:[/red] {local}")
+        raise typer.Exit(1)
+    kind = "directory" if src.is_dir() else "file"
+    with console.status(f"Pushing {kind} [cyan]{src.name}[/cyan] → volume [cyan]{name}[/cyan]…"):
+        try:
+            res = Volume.from_name(name).put(str(src), remote, clean=clean, url=url, token=token)
+        except Exception as exc:  # noqa: BLE001
+            err.print(f"[red]✗[/red] {exc}")
+            raise typer.Exit(1)
+    dest = f"{name}/{remote}" if remote else name
+    if res.get("members") is not None:
+        console.print(f"[green]✓[/green] pushed [bold]{res['members']}[/bold] files → volume [cyan]{dest}[/cyan]")
+    else:
+        console.print(f"[green]✓[/green] pushed [bold]{_human(res.get('size', 0))}[/bold] → volume [cyan]{res.get('path', dest)}[/cyan]")
+
+
 @volume_app.command("rm")
 def volume_rm(name: str, yes: bool = typer.Option(False, "--yes", "-y")):
     """Delete a volume."""
