@@ -110,17 +110,23 @@ body {
   @apply divide-y divide-white/[0.06];
 }
 
-/* Editorial display serif (Orchid-grade): high optical contrast, sharp serifs,
-   no wonky alternates. Used for every marketing statement. */
+/* Tiempos Headline — the editorial display serif (high contrast, elegant). */
+@font-face {
+  font-family: "Tiempos";
+  src: url("/fonts/tiempos-headline-light.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Editorial display serif. Used for every marketing statement. */
 .ed {
-  font-family: var(--font-fraunces), Georgia, "Times New Roman", serif;
-  font-variation-settings: "opsz" 144, "SOFT" 0, "WONK" 0;
-  font-weight: 430;
-  letter-spacing: -0.014em;
+  font-family: "Tiempos", Georgia, "Times New Roman", serif;
+  font-weight: 400;
+  letter-spacing: -0.018em;
 }
 .ed-soft {
-  font-family: var(--font-fraunces), Georgia, "Times New Roman", serif;
-  font-variation-settings: "opsz" 72, "SOFT" 0, "WONK" 0;
+  font-family: "Tiempos", Georgia, "Times New Roman", serif;
   font-weight: 400;
-  letter-spacing: -0.004em;
+  letter-spacing: -0.006em;
 }
