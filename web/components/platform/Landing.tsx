@@ -292,18 +292,18 @@ function Hero() {
             initial={{ opacity: 0, y: 28, rotate: 3.4 }}
             animate={{ opacity: 1, y: 0, rotate: 2 }}
             transition={{ delay: 0.3, duration: 0.85, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute right-[-12px] top-[44%] hidden w-[392px] xl:block"
+            className="absolute right-[-16px] top-[112%] hidden w-[400px] xl:block"
           >
             <Terminal />
           </motion.div>
 
-          {/* floating live chips */}
-          <FloatChip className="right-[20%] top-[2%] gap-2" delay={0.55}>
+          {/* floating live chips, clear of the headline */}
+          <FloatChip className="right-[1%] top-[18%] gap-2" delay={0.55}>
             <span className="h-2 w-2 rounded-full bg-signal-400 shadow-[0_0_8px_1px_rgba(52,211,158,0.6)]" />
             <span className="font-mono text-[12px] text-zinc-300">you.herds.run</span>
             <span className="text-[11px] font-medium text-signal-400">live</span>
           </FloatChip>
-          <FloatChip className="bottom-[-26px] right-[34%] gap-2.5" delay={0.8}>
+          <FloatChip className="right-[6%] top-[104%] gap-2.5" delay={0.8}>
             <Logo size={20} />
             <div className="leading-none">
               <div className="text-[9px] uppercase tracking-[0.14em] text-zinc-600">M3 Max · online</div>
