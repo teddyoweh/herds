@@ -148,6 +148,147 @@ class _Accounts:
             return None
         return {"token": rec["token"], "account": acct}
 
+    def exists(self, account: str) -> bool:
+        return account in self.taken
+
+    def get_record(self, account: str) -> Optional[dict]:
+        rec = self.records.get(account)
+        return {**rec, "account": account} if rec else None
+
+
+def _valid_email(email: str) -> bool:
+    return "@" in email and "." in email.split("@")[-1]
+
+
+class _PgAccounts:
+    """Postgres-backed account store (Neon). Durable, atomic, and secure: unique
+    constraints enforce one-token / one-email; queries are parameterized; the DSN
+    is read from the env (never committed). Same interface as ``_Accounts``."""
+
+    def __init__(self, dsn: str, migrate_from: Optional[Path] = None):
+        import psycopg
+        from psycopg_pool import ConnectionPool
+
+        self._psycopg = psycopg
+        # A small checked pool survives Neon's pooler dropping idle connections.
+        self.pool = ConnectionPool(
+            dsn, min_size=1, max_size=8, max_idle=60, timeout=15,
+            check=ConnectionPool.check_connection, kwargs={"autocommit": True},
+        )
+        self.pool.wait(timeout=20)
+        with self.pool.connection() as conn:
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS relay_accounts (
+                    account TEXT PRIMARY KEY,
+                    token   TEXT UNIQUE NOT NULL,
+                    email   TEXT UNIQUE,
+                    pwhash  TEXT,
+                    created BIGINT
+                )"""
+            )
+        if migrate_from and migrate_from.exists():
+            self._migrate_json(migrate_from)
+
+    def _migrate_json(self, path: Path) -> None:
+        try:
+            raw = json.loads(path.read_text())
+        except Exception:  # noqa: BLE001
+            return
+        records = raw.get("records") or {
+            acct: {"token": tok, "email": None, "pwhash": None}
+            for tok, acct in raw.get("by_token", {}).items()
+        }
+        n = 0
+        with self.pool.connection() as conn:
+            for acct, rec in records.items():
+                cur = conn.execute(
+                    "INSERT INTO relay_accounts (account, token, email, pwhash, created) "
+                    "VALUES (%s,%s,%s,%s,%s) ON CONFLICT (account) DO NOTHING",
+                    (acct, rec.get("token"), rec.get("email"), rec.get("pwhash"), rec.get("created") or 0),
+                )
+                n += cur.rowcount or 0
+        try:  # don't re-import on the next boot
+            path.rename(path.with_suffix(".migrated"))
+        except OSError:
+            pass
+        print(f"herds relay: migrated {n} account(s) from {path} → postgres", file=sys.stderr)
+
+    def whoami(self, token: str) -> Optional[str]:
+        if not token:
+            return None
+        with self.pool.connection() as conn:
+            r = conn.execute("SELECT account FROM relay_accounts WHERE token=%s", (token,)).fetchone()
+            return r[0] if r else None
+
+    def exists(self, account: str) -> bool:
+        with self.pool.connection() as conn:
+            return conn.execute("SELECT 1 FROM relay_accounts WHERE account=%s", (account,)).fetchone() is not None
+
+    def get_record(self, account: str) -> Optional[dict]:
+        with self.pool.connection() as conn:
+            r = conn.execute(
+                "SELECT account, token, email, pwhash, created FROM relay_accounts WHERE account=%s", (account,)
+            ).fetchone()
+        if not r:
+            return None
+        return {"account": r[0], "token": r[1], "email": r[2], "pwhash": r[3], "created": r[4]}
+
+    def _base_name(self, want: str) -> str:
+        name = _slug(want) or ("m" + secrets.token_hex(4))
+        if name in RESERVED or not _NAME_RE.match(name):
+            name = "m" + secrets.token_hex(4)
+        return name
+
+    def _create(self, base: str, email: Optional[str], pwhash: Optional[str]) -> dict:
+        for attempt in range(64):
+            name = base if attempt == 0 else f"{base}-{attempt + 1}"
+            token = "hx_" + secrets.token_urlsafe(24)
+            try:
+                with self.pool.connection() as conn:
+                    conn.execute(
+                        "INSERT INTO relay_accounts (account, token, email, pwhash, created) VALUES (%s,%s,%s,%s,%s)",
+                        (name, token, email, pwhash, int(_time.time())),
+                    )
+                return {"token": token, "account": name}
+            except self._psycopg.errors.UniqueViolation as e:
+                cname = (getattr(e, "diag", None) and e.diag.constraint_name) or ""
+                if "email" in cname:
+                    raise ValueError("That email already has an account — log in instead.")
+                continue  # account/token collision → try the next name
+        raise ValueError("Could not allocate an account name. Try a different one.")
+
+    def provision(self, want: str = "") -> dict:
+        return self._create(self._base_name(want), None, None)
+
+    def register(self, email: str, password: str, want: str = "") -> dict:
+        email = (email or "").strip().lower()
+        if not _valid_email(email):
+            raise ValueError("Enter a valid email address.")
+        if len(password or "") < 8:
+            raise ValueError("Password must be at least 8 characters.")
+        with self.pool.connection() as conn:
+            if conn.execute("SELECT 1 FROM relay_accounts WHERE email=%s", (email,)).fetchone():
+                raise ValueError("That email already has an account — log in instead.")
+        return self._create(self._base_name(want or email.split("@")[0]), email, _hash_pw(password))
+
+    def login(self, email: str, password: str) -> Optional[dict]:
+        email = (email or "").strip().lower()
+        with self.pool.connection() as conn:
+            r = conn.execute(
+                "SELECT account, token, pwhash FROM relay_accounts WHERE email=%s", (email,)
+            ).fetchone()
+        if not r or not r[2] or not _verify_pw(password or "", r[2]):
+            return None
+        return {"token": r[1], "account": r[0]}
+
+
+def make_accounts(state_path: Path):
+    """Postgres if HERDS_DATABASE_URL is set (production), else the JSON file."""
+    dsn = os.environ.get("HERDS_DATABASE_URL")
+    if dsn:
+        return _PgAccounts(dsn, migrate_from=state_path)
+    return _Accounts(state_path)
+
 
 class _HostConn:
     def __init__(self, account: str, ws):
@@ -171,7 +312,7 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
     app.add_middleware(
         CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
     )
-    accounts = _Accounts(Path(os.environ.get("HERDS_RELAY_STATE", "/tmp/herds_relay.json")))
+    accounts = make_accounts(Path(os.environ.get("HERDS_RELAY_STATE", "/tmp/herds_relay.json")))
     hosts: dict[str, _HostConn] = {}
 
     @app.post("/relay/provision")
@@ -207,7 +348,7 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
         acct = accounts.whoami(token)
         if not acct:
             return JSONResponse({"error": "invalid token"}, status_code=401)
-        rec = accounts.records.get(acct) or {}
+        rec = accounts.get_record(acct) or {}
         return {"account": acct, "url": f"https://{acct}.{domain}",
                 "email": rec.get("email"), "online": acct in hosts}
 
@@ -230,7 +371,7 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
             return Response(status_code=200)
         if d.endswith("." + relay_domain):
             sub = d[: -(len(relay_domain) + 1)]
-            if "." not in sub and (sub in accounts.taken or sub in RESERVED):
+            if "." not in sub and (sub in RESERVED or accounts.exists(sub)):
                 return Response(status_code=200)
         return Response(status_code=404)
 

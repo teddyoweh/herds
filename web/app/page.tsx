@@ -175,8 +175,17 @@ function Dashboard() {
             </div>
             <div className="mt-3 divide-y divide-white/[0.05]">
               {jobsData && jobs.length === 0 && (
-                <div className="px-5 py-10 text-center text-[13px] text-zinc-600">
-                  No runs yet — your first <span className="font-mono text-zinc-400">mac.run()</span> appears here.
+                <div className="flex flex-col items-center px-5 py-12 text-center">
+                  <span className="relative grid h-12 w-12 place-items-center rounded-2xl bg-white/[0.03] shadow-e1">
+                    <span className="absolute inset-0 rounded-2xl bg-signal-500/[0.07] blur-md" />
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" className="relative text-signal-400/80">
+                      <path d="M2 12h3.5l2.2-5.5 3.8 11 2.4-7 1.8 4.5H22" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="animate-breathe" />
+                    </svg>
+                  </span>
+                  <p className="mt-4 text-[13.5px] font-medium text-zinc-300">Nothing running yet</p>
+                  <p className="mt-1 text-[12.5px] text-zinc-600">
+                    Your first <code className="rounded bg-white/[0.05] px-1 py-0.5 font-mono text-[11.5px] text-zinc-400">mac.run()</code> streams here, live.
+                  </p>
                 </div>
               )}
               {jobs.map((j) => (
