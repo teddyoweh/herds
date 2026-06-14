@@ -55,6 +55,78 @@ def _persistent_token() -> str:
     return t
 
 
+def _host_state_file() -> Path:
+    """Where a running host records its port/pid/link, so re-runs can find it."""
+    return config.HERDS_HOME / "host.json"
+
+
+def _read_host_state() -> Optional[dict]:
+    try:
+        return json.loads(_host_state_file().read_text())
+    except Exception:
+        return None
+
+
+def _write_host_state(state: dict) -> None:
+    try:
+        _host_state_file().write_text(json.dumps(state))
+    except OSError:
+        pass
+
+
+def _clear_host_state() -> None:
+    try:
+        _host_state_file().unlink()
+    except OSError:
+        pass
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # exists, owned by someone else
+    except Exception:
+        return False
+    return True
+
+
+def _healthz_ok(port: int, timeout: float = 1.5) -> bool:
+    """True if a *Herds* control plane is answering locally on ``port``.
+
+    Verifies the herds-specific body (``agents_online``) so an unrelated service
+    sitting on the same port is never mistaken for a host.
+    """
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz", timeout=timeout) as r:
+            if r.status != 200:
+                return False
+            body = json.loads(r.read() or b"{}")
+            return isinstance(body, dict) and "agents_online" in body
+    except Exception:
+        return False
+
+
+def _existing_host() -> Optional[dict]:
+    """If a Herds host is already live on this Mac, return its recorded state.
+
+    Stale state (host crashed / port freed) returns None so a fresh run proceeds.
+    """
+    st = _read_host_state()
+    if not st:
+        return None
+    pid, port = st.get("pid"), st.get("port")
+    if pid and not _pid_alive(int(pid)):
+        return None
+    if port and _healthz_ok(int(port)):
+        return st
+    return None
+
+
 def _start_tunnel(port: int, procs: list, quick: bool = False) -> tuple[Optional[str], str, bool]:
     """Return (public_url, provider, is_permanent).
 
@@ -254,8 +326,56 @@ def _free_port(start: int, tries: int = 64) -> int:
     return start
 
 
-def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True, quick: bool = False) -> None:
+def _already_hosting_panel(st: dict) -> None:
+    """This Mac is already a live host — show its link instead of starting a duplicate."""
+    public_url = st.get("public_url") or f"http://127.0.0.1:{st.get('port')}"
+    token = st.get("token", "")
+    provider = st.get("provider", "Herds")
+    open_url = f"{public_url}/?token={token}" if token else public_url
+    console.print(Panel.fit(
+        f"[green]✓ This Mac is already hosting[/green] [dim](pid {st.get('pid')} · port {st.get('port')})[/dim]\n\n"
+        f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]  [dim]via {provider}[/dim]\n\n"
+        f"[bold]Host token[/bold]\n  [yellow]{token}[/yellow] [dim](stable)[/dim]\n\n"
+        f"[dim]Already live — not starting another. To restart, run [bold]herds host --restart[/bold]\n"
+        f"(or stop the running one first).[/dim]",
+        title="herds host", border_style="green",
+    ))
+    console.print("\n  [bold green]→ Open your dashboard[/bold green] [dim](opens already signed in)[/dim]")
+    console.print(f"    [link={open_url}][cyan]{open_url}[/cyan][/link]\n", soft_wrap=True)
+
+
+def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
+             quick: bool = False, force: bool = False) -> None:
     config.ensure_dirs()
+
+    # Already hosting on this Mac? Don't spin up a duplicate — point at the live one.
+    existing = _existing_host()
+    if existing and not force:
+        _already_hosting_panel(existing)
+        return
+    if existing and force:
+        pid = existing.get("pid")
+        console.print(f"[dim]Restarting — stopping the host already running[/dim]"
+                      + (f" [dim](pid {pid})[/dim]" if pid else "") + "…")
+        if pid:
+            try:
+                os.kill(int(pid), signal.SIGTERM)
+            except Exception:
+                pass
+            # Give it a moment to release the port before we rebind.
+            for _ in range(20):
+                if not _pid_alive(int(pid)):
+                    break
+                time.sleep(0.25)
+        _clear_host_state()
+
+    # Fallback (no/stale state, e.g. a host started before this upgrade): if the
+    # target port is already a live Herds control plane, don't duplicate it.
+    if not force and _healthz_ok(port):
+        _already_hosting_panel({"port": port, "public_url": f"http://127.0.0.1:{port}",
+                                "token": _persistent_token(), "provider": "local"})
+        return
+
     chosen = _free_port(port)
     if chosen != port:
         console.print(f"[dim]Port {port} is in use — using [bold]{chosen}[/bold] instead.[/dim]")
@@ -339,6 +459,12 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True, 
         else f"[dim]via {provider} · temporary link (changes each run) — "
              f"run [bold]herds host setup[/bold] once for a permanent Tailscale link.[/dim]"
     )
+    # Record live state so a second `herds host` finds this one instead of duplicating.
+    _write_host_state({
+        "pid": os.getpid(), "port": port, "public_url": public_url,
+        "token": token, "provider": provider, "permanent": permanent,
+    })
+
     open_url = f"{public_url}/?token={token}"
     console.print(Panel.fit(
         f"[green]✓ Herds host is live[/green]\n\n"
@@ -354,6 +480,7 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True, 
 
     def shutdown(*_):
         console.print("\n[yellow]Shutting down host…[/yellow]")
+        _clear_host_state()
         for p in procs:
             try:
                 p.terminate()
@@ -367,3 +494,5 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True, 
         time.sleep(1)
         if all(p.poll() is not None for p in procs):
             break
+    # All children exited on their own — clear state so re-runs start fresh.
+    _clear_host_state()

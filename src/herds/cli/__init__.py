@@ -92,16 +92,18 @@ def _host_main(
     port: int = typer.Option(8787, help="Control plane port (auto-bumps if busy)."),
     no_tunnel: bool = typer.Option(False, "--no-tunnel", help="Serve locally only, no public link."),
     quick: bool = typer.Option(False, "--quick", help="Temporary Cloudflare quick tunnel (changes each run; less reliable)."),
+    restart: bool = typer.Option(False, "--restart", "--force", help="Start a new host even if this Mac is already hosting."),
 ):
     """Self-host this Mac with a permanent Tailscale Funnel link.
 
-    Run `herds host setup` first to enable Tailscale Funnel (free, permanent).
+    If this Mac is already hosting, shows the live link instead of starting a
+    duplicate. Run `herds host setup` first to enable Tailscale Funnel.
     """
     if ctx.invoked_subcommand is not None:
         return
     from ..host import run_host
 
-    run_host(port=port, tunnel=not no_tunnel, quick=quick)
+    run_host(port=port, tunnel=not no_tunnel, quick=quick, force=restart)
 
 
 @host_app.command("setup")
