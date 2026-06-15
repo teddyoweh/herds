@@ -1280,6 +1280,62 @@ function RunsEverything() {
 }
 
 /* ------------------------------------------------------------------ *
+ * Get started — auth → host/connect → Python, three clean cards
+ * ------------------------------------------------------------------ */
+
+function StepCard({ step, label, chrome, children }: { step: string; label: string; chrome: string; children: React.ReactNode }) {
+  return (
+    <motion.div variants={fadeUp}>
+      <div className="flex items-baseline gap-2">
+        <span className="font-mono text-[12px] text-signal-600">{step}</span>
+        <span className="text-[13px] font-semibold tracking-tight text-stone-900">{label}</span>
+      </div>
+      <div className="mt-3 overflow-hidden rounded-2xl bg-[#f6f5f2]">
+        <div className="flex items-center gap-1.5 bg-[#eceae4] px-3.5 py-2.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" /><span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" /><span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
+          <span className="mx-auto font-mono text-[10.5px] text-stone-400">{chrome}</span>
+        </div>
+        <pre className="overflow-x-auto px-5 py-5 font-mono text-[12px] leading-[1.95]">{children}</pre>
+      </div>
+    </motion.div>
+  );
+}
+
+function GetStarted() {
+  const P = <span className="text-signal-600">$</span>;
+  const OK = <span className="text-signal-600">✓</span>;
+  return (
+    <Section>
+      <Reveal className="mx-auto max-w-2xl text-center">
+        <div className="text-[12px] font-medium uppercase tracking-[0.16em] text-signal-600">Get started</div>
+        <h2 className="ed mt-3 text-[32px] leading-[1.05] text-stone-900 sm:text-[44px]">Live in three commands</h2>
+        <p className="mx-auto mt-4 max-w-xl text-[15.5px] leading-relaxed text-stone-500">Install the CLI, put a Mac online, and drive it from Python — in under a minute.</p>
+      </Reveal>
+      <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} className="mt-14 grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <StepCard step="01" label="Install & sign in" chrome="zsh">
+          <div className="text-stone-800">{P} curl -fsSL herds.run/install | sh</div>
+          <div className="text-stone-800">{P} herds auth</div>
+          <div className="text-stone-500">{OK} Signed in as you@team.com</div>
+        </StepCard>
+        <StepCard step="02" label="Put a Mac online" chrome="zsh">
+          <div className="text-stone-800">{P} herds host</div>
+          <div className="text-stone-500">{OK} Live · <span className="text-signal-600">you.herds.run</span></div>
+          <div className="mt-2 text-stone-800">{P} herds connect studio.local</div>
+          <div className="text-stone-500">{OK} Mac Studio joined the fleet</div>
+        </StepCard>
+        <StepCard step="03" label="Drive it from Python" chrome="agent.py">
+          <div><span className="text-[#9b4dca]">import</span> <span className="text-stone-800">herds</span></div>
+          <div className="text-stone-400"> </div>
+          <div><span className="text-stone-800">mac</span> = herds.<span className="text-stone-800">mac</span>()</div>
+          <div><span className="text-stone-800">mac</span>.<span className="text-stone-800">run</span>(<span className="text-[#c0392b]">&quot;xcodebuild -scheme App&quot;</span>)</div>
+          <div><span className="text-stone-800">url</span> = <span className="text-stone-800">mac</span>.<span className="text-stone-800">expose</span>(<span className="text-[#2d6df6]">3000</span>)</div>
+        </StepCard>
+      </motion.div>
+    </Section>
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * Apple-native — the agent uses the real Apple apps + operates any Mac
  * ------------------------------------------------------------------ */
 
@@ -1335,6 +1391,8 @@ export function Landing() {
         <AppleNative />
 
         <Stories />
+
+        <GetStarted />
 
         <FinalCTA />
       </main>
