@@ -5,8 +5,6 @@
 #
 # Optionally connect to a fleet in the same command:
 #   curl -fsSL herds.run/install | sh -s -- <link> <token>
-#
-set -e
 
 g() { printf "\033[32m%s\033[0m\n" "$1"; }
 d() { printf "\033[2m%s\033[0m\n" "$1"; }
@@ -14,36 +12,51 @@ e() { printf "\033[31m%s\033[0m\n" "$1" >&2; }
 
 g "Installing Herds…"
 
-# Prefer uv (fast, isolated tool install). Install it if missing.
+# 1. Get uv (single binary, no Python needed) if it isn't already here.
 if ! command -v uv >/dev/null 2>&1; then
   d "  installing uv…"
-  curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1 || true
+  curl -LsSf https://astral.sh/uv/install.sh | sh || true
 fi
-export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
-if command -v uv >/dev/null 2>&1; then
-  uv tool install herds >/dev/null 2>&1 || uv tool install herds
-  uv tool update-shell >/dev/null 2>&1 || true
+# 2. Make uv reachable in THIS shell (the installer drops it in ~/.local/bin).
+[ -f "$HOME/.local/bin/env" ] && . "$HOME/.local/bin/env" 2>/dev/null || true
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+UV="$(command -v uv 2>/dev/null || true)"
+[ -z "$UV" ] && [ -x "$HOME/.local/bin/uv" ] && UV="$HOME/.local/bin/uv"
+[ -z "$UV" ] && [ -x "$HOME/.cargo/bin/uv" ] && UV="$HOME/.cargo/bin/uv"
+
+# 3. Install herds.
+if [ -n "$UV" ]; then
+  "$UV" tool install herds || { e "uv tool install failed."; exit 1; }
+  "$UV" tool update-shell >/dev/null 2>&1 || true
 elif command -v pipx >/dev/null 2>&1; then
   pipx install herds
 elif command -v pip3 >/dev/null 2>&1; then
   pip3 install --user herds
 else
-  e "No uv, pipx, or pip3 found. Install Python 3.11+ (e.g. \`brew install python\`) and re-run."
+  e "Couldn't install uv, and no pipx/pip3 found."
+  e "Install Python 3.11+ (brew install python) or uv, then re-run."
   exit 1
 fi
 
 export PATH="$HOME/.local/bin:$PATH"
 hash -r 2>/dev/null || true
 
-g "✓ Herds installed"
-herds version 2>/dev/null || true
+HERDS="$(command -v herds 2>/dev/null || true)"
+[ -z "$HERDS" ] && [ -x "$HOME/.local/bin/herds" ] && HERDS="$HOME/.local/bin/herds"
+if [ -z "$HERDS" ]; then
+  e "Installed, but 'herds' isn't on PATH yet. Open a new terminal and run: herds connect <link> <token>"
+  exit 0
+fi
 
-# If a link + token were passed, connect straight away.
+g "✓ Herds installed"
+"$HERDS" version 2>/dev/null || true
+
+# 4. If a link + token were passed, join the fleet right now.
 if [ -n "$1" ]; then
   echo
   g "Joining the fleet…"
-  exec herds connect "$1" "$2"
+  exec "$HERDS" connect "$1" "$2"
 fi
 
 echo
@@ -52,4 +65,4 @@ echo "  herds auth                       # sign in (stable link)"
 echo "  herds host                       # put THIS Mac online"
 echo "  herds connect <link> <token>     # join another host's fleet"
 echo
-d "Restart your shell if \`herds\` isn't found (uv added it to your PATH)."
+d "If 'herds' isn't found, open a new terminal (uv added it to your PATH)."
