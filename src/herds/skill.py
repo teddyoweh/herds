@@ -16,24 +16,45 @@ Herds turns any Mac into a programmable runtime your agent controls from anywher
 The Mac dials home over a WebSocket (no inbound ports), so an agent runs commands
 on it through a tiny control plane.
 
-## Connect a Mac (one time)
+## Given a Mac? (a URL + token)
 
-```bash
-pip install herds
-herds auth                 # sign in -> get an hx_... token
-herds host                 # this Mac goes live at https://you.relay.herds.run
-```
-
-## Run commands (Python SDK)
+If you were handed a Herds **URL + token**, that's all you need — point the SDK at it:
 
 ```python
+pip install herds
+```
+```python
 import herds
+herds.configure(url="https://you.relay.herds.run", token="hx_…")
+herds.mac().run("uname -msr")          # runs on that Mac, from anywhere
+```
+(Or set `HERDS_CONTROL_PLANE` + `HERDS_API_KEY` in the env — same effect.)
 
+To connect your OWN Mac instead: `pip install herds && herds auth && herds host`.
+
+## Run commands
+
+```python
 mac = herds.mac()
 print(mac.run("sw_vers").stdout)
-mac.run("xcodebuild -scheme App test", check=True)      # real Xcode
-for stream, line in mac.stream("swift build"):           # stream output live
+mac.run("xcodebuild -scheme App test", check=True)        # real Xcode; raises on failure
+for stream, line in mac.stream("swift build"):             # stream output live
     print(line)
+mac.map("pytest {}", ["tests/unit", "tests/e2e"])          # fan out across inputs, in parallel
+```
+
+A `Result` has `.stdout`, `.stderr`, `.exit_code`, `.ok`. One Mac handles many
+concurrent commands, so a fleet of agents can share it.
+
+## Ship a codebase, then run it
+
+```python
+herds.Volume.from_name("repo").put("./my-project")         # tar + extract on the Mac (junk pruned)
+mac.run("python3 app/main.py", volumes={"app": herds.Volume.from_name("repo")})
+
+sbx = herds.Sandbox.create()
+sbx.put("./my-project")                                     # …or straight into a sandbox
+sbx.exec("python3 main.py")
 ```
 
 ## Sandboxes — isolated, persistent workspaces
@@ -42,16 +63,26 @@ for stream, line in mac.stream("swift build"):           # stream output live
 sbx = herds.Sandbox.create()
 sbx.exec("git clone https://github.com/me/app .")
 sbx.exec("npm install && npm run build", check=True)
-sbx.spawn("npm run dev", keep_alive=True)                # long-running server
-url = sbx.expose(3000)                                    # -> a public URL
+sbx.spawn("npm run dev", keep_alive=True)                  # long-running server
+url = sbx.expose(3000)                                      # -> a public URL
 ```
 
 ## Volumes & secrets
 
 ```python
 vol = herds.Volume.from_name("builds")
-mac.run("xcodebuild archive", volumes={"out": vol})      # persistent dir
-mac.run("./deploy.sh", secrets=["appstore"])             # injected env
+mac.run("xcodebuild archive", volumes={"out": vol})        # persistent dir
+mac.run("./deploy.sh", secrets=["appstore"])               # injected env
+```
+
+## Remote Python — run a function on the Mac
+
+```python
+app = herds.App("ci")
+@app.function(image=herds.Image.python("3.13"))            # must live in a .py file
+def build(target: str) -> dict:
+    import platform; return {"target": target, "ran_on": platform.node()}
+build.remote("release")                                     # ships source, runs on the Mac
 ```
 
 ## CLI
