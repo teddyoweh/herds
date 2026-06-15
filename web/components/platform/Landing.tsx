@@ -1112,27 +1112,59 @@ function FoodThumb() {
 
 function BrowserTaskThumb() {
   return (
-    <div className="relative flex h-48 items-center justify-center bg-[#eef2f8] px-6">
-      <div className="w-full max-w-[228px] overflow-hidden rounded-xl bg-white shadow-[0_10px_30px_-14px_rgba(20,24,33,0.22)]">
-        <div className="flex items-center gap-1.5 bg-[#f1efe9] px-3 py-2">
-          <span className="h-2 w-2 rounded-full bg-[#ff5f57]" /><span className="h-2 w-2 rounded-full bg-[#febc2e]" /><span className="h-2 w-2 rounded-full bg-[#28c840]" />
-          <span className="mx-auto rounded bg-white px-3 py-0.5 font-mono text-[8.5px] text-stone-400">jobs.acme.com/apply</span>
+    <div className="relative h-48 overflow-hidden bg-gradient-to-b from-[#eef2f8] to-[#e4eaf4]">
+      <div className="absolute left-1/2 top-5 w-[308px] -translate-x-1/2 overflow-hidden rounded-[12px] bg-white shadow-[0_24px_55px_-20px_rgba(20,24,33,0.45)]">
+        {/* tab strip */}
+        <div className="flex items-end gap-1.5 bg-[#dee1e6] px-2.5 pt-1.5">
+          <div className="flex gap-1 self-center pb-1 pr-1">
+            <span className="h-2 w-2 rounded-full bg-[#ff5f57]" /><span className="h-2 w-2 rounded-full bg-[#febc2e]" /><span className="h-2 w-2 rounded-full bg-[#28c840]" />
+          </div>
+          <div className="flex max-w-[150px] items-center gap-1.5 rounded-t-[7px] bg-white px-2.5 py-[5px] text-[8px] text-stone-700">
+            <span className="grid h-2.5 w-2.5 shrink-0 place-items-center rounded-[3px] bg-[#2d6df6] text-[5px] font-bold text-white">A</span>
+            <span className="truncate">Acme Careers — Apply</span>
+            <span className="text-[8px] text-stone-400">✕</span>
+          </div>
+          <span className="pb-1 text-[11px] leading-none text-stone-500">+</span>
         </div>
-        <div className="px-3.5 py-3">
-          <div className="text-[10px] font-semibold text-stone-700">Application</div>
-          <div className="mt-2 space-y-1.5">
-            {[["Name", "Teddy O."], ["Résumé", "resume.pdf"]].map(([k, v]) => (
-              <div key={k} className="flex items-center gap-2">
-                <span className="w-12 text-[9px] text-stone-400">{k}</span>
-                <span className="flex-1 rounded-md bg-[#f4f2ec] px-2 py-1 text-[9.5px] text-stone-700">{v}</span>
+        {/* toolbar */}
+        <div className="flex items-center gap-2 bg-[#f1f3f4] px-2.5 py-1.5">
+          <div className="flex items-center gap-1.5 text-stone-400">
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="m15 6-6 6 6 6" /></svg>
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="opacity-40"><path d="m9 6 6 6-6 6" /></svg>
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 11a8 8 0 1 0-2 5.3M20 5v6h-6" /></svg>
+          </div>
+          <div className="flex flex-1 items-center gap-1.5 rounded-full bg-white px-2.5 py-[3px] text-[8px] text-stone-500 ring-1 ring-black/[0.05]">
+            <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="text-stone-400"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
+            jobs.acme.com/apply
+            <span className="ml-auto text-stone-300">☆</span>
+          </div>
+          <span className="h-3 w-3 rounded-full bg-gradient-to-br from-[#ffd9a8] to-[#f0a76b]" />
+        </div>
+        {/* page */}
+        <div className="px-4 pb-5 pt-3.5">
+          <div className="text-[7px] font-medium uppercase tracking-wide text-stone-400">Senior iOS Engineer</div>
+          <div className="text-[11px] font-semibold text-stone-900">Application</div>
+          <div className="mt-2.5 space-y-2">
+            {[["Full name", "Teddy O."], ["Email", "teddy@acme.dev"]].map(([k, v]) => (
+              <div key={k}>
+                <div className="text-[7.5px] text-stone-400">{k}</div>
+                <div className="mt-0.5 rounded-md bg-[#f3f3f1] px-2 py-1 text-[9.5px] text-stone-700">{v}</div>
               </div>
             ))}
+            <div>
+              <div className="text-[7.5px] text-stone-400">Résumé</div>
+              <div className="mt-0.5 flex items-center gap-1.5 rounded-md bg-[#f3f3f1] px-2 py-1 text-[9.5px] text-stone-700">
+                <span className="grid h-3.5 w-3 place-items-center rounded-[2px] bg-[#e2554e] text-[5px] font-bold text-white">PDF</span>
+                resume.pdf
+                <Check size={11} />
+              </div>
+            </div>
           </div>
-          <div className="mt-2.5 rounded-lg bg-signal-600 py-1.5 text-center text-[10px] font-medium text-white">Submit application</div>
+          <div className="mt-3 rounded-lg bg-signal-600 py-2 text-center text-[10px] font-semibold text-white">Submit application</div>
         </div>
       </div>
-      <motion.div className="pointer-events-none absolute left-[58%] top-[72%]" animate={{ y: [0, -4, 0], opacity: [1, 1, 1] }} transition={{ duration: 1.4, repeat: Infinity }}>
-        <svg width="15" height="15" viewBox="0 0 24 24" className="fill-stone-900"><path d="M4 2l16 7-7 2-2 7z" /></svg>
+      <motion.div className="pointer-events-none absolute left-1/2 top-[86%]" animate={{ y: [2, -3, 2], x: [0, 1, 0] }} transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" className="fill-stone-900 drop-shadow"><path d="M4 2l16 7-7 2-2 7z" /></svg>
       </motion.div>
     </div>
   );

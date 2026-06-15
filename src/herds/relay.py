@@ -530,11 +530,18 @@ async def _run_client(relay_ws_url: str, token: str, local_url: str) -> None:
     backoff = 1.0
     while True:
         try:
-            # No client-initiated pings: under burst load (serving the dashboard's
-            # assets) the client loop can miss its own ping deadline and self-close.
-            # The relay server pings us instead, which keeps the link alive + detects death.
-            async with websockets.connect(url, max_size=None, ping_interval=None, close_timeout=5) as ws:
+            # Client-initiated pings are essential: without them a half-open
+            # connection (Wi-Fi drop / network switch — no TCP close arrives) would
+            # hang the read loop forever and never reconnect. A failed ping raises
+            # within ping_timeout, breaking out to the reconnect loop below. (The
+            # event-loop starvation that once made these self-close was fixed by
+            # offloading response encoding to a thread, so they're safe under load.)
+            async with websockets.connect(
+                url, max_size=None, ping_interval=20, ping_timeout=20,
+                open_timeout=20, close_timeout=5,
+            ) as ws:
                 backoff = 1.0
+                print("herds relay: link up", file=sys.stderr)
                 send_lock = asyncio.Lock()
                 streams: dict[str, object] = {}  # stream_id -> local WebSocket connection
                 async with httpx.AsyncClient(base_url=local_url, timeout=30.0) as client:
@@ -558,10 +565,12 @@ async def _run_client(relay_ws_url: str, token: str, local_url: str) -> None:
                                     await local.close()
                                 except Exception:  # noqa: BLE001
                                     pass
-        except Exception as exc:  # noqa: BLE001 — reconnect on anything
-            print(f"herds relay: link lost ({exc}); retrying in {backoff:.0f}s", file=sys.stderr)
+        except Exception as exc:  # noqa: BLE001 — reconnect on anything (drops, DNS, network switch)
+            print(f"herds relay: link lost ({exc}); reconnecting in {backoff:.0f}s…", file=sys.stderr)
+        # Fast, bounded backoff so the host self-heals within seconds of the network
+        # coming back — it stays up until you stop it, no matter how often Wi-Fi flaps.
         await asyncio.sleep(backoff)
-        backoff = min(backoff * 2, 30.0)
+        backoff = min(backoff * 1.7, 10.0)
 
 
 async def _tunnel_ws(ws, send_lock, local_url: str, frame: Frame, streams: dict) -> None:
