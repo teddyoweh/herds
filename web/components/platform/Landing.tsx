@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/Logo";
+import { GitHubMark } from "@/components/Auth";
 import { getSession } from "@/lib/platform";
 import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
@@ -658,23 +659,176 @@ function FinalCTA() {
   );
 }
 
+/* ------------------------------------------------------------------ *
+ * Stories — real use cases (OpenAI-style storytelling grid)
+ * ------------------------------------------------------------------ */
+
+function FoodThumb() {
+  return (
+    <div className="flex h-48 items-center justify-center bg-[#fbf2ea] px-6">
+      <div className="w-full max-w-[200px] rounded-2xl bg-white p-3">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-semibold text-stone-900">FreshBite</span>
+          <span className="rounded-full bg-signal-500/15 px-2 py-0.5 text-[9px] font-medium text-signal-700">12 min</span>
+        </div>
+        <div className="mt-2.5 flex items-center gap-2.5 rounded-xl bg-[#faf7f2] p-2">
+          <span className="h-9 w-9 rounded-lg bg-[#f0c89a]" />
+          <div className="flex-1 leading-tight">
+            <div className="text-[10.5px] font-medium text-stone-800">Pad Thai</div>
+            <div className="text-[9px] text-stone-400">Spicy · 540 cal</div>
+          </div>
+          <span className="tnum text-[11px] font-semibold text-stone-900">$14</span>
+        </div>
+        <div className="mt-2.5 rounded-lg bg-signal-600 py-1.5 text-center text-[10px] font-medium text-white">Order now</div>
+      </div>
+    </div>
+  );
+}
+
+function MessageThumb() {
+  return (
+    <div className="flex h-48 flex-col justify-center gap-2 bg-[#eef6f1] px-7">
+      <div className="max-w-[78%] self-start rounded-2xl rounded-bl-md bg-white px-3 py-2 text-[11px] text-stone-700">Can you move my 3pm to tomorrow?</div>
+      <div className="max-w-[80%] self-end rounded-2xl rounded-br-md bg-signal-600 px-3 py-2 text-[11px] text-white">Done — rescheduled to 10:30am and let them know ✓</div>
+      <div className="self-end text-[9px] text-stone-400">Delivered · handled by Herds</div>
+    </div>
+  );
+}
+
+function BrowserThumb() {
+  const sites = [
+    { t: "in", c: "bg-[#0a66c2]" }, { t: "X", c: "bg-stone-900" }, { t: "♪", c: "bg-stone-900" },
+    { t: "f", c: "bg-[#1877f2]" }, { t: "◎", c: "bg-[#e1306c]" },
+  ];
+  return (
+    <div className="flex h-48 items-center justify-center bg-[#eef1f7] px-6">
+      <div className="w-full overflow-hidden rounded-xl bg-white">
+        <div className="flex items-center gap-1.5 bg-[#f1efe9] px-3 py-2">
+          <span className="h-2 w-2 rounded-full bg-[#ff5f57]" /><span className="h-2 w-2 rounded-full bg-[#febc2e]" /><span className="h-2 w-2 rounded-full bg-[#28c840]" />
+          <span className="mx-auto rounded bg-white px-3 py-0.5 font-mono text-[9px] text-stone-400">linkedin.com</span>
+        </div>
+        <div className="flex items-center justify-center gap-2 px-4 py-5">
+          {sites.map((s, i) => (
+            <span key={i} className={`grid h-8 w-8 place-items-center rounded-lg ${s.c} text-[12px] font-bold text-white`}>{s.t}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const STORIES = [
+  { cat: "iOS · long-running", title: "A food-delivery app, shipped overnight", body: "An agent cloned the repo, ran Xcode, fixed the failing tests, and pushed to TestFlight by morning — on a Mac mini in the closet.", thumb: <FoodThumb /> },
+  { cat: "Automation", title: "iMessage that runs itself", body: "Triage texts, reschedule meetings, reply in your voice — native iMessage on a real Mac, driven by an agent around the clock.", thumb: <MessageThumb /> },
+  { cat: "Browser", title: "A real browser, not a patchy API", body: "Every cloud-browser tool was a workaround. Herds hands an agent the actual browser — sign into LinkedIn, scroll TikTok, post to Facebook, like a human.", thumb: <BrowserThumb /> },
+];
+
+const MORE_USES = ["Simulator UI tests", "TestFlight releases", "Headless CI farm", "Codesign & notarize", "Scrape any site", "Cross-post to socials", "Long-running jobs", "Mac-only toolchains"];
+
+function Stories() {
+  return (
+    <Section>
+      <Reveal>
+        <div className="flex items-end justify-between">
+          <div>
+            <div className="text-[12px] font-medium uppercase tracking-[0.16em] text-signal-600">Stories</div>
+            <h2 className="ed mt-3 text-[32px] leading-[1.05] text-stone-900 sm:text-[40px]">What people build on Herds</h2>
+          </div>
+          <Link href="/signup" className="hidden text-[13px] text-stone-500 transition-colors hover:text-stone-900 sm:block">Start building →</Link>
+        </div>
+      </Reveal>
+
+      <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} className="mt-12 grid grid-cols-1 gap-x-8 gap-y-12 md:grid-cols-3">
+        {STORIES.map((s) => (
+          <motion.div key={s.title} variants={fadeUp}>
+            <div className="overflow-hidden rounded-2xl">{s.thumb}</div>
+            <div className="mt-4 text-[11px] font-medium uppercase tracking-[0.14em] text-signal-600">{s.cat}</div>
+            <h3 className="ed mt-2 text-[20px] leading-snug text-stone-900">{s.title}</h3>
+            <p className="mt-2 text-[13.5px] leading-relaxed text-stone-500">{s.body}</p>
+          </motion.div>
+        ))}
+      </motion.div>
+
+      <Reveal delay={0.1}>
+        <div className="mt-12 flex flex-wrap gap-2.5">
+          {MORE_USES.map((u) => (
+            <span key={u} className="rounded-full bg-[#f3f2ee] px-3.5 py-1.5 text-[12.5px] text-stone-600">{u}</span>
+          ))}
+        </div>
+      </Reveal>
+    </Section>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Mega footer
+ * ------------------------------------------------------------------ */
+
+const FOOTER_COLS: { head: string; links: { label: string; href: string }[] }[] = [
+  { head: "Product", links: [
+    { label: "Overview", href: "/" }, { label: "Sandboxes", href: "/signup" }, { label: "Volumes", href: "/signup" },
+    { label: "Dashboard", href: "/dashboard" }, { label: "Pricing", href: "/signup" },
+  ] },
+  { head: "Use cases", links: [
+    { label: "iOS & macOS builds", href: "/signup" }, { label: "Browser automation", href: "/signup" },
+    { label: "iMessage", href: "/signup" }, { label: "CI runners", href: "/signup" }, { label: "Agent infrastructure", href: "/skill" },
+  ] },
+  { head: "Developers", links: [
+    { label: "Docs", href: GITHUB }, { label: "Python SDK", href: GITHUB }, { label: "CLI", href: GITHUB },
+    { label: "Agent skill", href: "/skill" }, { label: "Install", href: "/signup" },
+  ] },
+  { head: "Company", links: [
+    { label: "Spawn Labs", href: "https://spawnlabs.ai" }, { label: "GitHub", href: GITHUB },
+    { label: "Careers", href: "https://spawnlabs.ai" }, { label: "Contact", href: "mailto:teddy@spawnlabs.ai" },
+  ] },
+];
+
+function XMark() {
+  return <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.66l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z" /></svg>;
+}
+
 function Footer() {
   return (
-    <footer className="mx-auto max-w-[1080px] px-6 pb-14 pt-6">
-      <div className="h-px w-full bg-black/[0.07]" />
-      <div className="flex flex-col items-start justify-between gap-6 pt-8 sm:flex-row sm:items-center">
-        <div className="flex items-center gap-2.5">
-          <Logo size={20} />
-          <span className="text-[14px] font-semibold tracking-tight text-stone-900">Herds</span>
-          <span className="ml-2 text-[12.5px] text-stone-400">Your Mac is the cloud.</span>
+    <footer className="bg-[#f6f5f2]">
+      <div className="mx-auto max-w-[1080px] px-6 py-16">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-[1.4fr_repeat(4,1fr)]">
+          {/* brand */}
+          <div className="col-span-2 md:col-span-1">
+            <Link href="/" className="flex items-center gap-2.5">
+              <Logo size={24} />
+              <span className="text-[15px] font-semibold tracking-tight text-stone-900">Herds</span>
+            </Link>
+            <p className="mt-4 max-w-[15rem] text-[13px] leading-relaxed text-stone-500">
+              Connect any Mac and turn it into a programmable cloud runtime your agents drive from anywhere.
+            </p>
+            <Link href="/signup" className="mt-5 inline-flex items-center rounded-full bg-signal-600 px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-signal-500">Start free</Link>
+          </div>
+          {/* link columns */}
+          {FOOTER_COLS.map((col) => (
+            <div key={col.head}>
+              <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-stone-400">{col.head}</div>
+              <ul className="mt-4 space-y-2.5">
+                {col.links.map((l) => (
+                  <li key={l.label}>
+                    <Link href={l.href} className="text-[13px] text-stone-600 transition-colors hover:text-stone-900">{l.label}</Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
-        <nav className="flex items-center gap-6 text-[13px] text-stone-500">
-          <Link href={GITHUB} className="transition-colors hover:text-stone-900">Docs</Link>
-          <Link href={GITHUB} className="transition-colors hover:text-stone-900">GitHub</Link>
-          <Link href="https://spawnlabs.ai" className="transition-colors hover:text-stone-900">Spawn Labs</Link>
-        </nav>
+
+        <div className="mt-14 flex flex-col items-start justify-between gap-5 border-t border-black/[0.06] pt-7 sm:flex-row sm:items-center">
+          <span className="text-[12px] text-stone-400">© 2026 Herds — a Spawn Labs project. All rights reserved.</span>
+          <div className="flex items-center gap-4 text-stone-400">
+            <Link href={GITHUB} aria-label="GitHub" className="transition-colors hover:text-stone-900"><GitHubMark /></Link>
+            <Link href="https://x.com/spawnlabs" aria-label="X" className="transition-colors hover:text-stone-900"><XMark /></Link>
+            <span className="ml-1 inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[12px] text-stone-500">
+              <span className="h-1.5 w-1.5 rounded-full bg-signal-500" /> All systems operational
+            </span>
+          </div>
+        </div>
       </div>
-      <div className="mt-8 text-[12px] text-stone-400">© 2026 Herds — a Spawn Labs project. All rights reserved.</div>
     </footer>
   );
 }
@@ -730,6 +884,8 @@ export function Landing() {
           <Statement eyebrow="Security" title={<>A scoped key for every agent.</>} sub="Mint read, run, or admin tokens per task. Hand one to an agent, watch what it does, revoke it the moment you're done." />
           <TokensCard />
         </Section>
+
+        <Stories />
 
         <FinalCTA />
       </main>
