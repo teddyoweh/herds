@@ -1285,50 +1285,53 @@ function RunsEverything() {
 
 function StepCard({ step, label, chrome, children }: { step: string; label: string; chrome: string; children: React.ReactNode }) {
   return (
-    <motion.div variants={fadeUp}>
-      <div className="flex items-baseline gap-2">
+    <motion.div variants={fadeUp} className="flex h-full flex-col">
+      <div className="mb-3 flex items-baseline gap-2">
         <span className="font-mono text-[12px] text-signal-600">{step}</span>
         <span className="text-[13px] font-semibold tracking-tight text-stone-900">{label}</span>
       </div>
-      <div className="mt-3 overflow-hidden rounded-2xl bg-[#f6f5f2]">
-        <div className="flex items-center gap-1.5 bg-[#eceae4] px-3.5 py-2.5">
+      <div className="flex flex-1 flex-col overflow-hidden rounded-2xl bg-[#0d1117] shadow-[0_18px_50px_-22px_rgba(13,17,23,0.6)]">
+        <div className="flex items-center gap-1.5 border-b border-white/[0.06] bg-white/[0.04] px-3.5 py-2.5">
           <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" /><span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" /><span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
-          <span className="mx-auto font-mono text-[10.5px] text-stone-400">{chrome}</span>
+          <span className="mx-auto font-mono text-[10.5px] text-stone-500">{chrome}</span>
         </div>
-        <pre className="overflow-x-auto px-5 py-5 font-mono text-[12px] leading-[1.95]">{children}</pre>
+        <pre className="min-h-[176px] flex-1 overflow-x-auto px-5 py-4 font-mono text-[12px] leading-[2] text-stone-200">{children}</pre>
       </div>
     </motion.div>
   );
 }
 
 function GetStarted() {
-  const P = <span className="text-signal-600">$</span>;
-  const OK = <span className="text-signal-600">✓</span>;
+  const P = <span className="text-signal-400">$</span>;
+  const OK = <span className="text-signal-400">✓</span>;
+  const C = (t: string) => <span className="text-stone-500">{t}</span>;
   return (
     <Section>
-      <Reveal className="mx-auto max-w-2xl text-center">
+      <Reveal className="mx-auto max-w-xl text-center">
         <div className="text-[12px] font-medium uppercase tracking-[0.16em] text-signal-600">Get started</div>
-        <h2 className="ed mt-3 text-[32px] leading-[1.05] text-stone-900 sm:text-[44px]">Live in three commands</h2>
-        <p className="mx-auto mt-4 max-w-xl text-[15.5px] leading-relaxed text-stone-500">Install the CLI, put a Mac online, and drive it from Python — in under a minute.</p>
+        <h2 className="ed mt-2 text-[26px] leading-[1.1] text-stone-900 sm:text-[32px]">Live in three commands</h2>
       </Reveal>
-      <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} className="mt-14 grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <StepCard step="01" label="Install & sign in" chrome="zsh">
-          <div className="text-stone-800">{P} curl -fsSL herds.run/install | sh</div>
-          <div className="text-stone-800">{P} herds auth</div>
-          <div className="text-stone-500">{OK} Signed in as you@team.com</div>
+      <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} className="mt-10 grid grid-cols-1 items-stretch gap-5 lg:grid-cols-3">
+        <StepCard step="01" label="Install & sign in" chrome="your Mac — zsh">
+          <div>{P} <span className="text-stone-100">curl -fsSL herds.run/install | sh</span></div>
+          <div>{OK} <span className="text-stone-400">herds 0.1 installed</span></div>
+          <div>{P} <span className="text-stone-100">herds auth</span></div>
+          <div>{OK} <span className="text-stone-400">Signed in as you@team.com</span></div>
         </StepCard>
-        <StepCard step="02" label="Put a Mac online" chrome="zsh">
-          <div className="text-stone-800">{P} herds host</div>
-          <div className="text-stone-500">{OK} Live · <span className="text-signal-600">you.herds.run</span></div>
-          <div className="mt-2 text-stone-800">{P} herds connect studio.local</div>
-          <div className="text-stone-500">{OK} Mac Studio joined the fleet</div>
+        <StepCard step="02" label="Add Macs to the fleet" chrome="zsh">
+          <div>{C("# on your main Mac")}</div>
+          <div>{P} <span className="text-stone-100">herds host</span></div>
+          <div>{OK} <span className="text-stone-400">M3 Max · live · </span><span className="text-signal-400">you.herds.run</span></div>
+          <div className="pt-1.5">{C("# on a second Mac you own")}</div>
+          <div>{P} <span className="text-stone-100">herds connect you.herds.run hx_…</span></div>
+          <div>{OK} <span className="text-stone-400">Mac mini joined the fleet</span></div>
         </StepCard>
-        <StepCard step="03" label="Drive it from Python" chrome="agent.py">
-          <div><span className="text-[#9b4dca]">import</span> <span className="text-stone-800">herds</span></div>
-          <div className="text-stone-400"> </div>
-          <div><span className="text-stone-800">mac</span> = herds.<span className="text-stone-800">mac</span>()</div>
-          <div><span className="text-stone-800">mac</span>.<span className="text-stone-800">run</span>(<span className="text-[#c0392b]">&quot;xcodebuild -scheme App&quot;</span>)</div>
-          <div><span className="text-stone-800">url</span> = <span className="text-stone-800">mac</span>.<span className="text-stone-800">expose</span>(<span className="text-[#2d6df6]">3000</span>)</div>
+        <StepCard step="03" label="Build & drive it from Python" chrome="agent.py">
+          <div><span className="text-[#c792ea]">import</span> <span className="text-stone-100">herds</span></div>
+          <div> </div>
+          <div><span className="text-stone-100">mac</span> = herds.<span className="text-[#82aaff]">mac</span>(<span className="text-[#e5c07b]">&quot;m3max&quot;</span>)</div>
+          <div><span className="text-stone-100">mac</span>.<span className="text-[#82aaff]">run</span>(<span className="text-[#e5c07b]">&quot;xcodebuild -scheme App&quot;</span>)</div>
+          <div><span className="text-stone-100">url</span> = <span className="text-stone-100">mac</span>.<span className="text-[#82aaff]">expose</span>(<span className="text-[#6cb6ff]">3000</span>) {C("# → public URL")}</div>
         </StepCard>
       </motion.div>
     </Section>
