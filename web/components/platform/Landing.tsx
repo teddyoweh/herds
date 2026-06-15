@@ -158,72 +158,163 @@ function CurlPill() {
   );
 }
 
-function FleetRow({ name, kind, load, delay }: { name: string; kind: string; load: number; delay: number }) {
+/* ---- dashboard mockup pieces ---- */
+
+function NavIcon({ d }: { d: string }) {
+  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{d.split("|").map((p, i) => <path key={i} d={p} />)}</svg>;
+}
+const NAV = [
+  { label: "Overview", d: "M3 3h7v7H3z|M14 3h7v7h-7z|M14 14h7v7h-7z|M3 14h7v7H3z", active: true },
+  { label: "Sandboxes", d: "M21 8V7l-9-4-9 4v10l9 4 9-4v-1|M3.3 7 12 11l8.7-4|M12 11v10", active: false },
+  { label: "Machines", d: "M3 4h18v12H3z|M2 20h20|M9 16l-.5 4|M15 16l.5 4", active: false },
+  { label: "Volumes", d: "M4 5c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z|M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5", active: false },
+  { label: "Runs", d: "M5 3l14 9-14 9z", active: false },
+];
+
+function Spark({ points, tone = "text-signal-500" }: { points: string; tone?: string }) {
   return (
-    <div className={`flex items-center gap-3 rounded-xl ${INSET} px-3.5 py-3`}>
-      <Logo size={26} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between">
-          <span className="text-[12.5px] font-semibold tracking-tight text-stone-900">{name}</span>
-          <span className="tnum font-mono text-[11px] text-stone-400">{load}%</span>
-        </div>
-        <div className="mt-2 h-1 overflow-hidden rounded-full bg-black/[0.08]">
-          <motion.div initial={{ width: 0 }} whileInView={{ width: `${load}%` }} viewport={{ once: true }} transition={{ delay, duration: 1, ease: [0.22, 1, 0.36, 1] }} className="h-full rounded-full bg-signal-500" />
-        </div>
-        <div className="mt-1.5 text-[10px] text-stone-400">{kind}</div>
+    <svg viewBox="0 0 80 26" preserveAspectRatio="none" className={`h-6 w-full ${tone}`}>
+      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function StatTile({ label, value, delta, up = true, spark }: { label: string; value: string; delta: string; up?: boolean; spark: string }) {
+  return (
+    <div className="rounded-xl bg-[#f6f5f2] p-3">
+      <div className="text-[10px] font-medium uppercase tracking-[0.1em] text-stone-400">{label}</div>
+      <div className="mt-1.5 flex items-end justify-between">
+        <span className="tnum text-[22px] font-semibold leading-none tracking-tight text-stone-900">{value}</span>
+        <span className={`text-[10px] font-medium ${up ? "text-signal-600" : "text-stone-400"}`}>{delta}</span>
       </div>
+      <div className="mt-2"><Spark points={spark} tone={up ? "text-signal-500" : "text-stone-300"} /></div>
     </div>
   );
 }
 
-const RUN_LINES: { node: React.ReactNode; cmd?: boolean }[] = [
-  { cmd: true, node: <><span className="text-signal-600">$</span> <span className="text-stone-800">herds.mac(&quot;m3max&quot;).run(&quot;xcodebuild&quot;)</span></> },
-  { node: <><span className="text-stone-400">→</span> building · M3 Max · Mac Studio</> },
-  { node: <><span className="text-signal-600">✓</span> Build succeeded · <span className="text-stone-600">42.1s</span></> },
-  { node: <><span className="text-signal-600">↗</span> exposed <span className="text-stone-500">:3000</span> → <span className="text-signal-600 underline decoration-signal-500/40 underline-offset-2">app.you.herds.run</span></> },
+function FleetRow({ name, kind, load, delay }: { name: string; kind: string; load: number; delay: number }) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl bg-[#f6f5f2] px-3 py-2.5">
+      <Logo size={24} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between">
+          <span className="text-[12px] font-semibold tracking-tight text-stone-900">{name}</span>
+          <span className="tnum text-[10.5px] text-stone-400">{load}%</span>
+        </div>
+        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-black/[0.07]">
+          <motion.div initial={{ width: 0 }} whileInView={{ width: `${load}%` }} viewport={{ once: true }} transition={{ delay, duration: 1, ease: [0.22, 1, 0.36, 1] }} className="h-full rounded-full bg-signal-500" />
+        </div>
+        <div className="mt-1 text-[9.5px] text-stone-400">{kind}</div>
+      </div>
+      <span className="inline-flex h-1.5 w-1.5 shrink-0 animate-breathe rounded-full bg-signal-500" />
+    </div>
+  );
+}
+
+const ACTIVITY: { tone: "ok" | "link" | "dot"; head: React.ReactNode; meta: string; time: string }[] = [
+  { tone: "ok", head: <>Build succeeded <span className="text-stone-400">· App.ipa</span></>, meta: "m3max · 42.1s", time: "2m" },
+  { tone: "link", head: <>Exposed <span className="text-signal-600">app.you.herds.run</span></>, meta: ":3000 · TLS", time: "5m" },
+  { tone: "ok", head: <>Tests passed <span className="text-stone-400">· 128</span></>, meta: "swift test", time: "8m" },
+  { tone: "dot", head: <>Sandbox started</>, meta: "sbx_9fa2 · m2pro", time: "14m" },
+  { tone: "ok", head: <>Snapshot saved <span className="text-stone-400">· derived-data</span></>, meta: "84 GB volume", time: "21m" },
 ];
+
+function ActivityRow({ a }: { a: (typeof ACTIVITY)[number] }) {
+  const dot =
+    a.tone === "ok" ? <Check size={16} />
+    : a.tone === "link" ? <span className="grid h-4 w-4 place-items-center rounded-full bg-signal-500/15 text-signal-600"><svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 11 11 5M6 5h5v5" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
+    : <span className="h-4 w-4 rounded-full bg-stone-200" />;
+  return (
+    <div className="flex items-center gap-2.5 py-1.5">
+      {dot}
+      <div className="min-w-0 flex-1 leading-tight">
+        <div className="truncate text-[12px] text-stone-800">{a.head}</div>
+        <div className="text-[10px] text-stone-400">{a.meta}</div>
+      </div>
+      <span className="shrink-0 text-[10px] tabular-nums text-stone-400">{a.time}</span>
+    </div>
+  );
+}
 
 function DashboardCard() {
   return (
-    <motion.div initial={{ opacity: 0, y: 28, scale: 0.99 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: 0.4, duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-      className={`relative mx-auto w-full max-w-[940px] overflow-hidden rounded-3xl ${CARD}`}>
+    <motion.div
+      initial={{ opacity: 0, y: 28, scale: 0.99 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ delay: 0.4, duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+      className={`relative mx-auto w-full max-w-[1000px] overflow-hidden rounded-3xl ${CARD}`}
+    >
       <Chrome title="you.herds.run" />
-      <div className="grid sm:grid-cols-[1.05fr_1fr]">
-        <div className="p-5 text-left">
-          <div className="flex items-center justify-between">
-            <span className="text-[12px] font-semibold tracking-tight text-stone-700">Your fleet</span>
-            <span className="inline-flex items-center gap-1.5 text-[11px] text-stone-500"><span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-500" /> 3 online</span>
-          </div>
-          <div className="mt-4 space-y-2.5">
-            <FleetRow name="M3 Max" kind="Mac Studio · 3 sandboxes" load={38} delay={0.7} />
-            <FleetRow name="M2 Pro" kind="Mac mini · 5 sandboxes" load={71} delay={0.85} />
-            <FleetRow name="M3" kind="MacBook Air · 1 sandbox" load={12} delay={1.0} />
-          </div>
-        </div>
-        <div className="flex flex-col p-5 text-left">
-          <div className="flex items-center justify-between">
-            <span className="text-[12px] font-semibold tracking-tight text-stone-700">Live run</span>
-            <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-stone-400"><span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-500" /> m3max</span>
-          </div>
-          <motion.div className="mt-4 space-y-1.5 font-mono text-[11.5px] leading-[1.7] tnum" initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.45, delayChildren: 0.7 } } }}>
-            {RUN_LINES.map((l, i) => (
-              <motion.div key={i} variants={{ hidden: { opacity: 0, y: 3 }, show: { opacity: 1, y: 0 } }} transition={{ duration: 0.25 }} className={l.cmd ? "text-stone-800" : "text-stone-500"}>
-                {l.node}
-                {i === RUN_LINES.length - 1 && <span className="ml-1 inline-block h-[12px] w-[6px] translate-y-[2px] animate-breathe bg-signal-500/80 align-middle" />}
-              </motion.div>
-            ))}
-          </motion.div>
-          <div className="mt-auto pt-5">
-            <div className="text-[10px] uppercase tracking-[0.14em] text-stone-400">Exposed</div>
-            <div className="mt-2.5 space-y-1.5">
-              {[{ port: ":3000", url: "app.you.herds.run" }, { port: ":8000", url: "api.you.herds.run" }].map((e) => (
-                <div key={e.port} className={`flex items-center gap-2 rounded-lg ${INSET} px-2.5 py-1.5 font-mono text-[11px]`}>
-                  <span className="text-stone-500">{e.port}</span><span className="text-stone-300">→</span><span className="truncate text-signal-600">{e.url}</span>
-                </div>
-              ))}
+      <div className="grid grid-cols-1 sm:grid-cols-[176px_1fr]">
+        {/* sidebar */}
+        <aside className="hidden flex-col gap-4 p-4 sm:flex">
+          <div className="flex items-center gap-2 px-1">
+            <Logo size={22} />
+            <div className="leading-none">
+              <div className="text-[12.5px] font-semibold text-stone-900">spawnlabs</div>
+              <div className="mt-0.5 text-[9.5px] text-stone-400">Team · Pro</div>
             </div>
           </div>
-        </div>
+          <nav className="space-y-0.5">
+            {NAV.map((n) => (
+              <div key={n.label} className={`flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[12.5px] ${n.active ? "bg-white font-medium text-stone-900" : "text-stone-500"}`}>
+                <span className={n.active ? "text-signal-600" : "text-stone-400"}><NavIcon d={n.d} /></span>
+                {n.label}
+              </div>
+            ))}
+          </nav>
+          <div className="mt-auto flex items-center gap-2 rounded-lg bg-white px-2.5 py-2">
+            <span className="grid h-6 w-6 place-items-center rounded-full bg-signal-500/15 text-[10px] font-semibold text-signal-700">T</span>
+            <div className="leading-none">
+              <div className="text-[11px] font-medium text-stone-800">Teddy</div>
+              <div className="mt-0.5 text-[9px] text-stone-400">teddy@spawnlabs.ai</div>
+            </div>
+          </div>
+        </aside>
+
+        {/* main canvas */}
+        <main className="bg-white p-5 text-left">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[15px] font-semibold tracking-tight text-stone-900">Overview</div>
+              <div className="mt-0.5 text-[11px] text-stone-400">Your fleet at a glance</div>
+            </div>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-signal-500/10 px-2.5 py-1 text-[11px] font-medium text-signal-700">
+              <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-500" /> 3 Macs online
+            </span>
+          </div>
+
+          {/* stat tiles */}
+          <div className="mt-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+            <StatTile label="Machines" value="3" delta="online" spark="0,18 16,16 32,17 48,8 64,10 80,6" />
+            <StatTile label="Sandboxes" value="9" delta="+2" spark="0,20 16,14 32,16 48,9 64,11 80,5" />
+            <StatTile label="Runs today" value="1,284" delta="+18%" spark="0,22 16,17 32,12 48,14 64,7 80,4" />
+            <StatTile label="Avg build" value="42s" delta="-6%" up={false} spark="0,8 16,12 32,9 48,13 64,11 80,15" />
+          </div>
+
+          {/* fleet + activity */}
+          <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[1.05fr_1fr]">
+            <section>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-stone-400">Fleet</span>
+                <span className="text-[10.5px] text-stone-400">CPU</span>
+              </div>
+              <div className="space-y-2">
+                <FleetRow name="M3 Max" kind="Mac Studio · 3 sandboxes" load={38} delay={0.7} />
+                <FleetRow name="M2 Pro" kind="Mac mini · 5 sandboxes" load={71} delay={0.85} />
+                <FleetRow name="M3" kind="MacBook Air · 1 sandbox" load={12} delay={1.0} />
+              </div>
+            </section>
+            <section>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-stone-400">Live activity</span>
+                <span className="inline-flex items-center gap-1.5 text-[10px] text-stone-400"><span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-500" /> live</span>
+              </div>
+              <div className="rounded-xl bg-[#f6f5f2] px-3 py-1.5">
+                {ACTIVITY.map((a, i) => <ActivityRow key={i} a={a} />)}
+              </div>
+            </section>
+          </div>
+        </main>
       </div>
     </motion.div>
   );
