@@ -359,6 +359,77 @@ def mcp_serve(
 
 
 @app.command()
+def doctor():
+    """Check macOS permissions + readiness for driving real apps (Chrome/Xcode/iMessage)."""
+    import os
+    import subprocess
+    import tempfile
+
+    def _run(args, timeout=10):
+        try:
+            return subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+        except Exception:  # noqa: BLE001
+            return None
+
+    # Screen Recording — a real capture is sizable; a denied one errors or is tiny.
+    shot = os.path.join(tempfile.gettempdir(), "herds_doctor.png")
+    r = _run(["screencapture", "-x", shot])
+    screen = bool(r and r.returncode == 0 and os.path.exists(shot) and os.path.getsize(shot) > 5000)
+    if os.path.exists(shot):
+        try:
+            os.remove(shot)
+        except OSError:
+            pass
+
+    # Accessibility — System Events reports it directly.
+    r = _run(["osascript", "-e", 'tell application "System Events" to get UI elements enabled'])
+    access = bool(r and r.stdout.strip() == "true")
+
+    # Full Disk Access — reading a TCC-protected file only works when granted.
+    try:
+        with open(os.path.expanduser("~/Library/Application Support/com.apple.TCC/TCC.db"), "rb") as fh:
+            fh.read(16)
+        fda = True
+    except Exception:  # noqa: BLE001
+        fda = False
+
+    r = _run(["launchctl", "managername"])
+    gui = bool(r and "Aqua" in (r.stdout or ""))
+    chrome = os.path.exists("/Applications/Google Chrome.app")
+    r = _run(["xcode-select", "-p"])
+    xcode = bool(r and r.returncode == 0 and (r.stdout or "").strip())
+
+    table = Table(title="herds doctor — macOS readiness")
+    table.add_column("Capability")
+    table.add_column("Status")
+    table.add_column("Unlocks", style="dim")
+
+    def row(name, ok, unlocks):
+        table.add_row(name, "[green]✓ granted[/green]" if ok else "[red]✗ missing[/red]", unlocks)
+
+    row("GUI login session", gui, "driving GUI apps at all")
+    row("Screen Recording", screen, "mac.screenshot()")
+    row("Accessibility", access, "mac.ui.type / clicks")
+    row("Full Disk Access", fda, "read iMessage chat.db, app data")
+    table.add_row("Automation", "[yellow]— per-app[/yellow]", "control Chrome/Messages (prompts on first use)")
+    row("Chrome installed", chrome, "mac.chrome()")
+    row("Xcode tools", xcode, "xcodebuild / simctl")
+    console.print(table)
+
+    panes = {"Screen Recording": "Privacy_ScreenCapture", "Accessibility": "Privacy_Accessibility",
+             "Full Disk Access": "Privacy_AllFiles"}
+    missing = [n for n, ok in [("Screen Recording", screen), ("Accessibility", access),
+                               ("Full Disk Access", fda)] if not ok]
+    if missing:
+        console.print("\n[bold]Grant the missing ones[/bold] (to whatever runs `herds host`):")
+        for n in missing:
+            console.print(f"  • {n}: [cyan]open 'x-apple.systempreferences:com.apple.preference.security?{panes[n]}'[/cyan]")
+        console.print("[dim]Then restart `herds host`. (TCC is per-app, so grant the app you run it from.)[/dim]")
+    else:
+        console.print("\n[green]✓ All set — your Mac can drive real apps.[/green]")
+
+
+@app.command()
 def relay(
     port: int = typer.Option(8888, help="Relay port."),
     domain: str = typer.Option("herds.run", help="Wildcard domain for host subdomains."),

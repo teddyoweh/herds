@@ -70,6 +70,30 @@ mac.ui.type("hello"); mac.ui.key("return"); mac.ui.hotkey("cmd", "s")  # keyboar
 `screenshot` / `mac.ui.*` need Screen Recording / Accessibility granted to the
 process running `herds host` (System Settings → Privacy & Security).
 
+## Drive real apps (the moat)
+
+`mac.run` runs in the user's REAL login session (not a sandbox), so it drives real
+apps with their real logins/data. Run `herds doctor` to check macOS permissions.
+
+```python
+# Chrome — the user's real profile (cookies, logins):
+c = mac.chrome("https://news.ycombinator.com")
+c.js("document.querySelectorAll('.titleline a')[0].innerText")   # run JS in the tab
+# (js() needs Chrome's View → Developer → Allow JavaScript from Apple Events)
+# For Playwright: mac.chrome(cdp_port=9222) then attach over the DevTools Protocol.
+
+# Xcode / Simulator — builds are headless; the Simulator needs the GUI session:
+mac.run("xcodebuild -scheme App -destination 'platform=iOS Simulator,name=iPhone 16' test")
+mac.run("xcrun simctl boot 'iPhone 16'; xcrun simctl launch booted com.you.App")
+
+# iMessage — real account + history (needs Full Disk Access + Automation):
+mac.run("sqlite3 ~/Library/Messages/chat.db 'select text from message order by date desc limit 5'")
+mac.run(['osascript','-e','tell application "Messages" to send "hi" to buddy "+15551234567"'])
+```
+
+Driving GUI apps needs: a **logged-in GUI session** (use `herds install` → a
+LaunchAgent), plus the right permissions (`herds doctor` lists what's missing).
+
 ## Sandboxes — isolated, persistent workspaces
 
 ```python

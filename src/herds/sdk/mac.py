@@ -270,6 +270,27 @@ class Mac:
         """Keyboard/GUI control (needs Accessibility permission): ``mac.ui.type(...)``."""
         return _UI(self)
 
+    def chrome(self, url: Optional[str] = None, *, cdp_port: Optional[int] = None) -> "_Chrome":
+        """Launch & drive Chrome in the Mac's real session (your profile/logins)::
+
+            c = mac.chrome("https://news.ycombinator.com")
+            c.js("document.title")              # run JS in the active tab
+            c.open("https://example.com")
+
+        Pass ``cdp_port`` to also enable the DevTools Protocol (drive with Playwright
+        over the exposed port). ``js()`` needs Chrome's *View → Developer → Allow
+        JavaScript from Apple Events*, plus Automation permission for the host."""
+        args = []
+        if cdp_port:
+            args += [f"--remote-debugging-port={cdp_port}", "--remote-allow-origins=*"]
+        self.run(["/bin/zsh", "-lc", f'open -na "Google Chrome" --args {" ".join(args)}'], timeout=30)
+        c = _Chrome(self, cdp_port)
+        if url:
+            import time
+            time.sleep(1.5)  # let Chrome come up before the first AppleScript
+            c.open(url)
+        return c
+
     def __repr__(self) -> str:
         return f"Mac({self.machine_id!r})"
 
@@ -330,6 +351,46 @@ class _UI:
         using = ", ".join(_MODIFIERS[m.lower()] for m in mods)
         clause = f" using {{{using}}}" if using else ""
         self._osa(f'tell application "System Events" to keystroke {_as(final)}{clause}')
+
+
+class _Chrome:
+    """Drive Google Chrome in the Mac's real session via AppleScript."""
+
+    def __init__(self, mac: "Mac", cdp_port: Optional[int] = None):
+        self._m = mac
+        self.cdp_port = cdp_port  # set if launched with the DevTools Protocol
+
+    def _osa(self, body: str) -> str:
+        r = self._m.run(["osascript", "-e", f'tell application "Google Chrome" to {body}'], timeout=30)
+        if not r.ok:
+            from .client import HerdsError
+            raise HerdsError(f"chrome: {r.stderr.strip() or 'grant Automation permission for Chrome?'}")
+        return r.stdout.strip()
+
+    def open(self, url: str) -> None:
+        """Open a URL in the front window."""
+        self._osa(f"open location {_as(url)}")
+
+    def js(self, code: str) -> str:
+        """Run JavaScript in the active tab and return the result. Needs Chrome's
+        'View → Developer → Allow JavaScript from Apple Events'."""
+        return self._osa(f"execute active tab of front window javascript {_as(code)}")
+
+    def url(self) -> str:
+        """URL of the active tab."""
+        return self._osa("return URL of active tab of front window")
+
+    def title(self) -> str:
+        """Title of the active tab."""
+        return self._osa("return title of active tab of front window")
+
+    def tabs(self) -> list:
+        """[(title, url)] of every tab in the front window."""
+        titles = self._osa("return title of every tab of front window")
+        urls = self._osa("return URL of every tab of front window")
+        ts = [t.strip() for t in titles.split(",")]
+        us = [u.strip() for u in urls.split(",")]
+        return list(zip(ts, us))
 
 
 def mac(

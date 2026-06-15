@@ -285,6 +285,7 @@ herds auth               sign in (free) — get a stable, branded link
 herds host               self-host: control plane + dashboard + public link
 herds skill [--install]  print/install the agent skill (SKILL.md) for Claude Code
 herds mcp                MCP server — expose this Mac as tools for ANY agent
+herds doctor             check macOS permissions for driving real apps
 herds open               open your live dashboard in the browser
 herds token new|ls|revoke   scoped, revocable tokens (read|run|admin) for agents/CI
 herds schedule add|ls|rm    recurring cron jobs that run on your Mac
