@@ -1015,9 +1015,10 @@ function StatusIcons() {
 
 function FoodThumb() {
   return (
-    <div className="relative flex h-48 justify-center overflow-hidden bg-gradient-to-b from-[#fdf4ec] to-[#f9ead9] pt-4">
-      {/* iPhone */}
-      <div className="relative w-[158px] rounded-[36px] bg-gradient-to-b from-[#43434a] via-[#1f1f22] to-[#3a3a40] p-[3px] shadow-[0_26px_60px_-18px_rgba(20,24,33,0.5)]">
+    <div className="relative h-48 overflow-hidden bg-gradient-to-b from-[#fdf4ec] to-[#f9ead9]">
+      {/* iPhone — absolutely placed so it keeps its natural height and the card
+          simply crops the bottom (a clean straight cut, no frame-corner pinch) */}
+      <div className="absolute left-1/2 top-5 w-[158px] -translate-x-1/2 rounded-[36px] bg-gradient-to-b from-[#43434a] via-[#1f1f22] to-[#3a3a40] p-[3px] shadow-[0_26px_60px_-18px_rgba(20,24,33,0.5)]">
         <div className="overflow-hidden rounded-[33px] bg-white">
           {/* status bar */}
           <div className="relative flex items-center justify-between px-4 pb-1 pt-2 text-[8.5px] font-semibold text-stone-900">
