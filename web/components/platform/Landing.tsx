@@ -1038,6 +1038,12 @@ function FoodThumb() {
               <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" strokeLinecap="round" /></svg>
               Search restaurants
             </div>
+            {/* category chips */}
+            <div className="mt-2 flex gap-1.5">
+              {[["#ffe6c2", "Pizza"], ["#ffd6d6", "Sushi"], ["#d8f0dc", "Thai"], ["#e3e9ff", "Bowls"]].map(([bg, t]) => (
+                <span key={t} className="flex items-center gap-1 rounded-full px-2 py-1 text-[7.5px] font-medium text-stone-700" style={{ backgroundColor: bg }}><span className="h-1.5 w-1.5 rounded-full bg-white/70" />{t}</span>
+              ))}
+            </div>
             {/* hero restaurant card */}
             <div className="mt-2.5 overflow-hidden rounded-xl bg-white shadow-[0_2px_10px_-4px_rgba(20,24,33,0.18)]">
               <div className="relative h-[58px] bg-gradient-to-br from-[#ffb15a] via-[#ff8a3d] to-[#f2643a]">
@@ -1056,9 +1062,26 @@ function FoodThumb() {
                 </div>
               </div>
             </div>
+            {/* second restaurant (gives the phone height so the card crops cleanly) */}
+            <div className="mt-2 flex items-center gap-2.5">
+              <span className="h-9 w-9 shrink-0 rounded-lg bg-gradient-to-br from-[#9be7a8] to-[#4cc46a]" />
+              <div className="min-w-0 flex-1 leading-tight">
+                <div className="text-[9.5px] font-semibold text-stone-900">Green Bowl Co.</div>
+                <div className="text-[8px] text-stone-400">Healthy · 18 min · $$</div>
+              </div>
+              <span className="flex items-center gap-0.5 text-[8.5px] font-medium text-stone-700"><span className="text-[#ff9500]">★</span> 4.8</span>
+            </div>
+            <div className="mt-2 flex items-center gap-2.5">
+              <span className="h-9 w-9 shrink-0 rounded-lg bg-gradient-to-br from-[#ffd27a] to-[#f59e3c]" />
+              <div className="min-w-0 flex-1 leading-tight">
+                <div className="text-[9.5px] font-semibold text-stone-900">Nonna&rsquo;s Pizza</div>
+                <div className="text-[8px] text-stone-400">Italian · 22 min · $</div>
+              </div>
+              <span className="flex items-center gap-0.5 text-[8.5px] font-medium text-stone-700"><span className="text-[#ff9500]">★</span> 4.7</span>
+            </div>
           </div>
           {/* tab bar */}
-          <div className="mt-1 flex items-center justify-around border-t border-black/[0.06] px-2 pb-2 pt-1.5 text-stone-300">
+          <div className="mt-2 flex items-center justify-around border-t border-black/[0.06] px-2 pb-2 pt-1.5 text-stone-300">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-signal-600"><path d="M12 3 4 9.5V21h5v-6h6v6h5V9.5z" /></svg>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" strokeLinecap="round" /></svg>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2h9l3 3v17l-3-2-3 2-3-2-3 2V4z" strokeLinejoin="round" /></svg>
