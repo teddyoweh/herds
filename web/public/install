@@ -1,0 +1,55 @@
+#!/bin/sh
+# Herds installer — turn this Mac into a programmable runtime.
+#
+#   curl -fsSL herds.run/install | sh
+#
+# Optionally connect to a fleet in the same command:
+#   curl -fsSL herds.run/install | sh -s -- <link> <token>
+#
+set -e
+
+g() { printf "\033[32m%s\033[0m\n" "$1"; }
+d() { printf "\033[2m%s\033[0m\n" "$1"; }
+e() { printf "\033[31m%s\033[0m\n" "$1" >&2; }
+
+g "Installing Herds…"
+
+# Prefer uv (fast, isolated tool install). Install it if missing.
+if ! command -v uv >/dev/null 2>&1; then
+  d "  installing uv…"
+  curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1 || true
+fi
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+
+if command -v uv >/dev/null 2>&1; then
+  uv tool install herds >/dev/null 2>&1 || uv tool install herds
+  uv tool update-shell >/dev/null 2>&1 || true
+elif command -v pipx >/dev/null 2>&1; then
+  pipx install herds
+elif command -v pip3 >/dev/null 2>&1; then
+  pip3 install --user herds
+else
+  e "No uv, pipx, or pip3 found. Install Python 3.11+ (e.g. \`brew install python\`) and re-run."
+  exit 1
+fi
+
+export PATH="$HOME/.local/bin:$PATH"
+hash -r 2>/dev/null || true
+
+g "✓ Herds installed"
+herds version 2>/dev/null || true
+
+# If a link + token were passed, connect straight away.
+if [ -n "$1" ]; then
+  echo
+  g "Joining the fleet…"
+  exec herds connect "$1" "$2"
+fi
+
+echo
+d "Next steps:"
+echo "  herds auth                       # sign in (stable link)"
+echo "  herds host                       # put THIS Mac online"
+echo "  herds connect <link> <token>     # join another host's fleet"
+echo
+d "Restart your shell if \`herds\` isn't found (uv added it to your PATH)."
