@@ -481,7 +481,8 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
         f"[green]✓ Herds host is live[/green]\n\n"
         f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]\n  {link_note}\n\n"
         f"[bold]Host token[/bold]\n  [yellow]{token}[/yellow] [dim](stable)[/dim]\n\n"
-        f"[bold]Add another Mac[/bold]\n  [dim]herds connect {public_url} {token}[/dim]",
+        f"[bold]Add another Mac[/bold] [dim](even a fresh one — installs + joins)[/dim]\n"
+        f"  [cyan]curl -fsSL herds.run/install | sh -s -- {public_url} {token}[/cyan]",
         title="herds host", border_style="green",
     ))
     # The magic link signs the dashboard in on open. Printed outside the panel so it
