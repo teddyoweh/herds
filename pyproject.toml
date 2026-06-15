@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "herds"
-version = "0.1.16"
+version = "0.1.17"
 description = "Connect your Mac to the internet and turn it into a programmable runtime. Modal, for Macs."
 readme = "README.md"
 requires-python = ">=3.11"

@@ -236,29 +236,54 @@ class Fleet:
         return [Mac(m["machine_id"], client=self._client)
                 for m in self._client.list_machines() if m.get("status") == "online"]
 
-    def map(self, command, items, *, max_workers: Optional[int] = None, **run_kwargs) -> list["Result"]:
+    def map(self, command, items, *, per_mac: int = 4, **run_kwargs) -> list["Result"]:
         """Run a command across many inputs, **distributed over every online Mac**::
 
             herds.fleet().map("pytest {}", ALL_TEST_DIRS)   # N Macs → N× throughput
 
-        Items are round-robined across Macs and run in parallel; returns one
-        ``Result`` per item, in input order.
+        Work-stealing, not fixed round-robin: each Mac runs up to ``per_mac`` tasks
+        at a time and pulls the next item the moment it's free — so faster/idler
+        Macs naturally do more, and none gets overloaded. Returns one ``Result``
+        per item, in input order; raises on the first task that fails.
         """
-        import concurrent.futures as cf
+        import queue
+        import threading
 
         macs = self.macs()
         if not macs:
             from .client import HerdsError
             raise HerdsError("No Macs are connected — run `herds host` on at least one Mac.")
+
         items = list(items)
+        work: "queue.Queue[tuple[int, object]]" = queue.Queue()
+        for pair in enumerate(items):
+            work.put(pair)
+        results: list = [None] * len(items)
+        errors: list = []
 
-        def _one(pair):
-            i, item = pair
-            cmd = command(item) if callable(command) else command.format(item)
-            return macs[i % len(macs)].run(cmd, **run_kwargs)
+        def _worker(mc: "Mac") -> None:
+            while not errors:
+                try:
+                    i, item = work.get_nowait()
+                except queue.Empty:
+                    return
+                cmd = command(item) if callable(command) else command.format(item)
+                try:
+                    results[i] = mc.run(cmd, **run_kwargs)
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(exc)
+                    return
 
-        with cf.ThreadPoolExecutor(max_workers=max_workers or max(1, len(items))) as ex:
-            return list(ex.map(_one, enumerate(items)))
+        # per_mac workers per Mac, all pulling from one shared queue (work-stealing).
+        threads = [threading.Thread(target=_worker, args=(mc,), daemon=True)
+                   for mc in macs for _ in range(max(1, per_mac))]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        if errors:
+            raise errors[0]
+        return results
 
 
 def fleet(*, url: Optional[str] = None, token: Optional[str] = None,
