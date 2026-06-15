@@ -550,14 +550,15 @@ def _plist_contents(herds_bin: str) -> str:
   <key>ProgramArguments</key>
   <array>
     <string>{herds_bin}</string>
-    <string>connect</string>
+    <string>host</string>
   </array>
   <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key>
-  <dict><key>NetworkState</key><true/><key>SuccessfulExit</key><false/></dict>
+  <!-- Always keep the host running; it handles network drops itself (in-process
+       reconnect), so we don't gate on NetworkState (which would kill it on a blip). -->
+  <key>KeepAlive</key><true/>
   <key>ThrottleInterval</key><integer>10</integer>
-  <key>StandardOutPath</key><string>{config.LOGS_DIR / 'daemon.out.log'}</string>
-  <key>StandardErrorPath</key><string>{config.LOGS_DIR / 'daemon.err.log'}</string>
+  <key>StandardOutPath</key><string>{config.LOGS_DIR / 'host.out.log'}</string>
+  <key>StandardErrorPath</key><string>{config.LOGS_DIR / 'host.err.log'}</string>
 </dict>
 </plist>
 """
