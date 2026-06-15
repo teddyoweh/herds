@@ -234,7 +234,7 @@ function Hero() {
     <section className="relative overflow-hidden">
       <div className="relative mx-auto max-w-[1080px] px-6 pb-16 pt-14 text-center">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex justify-center"><Eyebrow>Modal, for Macs</Eyebrow></motion.div>
-        <motion.h1 variants={stagger} initial="hidden" animate="show" className="ed mx-auto mt-6 max-w-[16ch] text-[12.5vw] leading-[0.98] text-stone-900 sm:text-[64px] lg:text-[80px]">
+        <motion.h1 variants={stagger} initial="hidden" animate="show" className="ed mx-auto mt-6 max-w-[16ch] text-[10vw] leading-[1] text-stone-900 sm:text-[48px] lg:text-[60px]">
           <motion.span variants={fadeUp} className="block">Give your agents</motion.span>
           <motion.span variants={fadeUp} className="block">real Macs.</motion.span>
         </motion.h1>
