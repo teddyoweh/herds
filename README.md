@@ -165,6 +165,10 @@ results = mac.map(lambda v: f"swift build -c {v}", ["debug", "release"])
 
 # spread across EVERY connected Mac (more Macs → more throughput):
 herds.fleet().map("pytest {}", ALL_TEST_DIRS)
+
+# smart routing — the IDLEST online Mac with a capability (tag or chip):
+herds.mac(tag="xcode-26").run("xcodebuild …")
+herds.machines(tag="m4-max")          # filter the fleet by label/chip
 ```
 
 One Mac handles many concurrent commands — verified at 10 parallel runs — so a
@@ -292,6 +296,7 @@ herds schedule add|ls|rm    recurring cron jobs that run on your Mac
 herds connect <link> <token>   join another Mac to a host
 herds serve              run a bare control plane locally
 herds machines           list your connected Macs
+herds tag <id> <tags…>   label a Mac for routing  ·  herds tags  ·  herds untag <id> <tag>
 herds run -- <cmd>       run a command on a Mac (streams output)
 herds shell -c <cmd>     one-off command (SSH-equivalent)
 herds logs               recent jobs

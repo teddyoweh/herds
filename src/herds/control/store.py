@@ -26,6 +26,11 @@ CREATE TABLE IF NOT EXISTS machines (
     status       TEXT NOT NULL DEFAULT 'offline',
     last_seen_ms INTEGER
 );
+CREATE TABLE IF NOT EXISTS machine_tags (
+    machine_id TEXT NOT NULL,
+    tag        TEXT NOT NULL,
+    PRIMARY KEY (machine_id, tag)
+);
 CREATE TABLE IF NOT EXISTS api_keys (
     key        TEXT PRIMARY KEY,
     owner      TEXT NOT NULL,
@@ -198,13 +203,45 @@ class Store:
             rows = self.db.execute("SELECT * FROM machines WHERE owner=?", (owner,)).fetchall()
         else:
             rows = self.db.execute("SELECT * FROM machines").fetchall()
-        return [self._machine_row(r) for r in rows]
+        out = [self._machine_row(r) for r in rows]
+        for m in out:
+            m["tags"] = self.tags_for(m["machine_id"])
+        return out
 
     def get_machine(self, machine_id: str) -> Optional[dict]:
         r = self.db.execute(
             "SELECT * FROM machines WHERE machine_id=?", (machine_id,)
         ).fetchone()
-        return self._machine_row(r) if r else None
+        if not r:
+            return None
+        m = self._machine_row(r)
+        m["tags"] = self.tags_for(machine_id)
+        return m
+
+    # -- tags (labels for routing) ------------------------------------------ #
+
+    def tags_for(self, machine_id: str) -> list:
+        rows = self.db.execute(
+            "SELECT tag FROM machine_tags WHERE machine_id=? ORDER BY tag", (machine_id,)
+        ).fetchall()
+        return [r["tag"] for r in rows]
+
+    def add_tags(self, machine_id: str, tags: list) -> None:
+        for tag in tags:
+            t = tag.strip().lower()
+            if t:
+                self.db.execute(
+                    "INSERT OR IGNORE INTO machine_tags (machine_id, tag) VALUES (?, ?)",
+                    (machine_id, t),
+                )
+        self.db.commit()
+
+    def remove_tag(self, machine_id: str, tag: str) -> bool:
+        cur = self.db.execute(
+            "DELETE FROM machine_tags WHERE machine_id=? AND tag=?", (machine_id, tag.strip().lower())
+        )
+        self.db.commit()
+        return cur.rowcount > 0
 
     @staticmethod
     def _machine_row(r: sqlite3.Row) -> dict:

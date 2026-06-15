@@ -393,14 +393,38 @@ class _Chrome:
         return list(zip(ts, us))
 
 
+def _matches_tag(m: dict, tag: str) -> bool:
+    """A machine matches a tag by an explicit label or its chip (e.g. 'apple-m4-pro')."""
+    t = tag.strip().lower()
+    if t in (x.lower() for x in (m.get("tags") or [])):
+        return True
+    chip = ((m.get("info") or {}).get("chip") or "").lower().replace(" ", "-")
+    return bool(chip) and t in chip
+
+
+def _route_to_tag(c: HerdsClient, tag: str) -> str:
+    """Pick the idlest ONLINE Mac matching a tag (smart routing by live CPU)."""
+    cands = [m for m in c.list_machines() if m.get("status") == "online" and _matches_tag(m, tag)]
+    if not cands:
+        from .client import HerdsError
+        raise HerdsError(f"no online Mac matches tag {tag!r} — tag one with `herds tag <id> {tag}`.")
+    cands.sort(key=lambda m: m["live_cpu"] if m.get("live_cpu") is not None else 0.0)
+    return cands[0]["machine_id"]
+
+
 def mac(
     machine_id: str = "default",
     *,
+    tag: Optional[str] = None,
     url: Optional[str] = None,
     token: Optional[str] = None,
     client: Optional[HerdsClient] = None,
 ) -> Mac:
     """Get a handle to one of your Macs. With no id, picks your online Mac.
+
+    Pass ``tag`` to smart-route to the **idlest online Mac** with that label or chip::
+
+        herds.mac(tag="xcode-26").run("xcodebuild …")   # least-loaded matching Mac
 
     Pass ``url`` + ``token`` to target a remote host directly (great for agents)::
 
@@ -408,20 +432,27 @@ def mac(
     """
     if client is None and (url or token):
         client = HerdsClient(control_plane=url, api_key=token)
-    return Mac(machine_id, client=client)
+    c = client or default_client()
+    if tag:
+        machine_id = _route_to_tag(c, tag)
+    return Mac(machine_id, client=c)
 
 
 def machines(
     *,
+    tag: Optional[str] = None,
     url: Optional[str] = None,
     token: Optional[str] = None,
     client: Optional[HerdsClient] = None,
 ) -> list[Mac]:
-    """List all your connected Macs as :class:`Mac` handles."""
+    """List your connected Macs as :class:`Mac` handles, optionally filtered by ``tag``."""
     if client is None and (url or token):
         client = HerdsClient(control_plane=url, api_key=token)
     c = client or default_client()
-    return [Mac(m["machine_id"], client=c) for m in c.list_machines()]
+    rows = c.list_machines()
+    if tag:
+        rows = [m for m in rows if _matches_tag(m, tag)]
+    return [Mac(m["machine_id"], client=c) for m in rows]
 
 
 class Fleet:

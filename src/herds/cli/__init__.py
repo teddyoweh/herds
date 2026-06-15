@@ -163,6 +163,63 @@ def schedule_rm(
     console.print(f"[green]✓[/green] removed [cyan]{schedule_id}[/cyan]")
 
 
+@app.command("tag")
+def tag_add(
+    machine_id: str,
+    tags: list[str] = typer.Argument(..., help="One or more tags, e.g. xcode-26 ci."),
+    url: Optional[str] = typer.Option(None, "--url"),
+    token: Optional[str] = typer.Option(None, "--token"),
+):
+    """Tag a Mac for routing — herds.mac(tag='xcode-26') picks the idlest match."""
+    r = _control_http(url, token).post(f"/v1/machines/{machine_id}/tags", json={"tags": tags})
+    if r.status_code >= 400:
+        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        raise typer.Exit(1)
+    console.print(f"[green]✓[/green] [cyan]{machine_id}[/cyan] tags: {', '.join(r.json()['tags']) or '—'}")
+
+
+@app.command("tags")
+def tags_ls(
+    url: Optional[str] = typer.Option(None, "--url"),
+    token: Optional[str] = typer.Option(None, "--token"),
+):
+    """List your Macs with their tags, status, and live CPU."""
+    r = _control_http(url, token).get("/v1/machines")
+    if r.status_code >= 400:
+        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        raise typer.Exit(1)
+    rows = r.json().get("machines", [])
+    if not rows:
+        console.print("[dim]No machines.[/dim]")
+        return
+    table = Table(title="Macs")
+    table.add_column("ID", style="cyan")
+    table.add_column("Status")
+    table.add_column("CPU", justify="right")
+    table.add_column("Tags", style="dim")
+    for m in rows:
+        cpu = m.get("live_cpu")
+        table.add_row(m["machine_id"], m.get("status", "?"),
+                      f"{cpu:.0f}%" if cpu is not None else "—",
+                      ", ".join(m.get("tags") or []) or "—")
+    console.print(table)
+
+
+@app.command("untag")
+def tag_rm(
+    machine_id: str,
+    tag: str,
+    url: Optional[str] = typer.Option(None, "--url"),
+    token: Optional[str] = typer.Option(None, "--token"),
+):
+    """Remove a tag from a Mac."""
+    r = _control_http(url, token).delete(f"/v1/machines/{machine_id}/tags/{tag}")
+    if r.status_code >= 400:
+        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        raise typer.Exit(1)
+    console.print(f"[green]✓[/green] removed [cyan]{tag}[/cyan] from {machine_id}")
+
+
 console = Console()
 err = Console(stderr=True)
 

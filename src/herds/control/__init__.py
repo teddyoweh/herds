@@ -342,6 +342,21 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
         m["status"] = "online" if machine_id in hub.agents else m["status"]
         return m
 
+    @app.post("/v1/machines/{machine_id}/tags")
+    def add_tags_ep(machine_id: str, body: "TagBody", authorization: Optional[str] = Header(None)):
+        owner = require_scope(authorization, "run")
+        mid = _resolve_machine(machine_id, owner)
+        store.add_tags(mid, body.tags)
+        return {"machine_id": mid, "tags": store.tags_for(mid)}
+
+    @app.delete("/v1/machines/{machine_id}/tags/{tag}")
+    def remove_tag_ep(machine_id: str, tag: str, authorization: Optional[str] = Header(None)):
+        owner = require_scope(authorization, "run")
+        mid = _resolve_machine(machine_id, owner)
+        if not store.remove_tag(mid, tag):
+            raise HTTPException(404, "tag not found")
+        return {"machine_id": mid, "tags": store.tags_for(mid)}
+
     # -- SDK: exec ---------------------------------------------------------- #
 
     def _resolve_machine(machine_id: str, owner: str) -> str:
@@ -950,6 +965,10 @@ class ScheduleBody(BaseModel):
     command: str
     cron: str
     machine_id: Optional[str] = None
+
+
+class TagBody(BaseModel):
+    tags: list[str]
 
 
 def _resolve_default_machine(store: Store, hub: Hub, owner: str) -> str:
