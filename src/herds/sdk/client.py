@@ -54,6 +54,22 @@ class HerdsError(RuntimeError):
     pass
 
 
+def _raise_http(r) -> None:
+    """Raise a clear HerdsError from a failed response — never crash on a
+    non-JSON body (e.g. the relay's plain-text 502 when no Mac is connected)."""
+    try:
+        data = r.json()
+        detail = data.get("detail") if isinstance(data, dict) else None
+    except Exception:  # noqa: BLE001 — body wasn't JSON
+        detail = None
+    text = detail or (r.text or "").strip() or f"HTTP {r.status_code}"
+    if r.status_code in (502, 503, 504) or "no herds host" in text.lower():
+        raise HerdsError("No Mac is connected to this account — run `herds host` on your Mac.")
+    if r.status_code in (401, 403):
+        raise HerdsError(f"Authentication failed ({r.status_code}): {text}. Check your token.")
+    raise HerdsError(text)
+
+
 class HerdsClient:
     """Talks to the control plane. One per process is plenty."""
 
@@ -69,14 +85,16 @@ class HerdsClient:
 
     def list_machines(self) -> list[dict]:
         r = self._http.get("/v1/machines")
-        r.raise_for_status()
-        return r.json()["machines"]
+        if r.status_code >= 400:
+            _raise_http(r)
+        return r.json().get("machines", [])
 
     def get_machine(self, machine_id: str) -> dict:
         r = self._http.get(f"/v1/machines/{machine_id}")
         if r.status_code == 404:
             raise HerdsError(f"no such machine: {machine_id}")
-        r.raise_for_status()
+        if r.status_code >= 400:
+            _raise_http(r)
         return r.json()
 
     # -- execution ---------------------------------------------------------- #
@@ -84,25 +102,25 @@ class HerdsClient:
     def _start(self, machine_id: str, req: ExecRequest) -> str:
         r = self._http.post(f"/v1/machines/{machine_id}/exec", json=req.model_dump())
         if r.status_code >= 400:
-            raise HerdsError(r.json().get("detail", r.text))
+            _raise_http(r)
         return r.json()["request_id"]
 
     def stop_sandbox(self, sandbox_id: str) -> dict:
         r = self._http.post(f"/v1/sandboxes/{sandbox_id}/stop")
         if r.status_code >= 400:
-            raise HerdsError(r.json().get("detail", r.text))
+            _raise_http(r)
         return r.json()
 
     def terminate_sandbox(self, sandbox_id: str) -> dict:
         r = self._http.delete(f"/v1/sandboxes/{sandbox_id}")
         if r.status_code >= 400:
-            raise HerdsError(r.json().get("detail", r.text))
+            _raise_http(r)
         return r.json()
 
     def expose_port(self, sandbox_id: str, port: int, name: str = "") -> dict:
         r = self._http.post(f"/v1/sandboxes/{sandbox_id}/ports", json={"port": port, "name": name})
         if r.status_code >= 400:
-            raise HerdsError(r.json().get("detail", r.text))
+            _raise_http(r)
         return r.json()
 
     def stream(
