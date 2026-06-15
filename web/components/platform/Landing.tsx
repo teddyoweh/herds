@@ -1002,14 +1002,28 @@ function FinalCTA() {
  * Stories — real use cases (OpenAI-style storytelling grid)
  * ------------------------------------------------------------------ */
 
-/* status-bar glyphs */
+/* iOS status-bar glyphs — one crisp SVG (cellular · wifi · battery) */
 function StatusIcons() {
   return (
-    <span className="flex items-center gap-[3px]">
-      <svg width="15" height="9" viewBox="0 0 18 11" className="fill-stone-900"><rect x="0" y="7" width="3" height="4" rx="1" /><rect x="4.5" y="5" width="3" height="6" rx="1" /><rect x="9" y="2.5" width="3" height="8.5" rx="1" /><rect x="13.5" y="0" width="3" height="11" rx="1" /></svg>
-      <svg width="13" height="9" viewBox="0 0 16 12" className="fill-stone-900"><path d="M8 2.4c2.6 0 5 1 6.8 2.7l1.2-1.3A11.5 11.5 0 0 0 8 .5 11.5 11.5 0 0 0 0 3.8l1.2 1.3A9.6 9.6 0 0 1 8 2.4Z" /><path d="M8 6c1.5 0 2.9.6 3.9 1.6l1.2-1.3A7.4 7.4 0 0 0 8 4.2a7.4 7.4 0 0 0-5.1 2.1l1.2 1.3A5.5 5.5 0 0 1 8 6Z" /><path d="M8 9.6 10 7.7A3 3 0 0 0 8 7a3 3 0 0 0-2 .7z" /></svg>
-      <span className="ml-0.5 flex items-center"><span className="relative h-[9px] w-[16px] rounded-[3px] ring-1 ring-stone-900/40"><span className="absolute inset-[1.5px] right-[4px] rounded-[1px] bg-stone-900" /></span><span className="ml-[1px] h-[4px] w-[1.5px] rounded-r bg-stone-900/40" /></span>
-    </span>
+    <svg width="38" height="8" viewBox="0 0 58 12" fill="none" className="text-stone-900">
+      {/* cellular */}
+      <g fill="currentColor">
+        <rect x="0" y="7.5" width="2.6" height="4.5" rx="0.8" />
+        <rect x="4" y="5.5" width="2.6" height="6.5" rx="0.8" />
+        <rect x="8" y="3.5" width="2.6" height="8.5" rx="0.8" />
+        <rect x="12" y="1.5" width="2.6" height="10.5" rx="0.8" />
+      </g>
+      {/* wifi */}
+      <g stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+        <path d="M19.5 5.3a8.5 8.5 0 0 1 11 0" />
+        <path d="M22 7.8a5 5 0 0 1 6 0" />
+      </g>
+      <circle cx="25" cy="10.2" r="1.15" fill="currentColor" />
+      {/* battery */}
+      <rect x="39.5" y="2.4" width="14.5" height="7.2" rx="2.3" stroke="currentColor" strokeOpacity="0.35" strokeWidth="1" />
+      <rect x="41" y="3.9" width="9.5" height="4.2" rx="1.2" fill="currentColor" />
+      <path d="M55.2 5.1v3.8a1.5 1.5 0 0 0 0-3.8Z" fill="currentColor" fillOpacity="0.4" />
+    </svg>
   );
 }
 
@@ -1021,10 +1035,10 @@ function FoodThumb() {
       <div className="absolute left-1/2 top-5 w-[158px] -translate-x-1/2 rounded-[36px] bg-gradient-to-b from-[#43434a] via-[#1f1f22] to-[#3a3a40] p-[3px] shadow-[0_26px_60px_-18px_rgba(20,24,33,0.5)]">
         <div className="overflow-hidden rounded-[33px] bg-white">
           {/* status bar */}
-          <div className="relative flex items-center justify-between px-4 pb-1 pt-2 text-[8.5px] font-semibold text-stone-900">
+          <div className="relative flex items-center justify-between px-3.5 pb-1 pt-2 text-[8.5px] font-semibold text-stone-900">
             <span className="tnum">9:41</span>
             <StatusIcons />
-            <span className="absolute left-1/2 top-[7px] flex h-[18px] w-[54px] -translate-x-1/2 items-center justify-end rounded-full bg-black pr-2"><span className="h-1.5 w-1.5 rounded-full bg-[#2a2a3a]" /></span>
+            <span className="absolute left-1/2 top-[6px] flex h-[15px] w-[42px] -translate-x-1/2 items-center justify-end rounded-full bg-black pr-1.5"><span className="h-1.5 w-1.5 rounded-full bg-[#1e2030]" /></span>
           </div>
           {/* app */}
           <div className="px-3 pb-2">
