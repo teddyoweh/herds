@@ -1172,27 +1172,25 @@ function BrowserTaskThumb() {
 
 function MiniMac({ label }: { label: string }) {
   return (
-    <div className="flex w-[74px] flex-col items-center">
-      {/* display — matte space-gray bezel */}
-      <div className="relative w-full rounded-[9px] bg-[#1b1c1f] p-[3px] shadow-[0_14px_24px_-11px_rgba(20,24,33,0.55)]">
-        <div className="pointer-events-none absolute inset-x-2.5 top-[1.5px] h-px rounded-full bg-white/10" />
+    <div className="flex w-[64px] flex-col items-center">
+      {/* display — matte space-gray bezel (thin) */}
+      <div className="relative w-full rounded-[7px] bg-[#1b1c1f] p-[1.5px] shadow-[0_12px_22px_-11px_rgba(20,24,33,0.5)]">
+        <div className="pointer-events-none absolute inset-x-2 top-[1px] h-px rounded-full bg-white/10" />
         {/* screen ON — macOS desktop wallpaper, 16:10 */}
-        <div className="relative h-[44px] overflow-hidden rounded-[6px]">
+        <div className="relative h-[39px] overflow-hidden rounded-[5.5px]">
           <div className="absolute inset-0" style={{ backgroundImage: "linear-gradient(150deg,#4d6bd6 0%,#8a63d2 42%,#d76f9e 73%,#f2ad6e 100%)" }} />
-          {/* matte finish: soft vignette, no glossy glare */}
           <div className="absolute inset-0 bg-gradient-to-b from-white/[0.07] via-transparent to-black/[0.07]" />
-          {/* translucent menu bar */}
-          <div className="absolute inset-x-0 top-0 h-[6px] bg-white/15 backdrop-blur-[1px]" />
+          <div className="absolute inset-x-0 top-0 h-[5px] bg-white/15 backdrop-blur-[1px]" />
           {/* notch */}
-          <div className="absolute left-1/2 top-0 z-10 h-[5px] w-[20px] -translate-x-1/2 rounded-b-[3px] bg-[#0b0c0e]" />
+          <div className="absolute left-1/2 top-0 z-10 h-[4px] w-[16px] -translate-x-1/2 rounded-b-[2.5px] bg-[#0b0c0e]" />
         </div>
       </div>
-      {/* matte aluminum base + hinge */}
-      <div className="relative h-[6px] w-[80px] rounded-b-[6px] bg-gradient-to-b from-[#d6dae1] via-[#c0c6ce] to-[#a3a9b3]">
+      {/* matte aluminum base + hinge (thin) */}
+      <div className="relative h-[4px] w-[70px] rounded-b-[5px] bg-gradient-to-b from-[#d6dae1] via-[#c0c6ce] to-[#a3a9b3]">
         <div className="pointer-events-none absolute inset-x-1.5 top-0 h-px bg-white/45" />
-        <span className="absolute left-1/2 top-0 h-[3px] w-[24px] -translate-x-1/2 rounded-b-[3px] bg-gradient-to-b from-[#969ca6] to-[#b0b6c0]" />
+        <span className="absolute left-1/2 top-0 h-[2px] w-[20px] -translate-x-1/2 rounded-b-[2.5px] bg-gradient-to-b from-[#969ca6] to-[#b0b6c0]" />
       </div>
-      <span className="mt-1.5 text-[7.5px] font-medium text-stone-500">{label}</span>
+      <span className="mt-1.5 text-[7px] font-medium text-stone-500">{label}</span>
     </div>
   );
 }
