@@ -1198,23 +1198,61 @@ function AppleThumb() {
   );
 }
 
-function RemoteThumb() {
-  const rows = [["Disk almost full", "cleared 42 GB"], ["Wi-Fi keeps dropping", "reset · stable"], ["12 updates pending", "installed"]];
+function MacMenuBar() {
   return (
-    <div className="flex h-48 items-center justify-center bg-[#eef1f6] px-6">
-      <div className="w-full max-w-[238px] overflow-hidden rounded-xl bg-white shadow-[0_10px_30px_-14px_rgba(20,24,33,0.22)]">
-        <div className="flex items-center gap-1.5 bg-[#2a2f37] px-3 py-2">
-          <span className="h-2 w-2 rounded-full bg-[#ff5f57]" /><span className="h-2 w-2 rounded-full bg-[#febc2e]" /><span className="h-2 w-2 rounded-full bg-[#28c840]" />
-          <span className="mx-auto flex items-center gap-1.5 text-[9px] text-stone-300"><span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-400" /> Mom&rsquo;s MacBook · remote</span>
-        </div>
-        <div className="space-y-1.5 p-3">
-          {rows.map(([issue, fix]) => (
-            <div key={issue} className="flex items-center gap-2 rounded-lg bg-[#f6f5f2] px-2.5 py-1.5">
-              <Check size={14} />
-              <span className="text-[10px] text-stone-400 line-through">{issue}</span>
-              <span className="ml-auto text-[10px] font-medium text-signal-700">{fix} ✓</span>
+    <div className="flex items-center justify-between bg-white/55 px-2.5 py-[3px] text-[6.5px] font-medium text-stone-800 backdrop-blur-sm">
+      <div className="flex items-center gap-[7px]">
+        <svg width="6.5" height="8" viewBox="0 0 14 17" className="fill-stone-900"><path d="M11.6 13.1c-.2.5-.5.9-.8 1.3-.4.6-.8.9-1.2 1.2-.5.3-1 .4-1.5.4-.4 0-.9-.1-1.5-.4-.6-.2-1.1-.4-1.6-.4-.5 0-1 .1-1.6.4-.6.3-1 .4-1.4.4-.5 0-1-.2-1.5-.5-.4-.3-.8-.7-1.2-1.3C.5 12.9.1 11.8 0 10.6c-.1-1.3.2-2.5.9-3.5.5-.7 1.2-1.2 2.1-1.2.5 0 1 .2 1.7.5.6.3.9.4 1.1.4.2 0 .6-.2 1.3-.5.7-.3 1.2-.4 1.6-.4 1 .1 1.8.5 2.4 1.3-.9.6-1.4 1.4-1.4 2.4 0 .8.3 1.5.8 2 .3.3.5.5.9.6-.1.2-.1.4-.2.6zM8.8 1.3c0 .6-.2 1.1-.6 1.6-.5.6-1 .9-1.7.8 0-.6.2-1.1.6-1.6.2-.3.5-.5.8-.6.3-.2.6-.2.9-.2z"/></svg>
+        <span className="font-semibold">Herds</span>
+        <span className="text-stone-600">File</span>
+        <span className="text-stone-600">Window</span>
+        <span className="text-stone-600">Help</span>
+      </div>
+      <div className="flex items-center gap-[5px] text-stone-700">
+        <svg width="13" height="6.5" viewBox="0 0 26 12"><rect x="0.5" y="0.5" width="22" height="11" rx="2.6" fill="none" stroke="currentColor" strokeOpacity="0.45" /><rect x="2" y="2" width="15" height="8" rx="1.3" fill="currentColor" /><path d="M24 4.2v3.6a1.6 1.6 0 0 0 0-3.6z" fill="currentColor" fillOpacity="0.45" /></svg>
+        <svg width="9" height="7" viewBox="0 0 16 12" className="fill-current"><path d="M8 2.4c2.6 0 5 1 6.8 2.7l1.1-1.3A11.5 11.5 0 0 0 8 .5 11.5 11.5 0 0 0 .1 3.8l1.1 1.3A9.6 9.6 0 0 1 8 2.4Zm0 3.6c1.5 0 2.9.6 3.9 1.6l1.1-1.3A7.4 7.4 0 0 0 8 4.2a7.4 7.4 0 0 0-5 2.1l1.1 1.3A5.5 5.5 0 0 1 8 6Zm0 3.6 1.9-1.9A3 3 0 0 0 8 6.6a3 3 0 0 0-1.9.7z" /></svg>
+        <svg width="9" height="7" viewBox="0 0 18 12" className="fill-none stroke-current" strokeWidth="1.4"><rect x="1" y="2" width="16" height="3.2" rx="1.6" /><rect x="1" y="6.8" width="16" height="3.2" rx="1.6" /></svg>
+        <span className="ml-0.5 tnum">Fri 9:41</span>
+      </div>
+    </div>
+  );
+}
+
+function RemoteThumb() {
+  const rows = [["Disk almost full", "cleared 42 GB"], ["Wi-Fi dropping", "reset · stable"], ["12 updates", "installed"]];
+  return (
+    <div className="relative flex h-48 justify-center overflow-hidden bg-gradient-to-b from-[#e9edf4] to-[#dfe4ee]">
+      {/* MacBook display */}
+      <div className="absolute top-5 w-[300px]">
+        <div className="relative rounded-t-[14px] rounded-b-[5px] bg-gradient-to-b from-[#2b2d31] to-[#17181b] p-[5px] pb-[6px] shadow-[0_24px_50px_-18px_rgba(20,24,33,0.5)]">
+          {/* camera notch */}
+          <div className="absolute left-1/2 top-0 z-10 h-[9px] w-[46px] -translate-x-1/2 rounded-b-[5px] bg-[#17181b]"><span className="absolute left-1/2 top-[3px] h-1 w-1 -translate-x-1/2 rounded-full bg-[#23252b]" /></div>
+          {/* screen */}
+          <div className="overflow-hidden rounded-[8px] bg-gradient-to-br from-[#cdd9f0] via-[#dde0ee] to-[#e9def0]">
+            <MacMenuBar />
+            <div className="px-3 pb-3 pt-2.5">
+              {/* remote session window */}
+              <div className="overflow-hidden rounded-[8px] bg-white shadow-[0_8px_22px_-10px_rgba(20,24,33,0.4)]">
+                <div className="flex items-center gap-1.5 bg-[#ededf0] px-2.5 py-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#ff5f57]" /><span className="h-1.5 w-1.5 rounded-full bg-[#febc2e]" /><span className="h-1.5 w-1.5 rounded-full bg-[#28c840]" />
+                  <span className="mx-auto flex items-center gap-1.5 text-[8px] font-medium text-stone-500"><span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-500" /> Mom&rsquo;s MacBook · remote</span>
+                </div>
+                <div className="space-y-1.5 p-2.5">
+                  {rows.map(([issue, fix]) => (
+                    <div key={issue} className="flex items-center gap-2 rounded-md bg-[#f6f5f2] px-2.5 py-1.5">
+                      <Check size={13} />
+                      <span className="text-[9.5px] text-stone-400 line-through">{issue}</span>
+                      <span className="ml-auto text-[9.5px] font-medium text-signal-700">{fix} ✓</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          ))}
+          </div>
+        </div>
+        {/* aluminum base + hinge lip */}
+        <div className="relative mx-auto h-[7px] w-[330px] max-w-none -translate-x-[15px] rounded-b-[10px] bg-gradient-to-b from-[#c7ccd4] to-[#aab1bb]">
+          <span className="absolute left-1/2 top-0 h-[3px] w-[44px] -translate-x-1/2 rounded-b-[4px] bg-[#9aa1ab]" />
         </div>
       </div>
     </div>
