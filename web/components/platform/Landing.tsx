@@ -1172,22 +1172,24 @@ function BrowserTaskThumb() {
 
 function MiniMac({ hue, pct, label }: { hue: number; pct: number; label: string }) {
   return (
-    <div className="flex w-[62px] flex-col items-center">
-      <div className="relative w-full rounded-t-[6px] rounded-b-[2px] bg-gradient-to-b from-[#2b2d31] to-[#17181b] p-[2px] shadow-[0_6px_14px_-7px_rgba(20,24,33,0.45)]">
-        <div className="absolute left-1/2 top-0 z-10 h-[3px] w-[18px] -translate-x-1/2 rounded-b-[2.5px] bg-[#17181b]" />
-        {/* 16:10 landscape screen */}
-        <div className="overflow-hidden rounded-[3.5px] bg-white">
-          <div className="relative h-[22px]" style={{ backgroundImage: `linear-gradient(135deg, hsl(${hue},72%,66%), hsl(${hue + 36},66%,50%))` }}>
-            <span className="absolute right-1 top-1 h-1 w-1 animate-breathe rounded-full bg-white" />
-          </div>
-          <div className="px-1.5 pb-1.5 pt-1">
-            <div className="flex items-center justify-between text-[5.5px] text-stone-400"><span>render</span><span className="tnum">{pct}%</span></div>
-            <div className="mt-0.5 h-[2px] overflow-hidden rounded-full bg-black/[0.08]"><motion.div initial={{ width: 0 }} whileInView={{ width: `${pct}%` }} viewport={{ once: true }} transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1] }} className="h-full rounded-full bg-signal-500" /></div>
+    <div className="flex w-[60px] flex-col items-center">
+      {/* display */}
+      <div className="relative w-full rounded-[7px] bg-gradient-to-b from-[#2c2e32] to-[#161719] p-[2.5px] shadow-[0_8px_16px_-8px_rgba(20,24,33,0.5)]">
+        <div className="absolute left-1/2 top-[2px] z-10 h-[3.5px] w-[17px] -translate-x-1/2 rounded-b-[2.5px] bg-[#161719]" />
+        {/* one cohesive screen: the render, with an on-screen HUD */}
+        <div className="relative h-[44px] overflow-hidden rounded-[4.5px]" style={{ backgroundImage: `linear-gradient(140deg, hsl(${hue},74%,67%), hsl(${hue + 36},66%,49%))` }}>
+          <span className="absolute right-1.5 top-1.5 h-1 w-1 animate-breathe rounded-full bg-white shadow-[0_0_0_1.5px_rgba(255,255,255,0.25)]" />
+          <div className="absolute inset-x-0 bottom-0 bg-black/30 px-1.5 pb-1 pt-[3px] backdrop-blur-[1px]">
+            <div className="flex items-center justify-between text-[5.5px] font-medium text-white/90"><span>render</span><span className="tnum">{pct}%</span></div>
+            <div className="mt-[2px] h-[2px] overflow-hidden rounded-full bg-white/25"><motion.div initial={{ width: 0 }} whileInView={{ width: `${pct}%` }} viewport={{ once: true }} transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1] }} className="h-full rounded-full bg-white" /></div>
           </div>
         </div>
       </div>
-      <div className="-mt-px h-[3px] w-full rounded-b-[3px] bg-gradient-to-b from-[#cdd2da] to-[#a8afb9]" />
-      <span className="mt-1 text-[6.5px] font-medium text-stone-500">{label}</span>
+      {/* aluminum base + hinge lip (so it reads as a MacBook) */}
+      <div className="relative h-[5px] w-[64px] rounded-b-[5px] bg-gradient-to-b from-[#d3d8e0] to-[#a6adb8]">
+        <span className="absolute left-1/2 top-0 h-[2.5px] w-[18px] -translate-x-1/2 rounded-b-[3px] bg-[#959ca6]" />
+      </div>
+      <span className="mt-1.5 text-[7px] font-medium text-stone-500">{label}</span>
     </div>
   );
 }
@@ -1215,7 +1217,7 @@ function FleetThumb() {
         {xs.map((x, i) => <motion.circle key={"d" + i} r="0.7" className="fill-signal-500" animate={{ cx: [50, x], cy: [17, 64] }} transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut", delay: i * 0.3 }} />)}
       </svg>
       {/* fleet */}
-      <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1">
+      <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-2">
         {macs.map((m) => <MiniMac key={m.label} {...m} />)}
       </div>
     </div>
