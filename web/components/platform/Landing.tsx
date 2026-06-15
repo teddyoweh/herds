@@ -1002,23 +1002,71 @@ function FinalCTA() {
  * Stories — real use cases (OpenAI-style storytelling grid)
  * ------------------------------------------------------------------ */
 
+/* status-bar glyphs */
+function StatusIcons() {
+  return (
+    <span className="flex items-center gap-[3px]">
+      <svg width="15" height="9" viewBox="0 0 18 11" className="fill-stone-900"><rect x="0" y="7" width="3" height="4" rx="1" /><rect x="4.5" y="5" width="3" height="6" rx="1" /><rect x="9" y="2.5" width="3" height="8.5" rx="1" /><rect x="13.5" y="0" width="3" height="11" rx="1" /></svg>
+      <svg width="13" height="9" viewBox="0 0 16 12" className="fill-stone-900"><path d="M8 2.4c2.6 0 5 1 6.8 2.7l1.2-1.3A11.5 11.5 0 0 0 8 .5 11.5 11.5 0 0 0 0 3.8l1.2 1.3A9.6 9.6 0 0 1 8 2.4Z" /><path d="M8 6c1.5 0 2.9.6 3.9 1.6l1.2-1.3A7.4 7.4 0 0 0 8 4.2a7.4 7.4 0 0 0-5.1 2.1l1.2 1.3A5.5 5.5 0 0 1 8 6Z" /><path d="M8 9.6 10 7.7A3 3 0 0 0 8 7a3 3 0 0 0-2 .7z" /></svg>
+      <span className="ml-0.5 flex items-center"><span className="relative h-[9px] w-[16px] rounded-[3px] ring-1 ring-stone-900/40"><span className="absolute inset-[1.5px] right-[4px] rounded-[1px] bg-stone-900" /></span><span className="ml-[1px] h-[4px] w-[1.5px] rounded-r bg-stone-900/40" /></span>
+    </span>
+  );
+}
+
 function FoodThumb() {
   return (
-    <div className="flex h-48 items-center justify-center bg-[#fbf2ea] px-6">
-      <div className="w-full max-w-[200px] rounded-2xl bg-white p-3">
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] font-semibold text-stone-900">FreshBite</span>
-          <span className="rounded-full bg-signal-500/15 px-2 py-0.5 text-[9px] font-medium text-signal-700">12 min</span>
-        </div>
-        <div className="mt-2.5 flex items-center gap-2.5 rounded-xl bg-[#faf7f2] p-2">
-          <span className="h-9 w-9 rounded-lg bg-[#f0c89a]" />
-          <div className="flex-1 leading-tight">
-            <div className="text-[10.5px] font-medium text-stone-800">Pad Thai</div>
-            <div className="text-[9px] text-stone-400">Spicy · 540 cal</div>
+    <div className="relative flex h-48 justify-center overflow-hidden bg-gradient-to-b from-[#fdf4ec] to-[#f9ead9] pt-4">
+      {/* iPhone */}
+      <div className="relative w-[158px] rounded-[36px] bg-gradient-to-b from-[#43434a] via-[#1f1f22] to-[#3a3a40] p-[3px] shadow-[0_26px_60px_-18px_rgba(20,24,33,0.5)]">
+        <div className="overflow-hidden rounded-[33px] bg-white">
+          {/* status bar */}
+          <div className="relative flex items-center justify-between px-4 pb-1 pt-2 text-[8.5px] font-semibold text-stone-900">
+            <span className="tnum">9:41</span>
+            <StatusIcons />
+            <span className="absolute left-1/2 top-[7px] flex h-[18px] w-[54px] -translate-x-1/2 items-center justify-end rounded-full bg-black pr-2"><span className="h-1.5 w-1.5 rounded-full bg-[#2a2a3a]" /></span>
           </div>
-          <span className="tnum text-[11px] font-semibold text-stone-900">$14</span>
+          {/* app */}
+          <div className="px-3 pb-2">
+            <div className="flex items-center justify-between pt-1">
+              <div className="leading-tight">
+                <div className="text-[7px] font-medium uppercase tracking-wide text-stone-400">Deliver to</div>
+                <div className="flex items-center gap-0.5 text-[10px] font-semibold text-stone-900">Home <span className="text-stone-400">▾</span></div>
+              </div>
+              <span className="h-5 w-5 rounded-full bg-gradient-to-br from-[#ffd9a8] to-[#f0a76b]" />
+            </div>
+            <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-[#f2f1ef] px-2.5 py-1.5 text-[8.5px] text-stone-400">
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" strokeLinecap="round" /></svg>
+              Search restaurants
+            </div>
+            {/* hero restaurant card */}
+            <div className="mt-2.5 overflow-hidden rounded-xl bg-white shadow-[0_2px_10px_-4px_rgba(20,24,33,0.18)]">
+              <div className="relative h-[58px] bg-gradient-to-br from-[#ffb15a] via-[#ff8a3d] to-[#f2643a]">
+                <span className="absolute left-2 top-2 rounded-md bg-white/95 px-1.5 py-0.5 text-[7px] font-semibold text-stone-800">Free delivery</span>
+                <span className="absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full bg-white/95 text-[10px]">♡</span>
+              </div>
+              <div className="px-2.5 py-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold text-stone-900">Thai Basil</span>
+                  <span className="flex items-center gap-0.5 text-[8.5px] font-medium text-stone-700"><span className="text-[#ff9500]">★</span> 4.9</span>
+                </div>
+                <div className="mt-0.5 text-[8px] text-stone-400">Thai · 15 min · $$ · 1.2 mi</div>
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="text-[10px] font-semibold text-stone-900">Pad Thai <span className="tnum text-stone-500">$14</span></span>
+                  <span className="rounded-full bg-signal-600 px-3 py-1 text-[8.5px] font-semibold text-white">Add</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          {/* tab bar */}
+          <div className="mt-1 flex items-center justify-around border-t border-black/[0.06] px-2 pb-2 pt-1.5 text-stone-300">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-signal-600"><path d="M12 3 4 9.5V21h5v-6h6v6h5V9.5z" /></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" strokeLinecap="round" /></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2h9l3 3v17l-3-2-3 2-3-2-3 2V4z" strokeLinejoin="round" /></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" strokeLinecap="round" /></svg>
+          </div>
+          {/* home indicator */}
+          <div className="flex justify-center pb-1.5"><span className="h-1 w-[42px] rounded-full bg-black/85" /></div>
         </div>
-        <div className="mt-2.5 rounded-lg bg-signal-600 py-1.5 text-center text-[10px] font-medium text-white">Order now</div>
       </div>
     </div>
   );
