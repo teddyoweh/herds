@@ -1301,37 +1301,46 @@ function StepCard({ step, label, chrome, children }: { step: string; label: stri
   );
 }
 
+function Cmd({ c }: { c: string }) {
+  return <div className="flex gap-2"><span className="select-none text-signal-400">$</span><span className="text-stone-100">{c}</span></div>;
+}
+function Out({ children }: { children: React.ReactNode }) {
+  return <div className="pl-[18px] text-[11.5px] leading-[1.7] text-stone-500">{children}</div>;
+}
+function Cmt({ c }: { c: string }) {
+  return <div className="text-[11.5px] text-stone-600">{c}</div>;
+}
+
 function GetStarted() {
-  const P = <span className="text-signal-400">$</span>;
-  const OK = <span className="text-signal-400">✓</span>;
-  const C = (t: string) => <span className="text-stone-500">{t}</span>;
   return (
     <Section>
-      <Reveal className="mx-auto max-w-xl text-center">
-        <div className="text-[12px] font-medium uppercase tracking-[0.16em] text-signal-600">Get started</div>
-        <h2 className="ed mt-2 text-[26px] leading-[1.1] text-stone-900 sm:text-[32px]">Live in three commands</h2>
+      <Reveal className="flex items-baseline gap-3">
+        <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-signal-600">Get started</span>
+        <h2 className="ed text-[22px] leading-tight text-stone-900 sm:text-[26px]">Live in three commands</h2>
       </Reveal>
-      <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} className="mt-10 grid grid-cols-1 items-stretch gap-5 lg:grid-cols-3">
+      <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} className="mt-7 grid grid-cols-1 items-stretch gap-5 lg:grid-cols-3">
         <StepCard step="01" label="Install & sign in" chrome="your Mac — zsh">
-          <div>{P} <span className="text-stone-100">curl -fsSL herds.run/install | sh</span></div>
-          <div>{OK} <span className="text-stone-400">herds 0.1 installed</span></div>
-          <div>{P} <span className="text-stone-100">herds auth</span></div>
-          <div>{OK} <span className="text-stone-400">Signed in as you@team.com</span></div>
+          <Cmd c="curl -fsSL herds.run/install | sh" />
+          <Out>installed herds 0.1</Out>
+          <div className="h-2" />
+          <Cmd c="herds auth" />
+          <Out>signed in as you@team.com</Out>
         </StepCard>
         <StepCard step="02" label="Add Macs to the fleet" chrome="zsh">
-          <div>{C("# on your main Mac")}</div>
-          <div>{P} <span className="text-stone-100">herds host</span></div>
-          <div>{OK} <span className="text-stone-400">M3 Max · live · </span><span className="text-signal-400">you.herds.run</span></div>
-          <div className="pt-1.5">{C("# on a second Mac you own")}</div>
-          <div>{P} <span className="text-stone-100">herds connect you.herds.run hx_…</span></div>
-          <div>{OK} <span className="text-stone-400">Mac mini joined the fleet</span></div>
+          <Cmt c="# on your main Mac" />
+          <Cmd c="herds host" />
+          <Out>M3 Max · live at <span className="text-stone-300">you.herds.run</span></Out>
+          <div className="h-3" />
+          <Cmt c="# on a second Mac you own" />
+          <Cmd c="herds connect you.herds.run hx_…" />
+          <Out>Mac mini joined the fleet</Out>
         </StepCard>
         <StepCard step="03" label="Build & drive it from Python" chrome="agent.py">
           <div><span className="text-[#c792ea]">import</span> <span className="text-stone-100">herds</span></div>
-          <div> </div>
+          <div className="h-3" />
           <div><span className="text-stone-100">mac</span> = herds.<span className="text-[#82aaff]">mac</span>(<span className="text-[#e5c07b]">&quot;m3max&quot;</span>)</div>
           <div><span className="text-stone-100">mac</span>.<span className="text-[#82aaff]">run</span>(<span className="text-[#e5c07b]">&quot;xcodebuild -scheme App&quot;</span>)</div>
-          <div><span className="text-stone-100">url</span> = <span className="text-stone-100">mac</span>.<span className="text-[#82aaff]">expose</span>(<span className="text-[#6cb6ff]">3000</span>) {C("# → public URL")}</div>
+          <div><span className="text-stone-100">url</span> = <span className="text-stone-100">mac</span>.<span className="text-[#82aaff]">expose</span>(<span className="text-[#6cb6ff]">3000</span>) <span className="text-stone-600"># → public URL</span></div>
         </StepCard>
       </motion.div>
     </Section>
