@@ -378,30 +378,108 @@ function MorningCard() {
  * 03 — Real macOS (mac window + tool chips)
  * ------------------------------------------------------------------ */
 
+/* syntax helpers for the Xcode editor */
+const K = ({ c }: { c: string }) => <span className="text-[#9b4dca]">{c}</span>;       // keyword
+const Ty = ({ c }: { c: string }) => <span className="text-[#0d8a72]">{c}</span>;      // type
+const St = ({ c }: { c: string }) => <span className="text-[#c0392b]">{c}</span>;      // string
+const Nu = ({ c }: { c: string }) => <span className="text-[#2d6df6]">{c}</span>;      // number
+const At = ({ c }: { c: string }) => <span className="text-[#d6336c]">{c}</span>;      // attribute
+const Pr = ({ c }: { c: string }) => <span className="text-[#0d8a72]">{c}</span>;      // member
+
+const SWIFT: React.ReactNode[] = [
+  <><K c="import" /> <Ty c="SwiftUI" /></>,
+  <> </>,
+  <><K c="struct" /> <Ty c="ContentView" />: <Ty c="View" /> {"{"}</>,
+  <>{"  "}<At c="@State" /> <K c="private" /> <K c="var" /> builds = <Nu c="0" /></>,
+  <> </>,
+  <>{"  "}<K c="var" /> body: <K c="some" /> <Ty c="View" /> {"{"}</>,
+  <>{"    "}<Ty c="VStack" />(spacing: <Nu c="16" />) {"{"}</>,
+  <>{"      "}<Ty c="Text" />(<St c="&quot;Herds&quot;" />)</>,
+  <>{"        "}.<Pr c="font" />(.<Pr c="largeTitle" />)</>,
+  <>{"      "}<Ty c="Button" />(<St c="&quot;Run build&quot;" />) {"{"} builds += <Nu c="1" /> {"}"}</>,
+  <>{"        "}.<Pr c="buttonStyle" />(.<Pr c="borderedProminent" />)</>,
+  <>{"    "}{"}"}</>,
+  <>{"  "}{"}"}</>,
+  <>{"}"}</>,
+];
+
+const FILES: { name: string; depth: number; folder?: boolean; active?: boolean }[] = [
+  { name: "App", depth: 0, folder: true },
+  { name: "HerdsApp.swift", depth: 1 },
+  { name: "Views", depth: 1, folder: true },
+  { name: "ContentView.swift", depth: 2, active: true },
+  { name: "FeedView.swift", depth: 2 },
+  { name: "Models", depth: 1, folder: true },
+  { name: "Mac.swift", depth: 2 },
+  { name: "Assets.xcassets", depth: 1, folder: true },
+];
+
 function MacWindowCard() {
   return (
-    <Reveal className={`mx-auto mt-14 w-full max-w-[760px] overflow-hidden rounded-3xl ${CARD}`}>
-      <Chrome title="App.xcodeproj — Xcode" />
-      <div className="grid gap-5 p-6 sm:grid-cols-[1.3fr_1fr]">
-        <div>
-          <div className="flex items-center justify-between text-[12px]">
-            <span className="font-semibold text-stone-700">Build · iOS Simulator</span>
-            <span className="font-mono text-stone-400">arm64</span>
+    <Reveal className="mx-auto mt-14 w-full max-w-[900px]">
+      <div className="rounded-[28px] bg-[#eef1f6] p-4 sm:p-7">
+        <div className="overflow-hidden rounded-xl bg-[#fbfbfa] shadow-[0_24px_70px_-24px_rgba(20,24,33,0.4)] ring-1 ring-black/[0.06]">
+          {/* title bar */}
+          <div className="flex items-center gap-2 bg-[#e9e8e4] px-3.5 py-2.5">
+            <span className="h-3 w-3 rounded-full bg-[#ff5f57]" /><span className="h-3 w-3 rounded-full bg-[#febc2e]" /><span className="h-3 w-3 rounded-full bg-[#28c840]" />
+            <span className="mx-auto flex items-center gap-2 text-[11px] text-stone-500">
+              <span className="font-semibold text-stone-700">App</span>
+              <span className="text-stone-400">›</span> iPhone 15 Pro
+            </span>
+            <span className="flex items-center gap-1 rounded-md bg-signal-600 px-2 py-1 text-[10px] font-medium text-white">
+              <svg width="8" height="8" viewBox="0 0 16 16" fill="currentColor"><path d="M4 3l9 5-9 5z" /></svg> Run
+            </span>
           </div>
-          <div className="mt-4 space-y-2.5 font-mono text-[12px] text-stone-500">
-            <div><span className="text-signal-600">✓</span> Resolved Swift packages</div>
-            <div><span className="text-signal-600">✓</span> Compiled 214 Swift sources</div>
-            <div><span className="text-stone-400">▸</span> Linking App.app…</div>
+
+          {/* 3-pane IDE */}
+          <div className="grid grid-cols-[120px_1fr] sm:grid-cols-[148px_1fr_150px]">
+            {/* navigator */}
+            <div className="bg-[#f3f2ef] py-3 text-left">
+              <div className="px-3 pb-2 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-stone-400">Project</div>
+              {FILES.map((f) => (
+                <div key={f.name} className={`flex items-center gap-1.5 px-3 py-[3px] text-[11px] ${f.active ? "bg-[#dbe6ff] text-stone-900" : "text-stone-500"}`} style={{ paddingLeft: 12 + f.depth * 11 }}>
+                  <span className={f.folder ? "text-[#5b9bd5]" : f.active ? "text-signal-600" : "text-stone-400"}>
+                    {f.folder
+                      ? <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
+                      : <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2h8l4 4v16H6z" strokeLinejoin="round" /></svg>}
+                  </span>
+                  <span className="truncate">{f.name}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* editor */}
+            <div className="flex bg-white">
+              <div className="select-none border-r border-black/[0.05] py-3 pl-3 pr-2 text-right font-mono text-[10.5px] leading-[1.72] text-stone-300 tnum">
+                {SWIFT.map((_, i) => <div key={i}>{i + 1}</div>)}
+              </div>
+              <pre className="flex-1 overflow-x-auto py-3 pl-3 font-mono text-[11px] leading-[1.72] text-stone-700">
+                {SWIFT.map((l, i) => <div key={i}>{l}</div>)}
+              </pre>
+            </div>
+
+            {/* simulator preview */}
+            <div className="hidden items-center justify-center bg-[#f3f2ef] p-4 sm:flex">
+              <div className="w-[118px] overflow-hidden rounded-[22px] bg-white shadow-[0_10px_30px_-10px_rgba(20,24,33,0.35)] ring-1 ring-black/[0.06]">
+                <div className="relative flex h-5 items-center justify-center bg-white">
+                  <span className="absolute top-1.5 h-1 w-8 rounded-full bg-stone-200" />
+                </div>
+                <div className="flex flex-col items-center gap-3 px-3 pb-6 pt-4">
+                  <span className="ed text-[18px] text-stone-900">Herds</span>
+                  <span className="tnum text-[11px] text-stone-400">builds: 1</span>
+                  <span className="mt-1 rounded-lg bg-signal-600 px-4 py-1.5 text-[10px] font-medium text-white">Run build</span>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-black/[0.08]">
-            <motion.div initial={{ width: 0 }} whileInView={{ width: "78%" }} viewport={{ once: true }} transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1] }} className="h-full rounded-full bg-signal-500" />
+
+          {/* status bar */}
+          <div className="flex items-center gap-2 border-t border-black/[0.05] bg-[#f3f2ef] px-3.5 py-2 text-[11px]">
+            <Check size={15} />
+            <span className="font-medium text-stone-700">Build Succeeded</span>
+            <span className="text-stone-400">· App.app · 42.1s</span>
+            <span className="ml-auto font-mono text-[10px] text-stone-400">arm64 · Debug</span>
           </div>
-          <div className="mt-2 text-[11px] text-stone-400">Building… 78%</div>
-        </div>
-        <div className={`grid grid-cols-2 gap-2 rounded-2xl ${INSET} p-3`}>
-          {["Xcode", "Simulators", "Codesign", "AppleScript", "Homebrew", "Metal"].map((t) => (
-            <span key={t} className="rounded-lg bg-[#f3f2ee] px-3 py-2 text-center font-mono text-[11px] text-stone-600">{t}</span>
-          ))}
         </div>
       </div>
     </Reveal>
@@ -520,23 +598,62 @@ function Meter({ label, value, pct }: { label: string; value: string; pct: numbe
   );
 }
 
+const CPU_PTS = "0,62 26,52 52,58 78,40 104,49 130,31 156,41 182,24 208,35 234,18 260,30 286,20 320,27";
+
+function MiniStat({ label, value, spark, up = true }: { label: string; value: string; spark: string; up?: boolean }) {
+  return (
+    <div className="rounded-xl bg-[#f7f6f3] p-2.5">
+      <div className="text-[9.5px] font-medium uppercase tracking-[0.08em] text-stone-400">{label}</div>
+      <div className="mt-1 tnum text-[14px] font-semibold tracking-tight text-stone-900">{value}</div>
+      <div className="mt-1"><Spark points={spark} tone={up ? "text-signal-500" : "text-stone-300"} /></div>
+    </div>
+  );
+}
+
 function ObserveCard() {
   return (
-    <Reveal className={`mx-auto mt-14 grid w-full max-w-[820px] overflow-hidden rounded-3xl ${CARD} sm:grid-cols-[1.4fr_1fr]`}>
-      <div className="bg-[#0f141a] p-5">
-        <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.16em] text-stone-500">live logs</div>
-        <div className="space-y-1.5 font-mono text-[11.5px] leading-relaxed text-stone-300">
-          {LOGS.map((l, i) => <div key={i} className={l.includes("✓") || l.includes("↗") ? "text-signal-400" : "text-stone-400"}>{l}</div>)}
-          <div className="inline-block h-[12px] w-[6px] translate-y-[2px] animate-breathe bg-signal-400/80" />
-        </div>
-      </div>
-      <div className="p-5">
-        <div className="mb-4 text-[12px] font-semibold tracking-tight text-stone-700">m3max · metrics</div>
-        <div className="space-y-4">
-          <Meter label="CPU" value="38%" pct={38} />
-          <Meter label="Memory" value="12.4 / 64 GB" pct={19} />
-          <Meter label="Network" value="↑ 2.1 ↓ 8.7 MB/s" pct={54} />
-          <Meter label="GPU" value="22%" pct={22} />
+    <Reveal className="mx-auto mt-14 w-full max-w-[900px]">
+      <div className="rounded-[28px] bg-[#eef0f4] p-4 sm:p-7">
+        <div className="overflow-hidden rounded-xl bg-white shadow-[0_24px_70px_-24px_rgba(20,24,33,0.4)] ring-1 ring-black/[0.06]">
+          <Chrome title="you.herds.run/observe" />
+          <div className="grid sm:grid-cols-[1.55fr_1fr]">
+            {/* metrics */}
+            <div className="p-5">
+              <div className="flex items-center justify-between">
+                <span className="text-[12.5px] font-semibold tracking-tight text-stone-800">m3max · metrics</span>
+                <span className="inline-flex items-center gap-1.5 text-[10.5px] text-stone-400"><span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-500" /> live</span>
+              </div>
+              {/* big area chart */}
+              <div className="mt-3 rounded-2xl bg-[#f7f6f3] p-4">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-stone-400">CPU</span>
+                  <span className="tnum text-[24px] font-semibold leading-none tracking-tight text-stone-900">38<span className="text-[14px] text-stone-400">%</span></span>
+                </div>
+                <svg viewBox="0 0 320 90" preserveAspectRatio="none" className="mt-3 h-24 w-full">
+                  <motion.polygon initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ duration: 1 }} points={`${CPU_PTS} 320,90 0,90`} className="fill-signal-500/10" />
+                  <motion.polyline initial={{ pathLength: 0 }} whileInView={{ pathLength: 1 }} viewport={{ once: true }} transition={{ duration: 1.2, ease: "easeInOut" }} points={CPU_PTS} fill="none" className="stroke-signal-500" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+                </svg>
+                <div className="mt-1 flex justify-between text-[9.5px] text-stone-400"><span>60s ago</span><span>now</span></div>
+              </div>
+              {/* mini stats */}
+              <div className="mt-3 grid grid-cols-3 gap-2.5">
+                <MiniStat label="Memory" value="12.4 GB" spark="0,20 16,16 32,17 48,11 64,13 80,9" />
+                <MiniStat label="Network" value="8.7 MB/s" spark="0,18 16,12 32,16 48,8 64,12 80,6" />
+                <MiniStat label="GPU" value="22%" spark="0,12 16,14 32,10 48,13 64,9 80,11" up={false} />
+              </div>
+            </div>
+            {/* live logs */}
+            <div className="bg-[#0f141a] p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-stone-500">live logs</span>
+                <span className="inline-flex items-center gap-1.5 text-[10px] text-stone-500"><span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-400" /> tail</span>
+              </div>
+              <div className="space-y-1.5 font-mono text-[11px] leading-relaxed text-stone-300">
+                {LOGS.map((l, i) => <div key={i} className={l.includes("✓") || l.includes("↗") ? "text-signal-400" : "text-stone-400"}>{l}</div>)}
+                <div className="inline-block h-[12px] w-[6px] translate-y-[2px] animate-breathe bg-signal-400/80" />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </Reveal>
