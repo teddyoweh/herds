@@ -1249,11 +1249,7 @@ function RunsEverything() {
   const [active, setActive] = useState(0);
   useEffect(() => { const t = setInterval(() => setActive((v) => (v + 1) % APPS.length), 1500); return () => clearInterval(t); }, []);
   return (
-    <section className="relative w-full overflow-hidden bg-[#f6f7f6]">
-      {/* soft light atmosphere */}
-      <div aria-hidden className="pointer-events-none absolute -top-1/3 left-1/4 h-[640px] w-[820px] rounded-full bg-signal-500/[0.07] blur-[150px]" />
-      <div aria-hidden className="absolute inset-0 [background-image:radial-gradient(circle,rgba(0,0,0,0.04)_1px,transparent_1px)] [background-size:34px_34px] [mask-image:radial-gradient(ellipse_70%_60%_at_30%_40%,black,transparent)]" />
-
+    <section className="relative w-full overflow-hidden bg-white">
       <div className="relative mx-auto max-w-[1080px] px-6 py-28 sm:py-36">
         <div className="text-[12px] font-medium uppercase tracking-[0.18em] text-signal-600">Real macOS</div>
         <h2 className="ed mt-4 max-w-[16ch] text-[32px] leading-[1.08] text-stone-900 sm:text-[46px]">It runs the apps a real Mac runs</h2>
