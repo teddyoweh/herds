@@ -1055,10 +1055,70 @@ function FleetThumb() {
   );
 }
 
+function MessageThumb() {
+  return (
+    <div className="flex h-48 flex-col justify-center gap-2 bg-[#eef6f1] px-7">
+      <div className="text-center text-[9px] text-stone-400">Today 9:14 AM</div>
+      <div className="max-w-[82%] self-start rounded-2xl rounded-bl-md bg-white px-3 py-2 text-[11px] text-stone-700 shadow-[0_1px_3px_-1px_rgba(20,24,33,0.12)]">Are we still on for dinner Friday?</div>
+      <div className="max-w-[84%] self-end rounded-2xl rounded-br-md bg-signal-600 px-3 py-2 text-[11px] leading-snug text-white">Yes — booked 7:30 at Nopa and sent them the address ✓</div>
+      <div className="self-end pr-1 text-[9px] text-stone-400">Delivered · handled by Herds</div>
+    </div>
+  );
+}
+
+function QAThumb() {
+  return (
+    <div className="relative flex h-48 items-center justify-center bg-[#f3eefb] px-6">
+      <div className="w-full max-w-[150px] overflow-hidden rounded-[18px] bg-white shadow-[0_10px_30px_-12px_rgba(20,24,33,0.25)]">
+        <div className="relative flex h-4 items-center justify-center"><span className="absolute top-1.5 h-1 w-8 rounded-full bg-stone-200" /></div>
+        <div className="px-4 pb-4 pt-1">
+          <div className="text-[12px] font-semibold text-stone-900">Sign in</div>
+          <div className="mt-2.5 h-5 rounded-md bg-[#f4f2ec]" />
+          <div className="mt-1.5 h-5 rounded-md bg-[#f4f2ec]" />
+          <div className="mt-2.5 rounded-md bg-signal-600 py-1.5 text-center text-[9.5px] font-medium text-white">Continue</div>
+        </div>
+      </div>
+      <motion.div className="pointer-events-none absolute left-[55%] top-[64%]" animate={{ y: [0, -3, 0] }} transition={{ duration: 1.3, repeat: Infinity }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" className="fill-stone-900"><path d="M4 2l16 7-7 2-2 7z" /></svg>
+      </motion.div>
+      <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-[9.5px] font-medium text-stone-600 shadow-[0_2px_8px_-3px_rgba(20,24,33,0.2)]">
+        <Check size={12} /> 24 assertions
+      </div>
+    </div>
+  );
+}
+
+function CIThumb() {
+  const rows = [["Build", "42.1s"], ["Test · 128", "19.7s"], ["Archive", "8.0s"]];
+  return (
+    <div className="flex h-48 items-center justify-center bg-[#fdf6ec] px-6">
+      <div className="w-full max-w-[220px] rounded-xl bg-white p-3 shadow-[0_10px_30px_-14px_rgba(20,24,33,0.2)]">
+        <div className="flex items-center justify-between">
+          <span className="flex items-center gap-1.5 text-[10.5px] font-semibold text-stone-800"><span className="h-2.5 w-2.5 rounded-full bg-signal-500" /> main</span>
+          <span className="font-mono text-[9.5px] text-stone-400">a91f2c</span>
+        </div>
+        <div className="mt-2.5 space-y-1.5">
+          {rows.map(([k, t]) => (
+            <div key={k} className="flex items-center gap-2 rounded-lg bg-[#faf7f2] px-2.5 py-1.5">
+              <Check size={14} />
+              <span className="text-[10.5px] text-stone-700">{k}</span>
+              <span className="tnum ml-auto font-mono text-[9.5px] text-stone-400">{t}</span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-2.5 text-[9.5px] text-stone-400">Passed on M2 Pro · 1m 12s</div>
+      </div>
+    </div>
+  );
+}
+
 const STORIES = [
   { cat: "iOS · overnight", title: "A food-delivery app, shipped overnight", body: "An agent cloned the repo, ran Xcode, fixed the failing tests, and pushed to TestFlight by morning — on a Mac mini in the closet.", thumb: <FoodThumb /> },
   { cat: "Browser · human", title: "It applies, books, and files — like a person", body: "The real browser on a real Mac: log into the portal, fill the form, hit submit. No brittle scraping API, no headless workarounds.", thumb: <BrowserTaskThumb /> },
   { cat: "Fleet · agents", title: "A hundred Macs, one prompt", body: "Point an agent at the whole fleet — build, render, test, scrape — running for hours across every machine you own.", thumb: <FleetThumb /> },
+  { cat: "iMessage", title: "iMessage, handled for you", body: "Triage threads, RSVP, reschedule, and reply in your voice — native Messages on a real Mac, around the clock.", thumb: <MessageThumb /> },
+  { cat: "App QA", title: "Tests your app like a real user", body: "Drive the real GUI on a Simulator or device — tap, scroll, screenshot, and assert on actual pixels, every release.", thumb: <QAThumb /> },
+  { cat: "CI", title: "Your iOS CI, on Macs you own", body: "Spare Mac minis become a build farm — clone, build, test, archive on every push. No per-minute cloud bill.", thumb: <CIThumb /> },
 ];
 
 const MORE_USES = ["Overnight iOS builds", "Browser tasks at scale", "Render farms", "E2E app testing", "Headless CI", "Data extraction", "Long-running agents", "Mac-only toolchains"];
