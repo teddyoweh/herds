@@ -1176,13 +1176,27 @@ function MiniMac({ label }: { label: string }) {
       {/* display — matte space-gray bezel (thin) */}
       <div className="relative w-full rounded-[7px] bg-[#1b1c1f] p-[1.5px] shadow-[0_12px_22px_-11px_rgba(20,24,33,0.5)]">
         <div className="pointer-events-none absolute inset-x-2 top-[1px] h-px rounded-full bg-white/10" />
-        {/* screen ON — macOS desktop wallpaper, 16:10 */}
-        <div className="relative h-[39px] overflow-hidden rounded-[5.5px]">
-          <div className="absolute inset-0" style={{ backgroundImage: "linear-gradient(150deg,#4d6bd6 0%,#8a63d2 42%,#d76f9e 73%,#f2ad6e 100%)" }} />
-          <div className="absolute inset-0 bg-gradient-to-b from-white/[0.07] via-transparent to-black/[0.07]" />
-          <div className="absolute inset-x-0 top-0 h-[5px] bg-white/15 backdrop-blur-[1px]" />
+        {/* screen ON — light macOS desktop (menu bar + a running window) */}
+        <div className="relative h-[40px] overflow-hidden rounded-[5.5px]">
+          <div className="absolute inset-0" style={{ backgroundImage: "linear-gradient(160deg,#e9eef7 0%,#f0edf4 52%,#f7efe6 100%)" }} />
+          {/* menu bar */}
+          <div className="absolute inset-x-0 top-0 flex h-[5px] items-center justify-between bg-white/45 px-1 backdrop-blur-[1px]">
+            <span className="h-[2px] w-[2px] rounded-full bg-stone-700/70" />
+            <span className="h-[1.5px] w-[5px] rounded-full bg-stone-500/45" />
+          </div>
           {/* notch */}
           <div className="absolute left-1/2 top-0 z-10 h-[4px] w-[16px] -translate-x-1/2 rounded-b-[2.5px] bg-[#0b0c0e]" />
+          {/* a running app window */}
+          <div className="absolute bottom-[3px] left-1/2 w-[46px] -translate-x-1/2 overflow-hidden rounded-[3px] bg-white/95 shadow-[0_3px_7px_-3px_rgba(20,24,33,0.3)]">
+            <div className="flex items-center gap-[1.5px] bg-[#ececef] px-[3px] py-[2px]">
+              <span className="h-[1.5px] w-[1.5px] rounded-full bg-[#ff5f57]" /><span className="h-[1.5px] w-[1.5px] rounded-full bg-[#febc2e]" /><span className="h-[1.5px] w-[1.5px] rounded-full bg-[#28c840]" />
+            </div>
+            <div className="space-y-[2px] px-[3px] py-[3px]">
+              <div className="h-[1.5px] w-3/4 rounded-full bg-stone-300" />
+              <div className="h-[1.5px] w-full rounded-full bg-stone-200" />
+              <div className="mt-[1px] h-[2px] w-full overflow-hidden rounded-full bg-black/[0.06]"><div className="h-full w-2/3 rounded-full bg-signal-500" /></div>
+            </div>
+          </div>
         </div>
       </div>
       {/* matte aluminum base + hinge (thin) */}
