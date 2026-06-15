@@ -48,6 +48,27 @@ function Check({ size = 22 }: { size?: number }) {
   );
 }
 
+/* Faithful Apple-style app icons — gradient squircles + accurate glyphs.
+   (Real Music note path from the official mark; the rest pixel-matched.) */
+function AppleIcon({ name, size = 44 }: { name: string; size?: number }) {
+  const gid = `ag-${name}`;
+  const tile = (fill: string) => <rect x="2" y="2" width="36" height="36" rx="10" fill={fill} />;
+  const G = ({ a, b }: { a: string; b: string }) => (
+    <defs><linearGradient id={gid} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={a} /><stop offset="1" stopColor={b} /></linearGradient></defs>
+  );
+  let inner: React.ReactNode = null;
+  if (name === "messages") inner = <><G a="#56e36b" b="#22ba42" />{tile(`url(#${gid})`)}<path d="M20 11.4c5 0 9.1 3.4 9.1 7.7 0 4.3-4.1 7.7-9.1 7.7-1 0-1.9-.1-2.8-.4-1.5 1-3.3 1.3-5 1.1.9-.9 1.6-1.9 1.7-3-1.9-1.4-3-3.4-3-5.4 0-4.3 4.1-7.7 9.1-7.7Z" fill="#fff" /></>;
+  else if (name === "mail") inner = <><G a="#37a4ff" b="#0a6cf0" />{tile(`url(#${gid})`)}<rect x="9.5" y="13.5" width="21" height="13.5" rx="3.2" fill="#fff" /><path d="M10.5 16l9.5 6.3 9.5-6.3" fill="none" stroke="#a6cdff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></>;
+  else if (name === "photos") inner = <>{tile("#ffffff")}<g transform="translate(20 19)">{[["#fc3d39", 0], ["#ff9500", 60], ["#ffcd00", 120], ["#34d15f", 180], ["#1aa3ff", 240], ["#cc73e1", 300]].map(([c, d]) => <ellipse key={d as number} rx="4" ry="7" fill={c as string} opacity="0.85" transform={`rotate(${d})`} />)}<circle r="2.6" fill="#fff" /></g></>;
+  else if (name === "notes") inner = <><defs><clipPath id={`nc-${name}`}><rect x="2" y="2" width="36" height="36" rx="10" /></clipPath></defs><g clipPath={`url(#nc-${name})`}><rect x="2" y="2" width="36" height="36" fill="#fbfaf4" /><rect x="2" y="2" width="36" height="10" fill="#ffd23d" /><g stroke="#d9d4c4" strokeWidth="1.7" strokeLinecap="round"><path d="M9 19h22M9 24h22M9 29h14" /></g></g></>;
+  else if (name === "music") inner = <><G a="#fb5c74" b="#fa233b" />{tile(`url(#${gid})`)}<g fill="#fff"><path d="M17.6 25.6V14.2l9.4-2v9.6h-1.8v-7.4l-5.8 1.25v9.95z" /><ellipse cx="15.6" cy="25.6" rx="3" ry="2.5" /><ellipse cx="25.2" cy="23.8" rx="3" ry="2.5" /></g></>;
+  else if (name === "facetime") inner = <><G a="#5be46f" b="#22ba42" />{tile(`url(#${gid})`)}<rect x="9.5" y="14.5" width="13" height="11" rx="3" fill="#fff" /><path d="M23.5 18l5.5-2.8v9.6L23.5 22z" fill="#fff" /></>;
+  else if (name === "icloud") inner = <><G a="#48b2ff" b="#1f86ee" />{tile(`url(#${gid})`)}<path d="M14.5 26c-2.5 0-4.5-2-4.5-4.4 0-2.3 1.8-4.2 4.1-4.4.7-2.3 2.8-3.9 5.3-3.9 2.6 0 4.8 1.8 5.4 4.2 2 .1 3.7 1.8 3.7 3.9 0 2.2-1.8 4-4 4z" fill="#fff" /></>;
+  else if (name === "remote") inner = <><G a="#6c7888" b="#454e5b" />{tile(`url(#${gid})`)}<rect x="9" y="11" width="22" height="13.5" rx="2.4" fill="none" stroke="#fff" strokeWidth="2" /><path d="M14 28h12" stroke="#fff" strokeWidth="2" strokeLinecap="round" /><path d="M18.5 16.5l8 4-3.3 1.1-1 3.2-3.7-8.3z" fill="#fff" /></>;
+  else if (name === "pair") inner = <><G a="#c06be6" b="#9a3fd0" />{tile(`url(#${gid})`)}<path d="M11 10l8.4 3.6-3.4 1-1 3.4z" fill="#fff" /><path d="M19.5 16l8.4 3.6-3.4 1-1 3.4z" fill="#fff" opacity="0.72" /></>;
+  return <svg width={size} height={size} viewBox="0 0 40 40">{inner}</svg>;
+}
+
 /* ------------------------------------------------------------------ *
  * Top bar
  * ------------------------------------------------------------------ */
@@ -1066,13 +1087,7 @@ function MessageThumb() {
   );
 }
 
-const APPLE_APPS: { name: string; bg: string; glyph: React.ReactNode }[] = [
-  { name: "Messages", bg: "#34c759", glyph: <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h7A2.5 2.5 0 0 1 16 5.5v3A2.5 2.5 0 0 1 13.5 11H8l-3.2 2.4A.4.4 0 0 1 4 13z" fill="white" /> },
-  { name: "Photos", bg: "#ffffff", glyph: <g><circle cx="10" cy="6" r="2.4" fill="#ff3b30" /><circle cx="13.5" cy="9" r="2.4" fill="#ffcc00" /><circle cx="12" cy="12.5" r="2.4" fill="#34c759" /><circle cx="8" cy="12.5" r="2.4" fill="#007aff" /><circle cx="6.5" cy="9" r="2.4" fill="#af52de" /></g> },
-  { name: "Notes", bg: "#ffd60a", glyph: <g stroke="#7a5b00" strokeWidth="1.4" strokeLinecap="round"><path d="M6 6h8M6 9h8M6 12h5" /></g> },
-  { name: "Music", bg: "#fa233b", glyph: <g fill="white"><circle cx="7" cy="13" r="2" /><circle cx="13.5" cy="11.5" r="2" /><path d="M9 13V5l6.5-1.4V11.5" stroke="white" strokeWidth="1.4" fill="none" /></g> },
-  { name: "Mail", bg: "#1f8fff", glyph: <g stroke="white" strokeWidth="1.4" fill="none" strokeLinejoin="round"><rect x="4" y="5.5" width="12" height="9" rx="1.6" /><path d="M4.5 6.5L10 10.5 15.5 6.5" /></g> },
-];
+const APPLE_APPS = ["messages", "photos", "notes", "music", "mail"];
 
 function AppleThumb() {
   return (
@@ -1080,13 +1095,12 @@ function AppleThumb() {
       <div className="flex items-end gap-2.5">
         {APPLE_APPS.map((a, i) => (
           <motion.div
-            key={a.name}
+            key={a}
             animate={{ y: i === 0 ? [0, -5, 0] : 0 }}
-            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-            className="grid place-items-center rounded-[13px] shadow-[0_6px_16px_-6px_rgba(20,24,33,0.3)]"
-            style={{ width: i === 0 ? 50 : 44, height: i === 0 ? 50 : 44, backgroundColor: a.bg }}
+            transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+            className="drop-shadow-[0_6px_14px_rgba(20,24,33,0.22)]"
           >
-            <svg width={i === 0 ? 24 : 21} height={i === 0 ? 24 : 21} viewBox="0 0 20 20">{a.glyph}</svg>
+            <AppleIcon name={a} size={i === 0 ? 52 : 46} />
           </motion.div>
         ))}
       </div>
@@ -1351,13 +1365,13 @@ function GetStarted() {
  * Apple-native — the agent uses the real Apple apps + operates any Mac
  * ------------------------------------------------------------------ */
 
-const NATIVE: { name: string; bg: string; ring?: boolean; glyph: React.ReactNode; line: string }[] = [
-  { name: "iMessage", bg: "#34c759", glyph: <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h7A2.5 2.5 0 0 1 16 5.5v3A2.5 2.5 0 0 1 13.5 11H8l-3.2 2.4A.4.4 0 0 1 4 13z" fill="white" />, line: "Reads, replies, and reschedules — in your voice, around the clock." },
-  { name: "iCloud Photos", bg: "#ffffff", ring: true, glyph: <g><circle cx="10" cy="6" r="2.5" fill="#ff3b30" /><circle cx="13.6" cy="9" r="2.5" fill="#ffcc00" /><circle cx="12" cy="12.6" r="2.5" fill="#34c759" /><circle cx="8" cy="12.6" r="2.5" fill="#007aff" /><circle cx="6.4" cy="9" r="2.5" fill="#af52de" /></g>, line: "Sorts, dedupes, and albums a decade of photos in iCloud." },
-  { name: "Apple Notes", bg: "#ffd60a", glyph: <g stroke="#8a6400" strokeWidth="1.5" strokeLinecap="round"><path d="M6 6h8M6 9.5h8M6 13h5" /></g>, line: "Captures, files, and recalls everything you need." },
-  { name: "FaceTime", bg: "#34c759", glyph: <g fill="white"><rect x="3" y="6" width="9.5" height="8" rx="2" /><path d="M13.5 8.6l3.2-1.8v6.4l-3.2-1.8z" /></g>, line: "Places and joins calls — schedules, dials, follows up." },
-  { name: "Remote operation", bg: "#586474", glyph: <g><rect x="3" y="4" width="14" height="10" rx="1.6" fill="none" stroke="white" strokeWidth="1.5" /><path d="M9 10l5 5-1.8.4 1 2-1.4.7-1-2L9 17.5z" fill="white" /></g>, line: "Drives any Mac you point it at — set up, fix, and triage." },
-  { name: "Pair operator", bg: "#af52de", glyph: <g fill="white"><path d="M4 3l7 3-3 1-1 3z" /><path d="M11 9l6 2.6-2.6.9-.9 2.6z" opacity="0.7" /></g>, line: "You watch, it works — approve the risky steps, skip the rest." },
+const NATIVE: { name: string; icon: string; line: string }[] = [
+  { name: "iMessage", icon: "messages", line: "Reads, replies, and reschedules — in your voice, around the clock." },
+  { name: "iCloud Photos", icon: "photos", line: "Sorts, dedupes, and albums a decade of photos in iCloud." },
+  { name: "Apple Notes", icon: "notes", line: "Captures, files, and recalls everything you need." },
+  { name: "FaceTime", icon: "facetime", line: "Places and joins calls — schedules, dials, follows up." },
+  { name: "Remote operation", icon: "remote", line: "Drives any Mac you point it at — set up, fix, and triage." },
+  { name: "Pair operator", icon: "pair", line: "You watch, it works — approve the risky steps, skip the rest." },
 ];
 
 function AppleNative() {
@@ -1371,9 +1385,7 @@ function AppleNative() {
       <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} className="mt-14 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {NATIVE.map((n) => (
           <motion.div key={n.name} variants={fadeUp} className="flex items-start gap-4 rounded-2xl bg-[#f7f6f3] p-5">
-            <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-[12px] shadow-[0_3px_10px_-3px_rgba(20,24,33,0.25)] ${n.ring ? "ring-1 ring-black/[0.06]" : ""}`} style={{ backgroundColor: n.bg }}>
-              <svg width="22" height="22" viewBox="0 0 20 20">{n.glyph}</svg>
-            </div>
+            <div className="shrink-0 drop-shadow-[0_3px_8px_rgba(20,24,33,0.18)]"><AppleIcon name={n.icon} size={44} /></div>
             <div>
               <h3 className="text-[15px] font-semibold tracking-tight text-stone-900">{n.name}</h3>
               <p className="mt-1.5 text-[13px] leading-relaxed text-stone-500">{n.line}</p>
