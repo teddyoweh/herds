@@ -1286,6 +1286,44 @@ function RunsEverything() {
 }
 
 /* ------------------------------------------------------------------ *
+ * Apple-native — the agent uses the real Apple apps + operates any Mac
+ * ------------------------------------------------------------------ */
+
+const NATIVE: { name: string; bg: string; ring?: boolean; glyph: React.ReactNode; line: string }[] = [
+  { name: "iMessage", bg: "#34c759", glyph: <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h7A2.5 2.5 0 0 1 16 5.5v3A2.5 2.5 0 0 1 13.5 11H8l-3.2 2.4A.4.4 0 0 1 4 13z" fill="white" />, line: "Reads, replies, and reschedules — in your voice, around the clock." },
+  { name: "iCloud Photos", bg: "#ffffff", ring: true, glyph: <g><circle cx="10" cy="6" r="2.5" fill="#ff3b30" /><circle cx="13.6" cy="9" r="2.5" fill="#ffcc00" /><circle cx="12" cy="12.6" r="2.5" fill="#34c759" /><circle cx="8" cy="12.6" r="2.5" fill="#007aff" /><circle cx="6.4" cy="9" r="2.5" fill="#af52de" /></g>, line: "Sorts, dedupes, and albums a decade of photos in iCloud." },
+  { name: "Apple Notes", bg: "#ffd60a", glyph: <g stroke="#8a6400" strokeWidth="1.5" strokeLinecap="round"><path d="M6 6h8M6 9.5h8M6 13h5" /></g>, line: "Captures, files, and recalls everything you need." },
+  { name: "FaceTime", bg: "#34c759", glyph: <g fill="white"><rect x="3" y="6" width="9.5" height="8" rx="2" /><path d="M13.5 8.6l3.2-1.8v6.4l-3.2-1.8z" /></g>, line: "Places and joins calls — schedules, dials, follows up." },
+  { name: "Remote operation", bg: "#586474", glyph: <g><rect x="3" y="4" width="14" height="10" rx="1.6" fill="none" stroke="white" strokeWidth="1.5" /><path d="M9 10l5 5-1.8.4 1 2-1.4.7-1-2L9 17.5z" fill="white" /></g>, line: "Drives any Mac you point it at — set up, fix, and triage." },
+  { name: "Pair operator", bg: "#af52de", glyph: <g fill="white"><path d="M4 3l7 3-3 1-1 3z" /><path d="M11 9l6 2.6-2.6.9-.9 2.6z" opacity="0.7" /></g>, line: "You watch, it works — approve the risky steps, skip the rest." },
+];
+
+function AppleNative() {
+  return (
+    <Section>
+      <Reveal className="mx-auto max-w-2xl text-center">
+        <div className="text-[12px] font-medium uppercase tracking-[0.16em] text-signal-600">Apple-native</div>
+        <h2 className="ed mt-3 text-[32px] leading-[1.05] text-stone-900 sm:text-[44px]">Native to your Apple world</h2>
+        <p className="mx-auto mt-4 max-w-xl text-[15.5px] leading-relaxed text-stone-500">It doesn&rsquo;t call half-built APIs — it uses the real apps, signed in on a real Mac, and operates any machine you point it at.</p>
+      </Reveal>
+      <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} className="mt-14 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {NATIVE.map((n) => (
+          <motion.div key={n.name} variants={fadeUp} className="flex items-start gap-4 rounded-2xl bg-[#f7f6f3] p-5">
+            <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-[12px] shadow-[0_3px_10px_-3px_rgba(20,24,33,0.25)] ${n.ring ? "ring-1 ring-black/[0.06]" : ""}`} style={{ backgroundColor: n.bg }}>
+              <svg width="22" height="22" viewBox="0 0 20 20">{n.glyph}</svg>
+            </div>
+            <div>
+              <h3 className="text-[15px] font-semibold tracking-tight text-stone-900">{n.name}</h3>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-stone-500">{n.line}</p>
+            </div>
+          </motion.div>
+        ))}
+      </motion.div>
+    </Section>
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * Page — editorial scrollytelling, 10+ sections
  * ------------------------------------------------------------------ */
 
@@ -1299,6 +1337,8 @@ export function Landing() {
         <Capabilities />
 
         <RunsEverything />
+
+        <AppleNative />
 
         <Stories />
 
