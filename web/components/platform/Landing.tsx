@@ -514,31 +514,61 @@ function EyeIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill
 
 /* ---- crafted capability illustrations (SVG + UI, animated) ---- */
 
+function FleetGlyph({ x, y, t }: { x: number; y: number; t: string }) {
+  const gx = x - 30, gy = y - 1;
+  if (t === "box") return <rect x={gx + 1} y={gy - 6} width="13" height="13" rx="2.6" className="fill-none stroke-stone-400" strokeWidth="1.2" />;
+  if (t === "lap") return <g className="stroke-stone-400" strokeWidth="1.2" fill="none" strokeLinecap="round"><rect x={gx} y={gy - 6} width="15" height="9" rx="1.4" /><path d={`M${gx - 1.5} ${gy + 4.5} h18`} /></g>;
+  return <g className="stroke-stone-400" strokeWidth="1.2" fill="none" strokeLinecap="round"><rect x={gx} y={gy - 7} width="15" height="10" rx="1.4" /><path d={`M${gx + 7.5} ${gy + 3} v2 M${gx + 4} ${gy + 5.5} h7`} /></g>;
+}
+
 function FleetViz() {
   const nodes = [
-    { x: 92, y: 54, label: "M3 Max" },
-    { x: 430, y: 46, label: "Mac mini" },
-    { x: 80, y: 150, label: "Studio" },
-    { x: 440, y: 154, label: "MacBook" },
+    { x: 100, y: 52, label: "M3 Max", t: "mon" },
+    { x: 420, y: 48, label: "Mac mini", t: "box" },
+    { x: 94, y: 150, label: "Mac Studio", t: "mon" },
+    { x: 426, y: 152, label: "MacBook", t: "lap" },
   ];
+  const d = (n: { x: number; y: number }) => `M260,100 Q260,${n.y} ${n.x},${n.y}`;
   return (
     <svg viewBox="0 0 520 200" className="h-full w-full font-sans">
-      {nodes.map((n, i) => <line key={"l" + i} x1={260} y1={100} x2={n.x} y2={n.y} className="stroke-signal-500/25" strokeWidth="1.4" strokeDasharray="3 5" />)}
+      <defs>
+        <radialGradient id="fleetGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="rgb(27,189,134)" stopOpacity="0.16" />
+          <stop offset="100%" stopColor="rgb(27,189,134)" stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      <circle cx="260" cy="100" r="86" fill="url(#fleetGlow)" />
+      {/* curved connectors */}
+      {nodes.map((n, i) => <path key={"p" + i} id={`fp${i}`} d={d(n)} fill="none" className="stroke-signal-500/25" strokeWidth="1.5" />)}
+      {/* dispatch particles (hub → node) */}
       {nodes.map((n, i) => (
-        <motion.circle key={"d" + i} r="2.6" className="fill-signal-500" initial={{ cx: n.x, cy: n.y }} animate={{ cx: [n.x, 260], cy: [n.y, 100] }} transition={{ duration: 1.9, repeat: Infinity, ease: "easeInOut", delay: i * 0.45 }} />
+        <circle key={"pt" + i} r="2.8" className="fill-signal-500">
+          <animateMotion dur="2.1s" repeatCount="indefinite" begin={`${i * 0.42}s`} calcMode="spline" keyPoints="0;1" keyTimes="0;1" keySplines="0.4 0 0.2 1">
+            <mpath href={`#fp${i}`} />
+          </animateMotion>
+        </circle>
       ))}
+      {/* nodes */}
       {nodes.map((n, i) => (
         <g key={"n" + i}>
-          <rect x={n.x - 38} y={n.y - 16} width="76" height="32" rx="9" className="fill-white" />
-          <rect x={n.x - 27} y={n.y - 7} width="13" height="9" rx="1.5" className="fill-none stroke-stone-300" strokeWidth="1.2" />
-          <text x={n.x - 8} y={n.y + 3.5} className="fill-stone-600" fontSize="9.5" fontWeight="600">{n.label}</text>
-          <circle cx={n.x + 30} cy={n.y - 9} r="2.4" className="fill-signal-500" />
+          <rect x={n.x - 45} y={n.y - 17} width="90" height="34" rx="11" className="fill-white" />
+          <FleetGlyph x={n.x} y={n.y} t={n.t} />
+          <text x={n.x - 10} y={n.y + 3.5} className="fill-stone-700" fontSize="9.5" fontWeight="600">{n.label}</text>
+          <circle cx={n.x + 33} cy={n.y - 9} r="2.4" className="fill-signal-500" />
         </g>
       ))}
-      <motion.circle cx={260} cy={100} r={24} className="fill-none stroke-signal-500/40" strokeWidth="1.4" animate={{ r: [22, 46], opacity: [0.5, 0] }} transition={{ duration: 2.4, repeat: Infinity, ease: "easeOut" }} />
-      <rect x={236} y={76} width="48" height="48" rx="13" className="fill-signal-600" />
-      <g className="stroke-white" strokeWidth="1.6" strokeLinecap="round" opacity="0.85" fill="none"><path d="M260 90 L251 112 M260 90 L269 112 M251 112 L269 112" /></g>
-      <circle cx="260" cy="89" r="3.3" className="fill-white" /><circle cx="250" cy="113" r="3.3" className="fill-white" /><circle cx="270" cy="113" r="3.3" className="fill-white" />
+      {/* pulse rings */}
+      {[0, 1].map((k) => (
+        <motion.circle key={k} cx="260" cy="100" r="24" className="fill-none stroke-signal-500/40" strokeWidth="1.3" animate={{ r: [24, 52], opacity: [0.45, 0] }} transition={{ duration: 2.6, repeat: Infinity, ease: "easeOut", delay: k * 1.3 }} />
+      ))}
+      {/* hub */}
+      <rect x={236} y={76} width="48" height="48" rx="14" className="fill-signal-600" />
+      <g className="stroke-white" strokeWidth="1.7" strokeLinecap="round" opacity="0.9" fill="none"><path d="M260 90 L251 112 M260 90 L269 112 M251 112 L269 112" /></g>
+      <circle cx="260" cy="89" r="3.4" className="fill-white" /><circle cx="250" cy="113" r="3.4" className="fill-white" /><circle cx="270" cy="113" r="3.4" className="fill-white" />
+      {/* status pill */}
+      <rect x="18" y="16" width="96" height="22" rx="11" className="fill-white" />
+      <circle cx="33" cy="27" r="3" className="fill-signal-500" />
+      <text x="42" y="30.5" className="fill-stone-600" fontSize="9.5" fontWeight="600">4 Macs · online</text>
     </svg>
   );
 }
@@ -972,45 +1002,66 @@ function FoodThumb() {
   );
 }
 
-function MessageThumb() {
+function BrowserTaskThumb() {
   return (
-    <div className="flex h-48 flex-col justify-center gap-2 bg-[#eef6f1] px-7">
-      <div className="max-w-[78%] self-start rounded-2xl rounded-bl-md bg-white px-3 py-2 text-[11px] text-stone-700">Can you move my 3pm to tomorrow?</div>
-      <div className="max-w-[80%] self-end rounded-2xl rounded-br-md bg-signal-600 px-3 py-2 text-[11px] text-white">Done — rescheduled to 10:30am and let them know ✓</div>
-      <div className="self-end text-[9px] text-stone-400">Delivered · handled by Herds</div>
+    <div className="relative flex h-48 items-center justify-center bg-[#eef2f8] px-6">
+      <div className="w-full max-w-[228px] overflow-hidden rounded-xl bg-white shadow-[0_10px_30px_-14px_rgba(20,24,33,0.22)]">
+        <div className="flex items-center gap-1.5 bg-[#f1efe9] px-3 py-2">
+          <span className="h-2 w-2 rounded-full bg-[#ff5f57]" /><span className="h-2 w-2 rounded-full bg-[#febc2e]" /><span className="h-2 w-2 rounded-full bg-[#28c840]" />
+          <span className="mx-auto rounded bg-white px-3 py-0.5 font-mono text-[8.5px] text-stone-400">jobs.acme.com/apply</span>
+        </div>
+        <div className="px-3.5 py-3">
+          <div className="text-[10px] font-semibold text-stone-700">Application</div>
+          <div className="mt-2 space-y-1.5">
+            {[["Name", "Teddy O."], ["Résumé", "resume.pdf"]].map(([k, v]) => (
+              <div key={k} className="flex items-center gap-2">
+                <span className="w-12 text-[9px] text-stone-400">{k}</span>
+                <span className="flex-1 rounded-md bg-[#f4f2ec] px-2 py-1 text-[9.5px] text-stone-700">{v}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-2.5 rounded-lg bg-signal-600 py-1.5 text-center text-[10px] font-medium text-white">Submit application</div>
+        </div>
+      </div>
+      <motion.div className="pointer-events-none absolute left-[58%] top-[72%]" animate={{ y: [0, -4, 0], opacity: [1, 1, 1] }} transition={{ duration: 1.4, repeat: Infinity }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" className="fill-stone-900"><path d="M4 2l16 7-7 2-2 7z" /></svg>
+      </motion.div>
     </div>
   );
 }
 
-function BrowserThumb() {
-  const sites = [
-    { t: "in", c: "bg-[#0a66c2]" }, { t: "X", c: "bg-stone-900" }, { t: "♪", c: "bg-stone-900" },
-    { t: "f", c: "bg-[#1877f2]" }, { t: "◎", c: "bg-[#e1306c]" },
-  ];
+function FleetThumb() {
+  const macs = [{ n: "M3 Max", p: 82 }, { n: "Mac mini", p: 64 }, { n: "Mac Studio", p: 91 }, { n: "MacBook", p: 48 }];
   return (
-    <div className="flex h-48 items-center justify-center bg-[#eef1f7] px-6">
-      <div className="w-full overflow-hidden rounded-xl bg-white">
-        <div className="flex items-center gap-1.5 bg-[#f1efe9] px-3 py-2">
-          <span className="h-2 w-2 rounded-full bg-[#ff5f57]" /><span className="h-2 w-2 rounded-full bg-[#febc2e]" /><span className="h-2 w-2 rounded-full bg-[#28c840]" />
-          <span className="mx-auto rounded bg-white px-3 py-0.5 font-mono text-[9px] text-stone-400">linkedin.com</span>
-        </div>
-        <div className="flex items-center justify-center gap-2 px-4 py-5">
-          {sites.map((s, i) => (
-            <span key={i} className={`grid h-8 w-8 place-items-center rounded-lg ${s.c} text-[12px] font-bold text-white`}>{s.t}</span>
-          ))}
-        </div>
+    <div className="flex h-48 flex-col justify-center gap-2.5 bg-[#edf6f0] px-6">
+      <div className="mx-auto flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-[11px] text-stone-600 shadow-[0_2px_8px_-3px_rgba(20,24,33,0.14)]">
+        <span className="grid h-4 w-4 place-items-center rounded bg-signal-600 text-[8px] font-bold text-white">⌘</span>
+        <span>&ldquo;render every scene&rdquo;</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {macs.map((m) => (
+          <div key={m.n} className="rounded-lg bg-white px-2.5 py-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[9.5px] font-semibold text-stone-700">{m.n}</span>
+              <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-500" />
+            </div>
+            <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-black/[0.07]">
+              <motion.div initial={{ width: 0 }} whileInView={{ width: `${m.p}%` }} viewport={{ once: true }} transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }} className="h-full rounded-full bg-signal-500" />
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
 const STORIES = [
-  { cat: "iOS · long-running", title: "A food-delivery app, shipped overnight", body: "An agent cloned the repo, ran Xcode, fixed the failing tests, and pushed to TestFlight by morning — on a Mac mini in the closet.", thumb: <FoodThumb /> },
-  { cat: "Automation", title: "iMessage that runs itself", body: "Triage texts, reschedule meetings, reply in your voice — native iMessage on a real Mac, driven by an agent around the clock.", thumb: <MessageThumb /> },
-  { cat: "Browser", title: "A real browser, not a patchy API", body: "Every cloud-browser tool was a workaround. Herds hands an agent the actual browser — sign into LinkedIn, scroll TikTok, post to Facebook, like a human.", thumb: <BrowserThumb /> },
+  { cat: "iOS · overnight", title: "A food-delivery app, shipped overnight", body: "An agent cloned the repo, ran Xcode, fixed the failing tests, and pushed to TestFlight by morning — on a Mac mini in the closet.", thumb: <FoodThumb /> },
+  { cat: "Browser · human", title: "It applies, books, and files — like a person", body: "The real browser on a real Mac: log into the portal, fill the form, hit submit. No brittle scraping API, no headless workarounds.", thumb: <BrowserTaskThumb /> },
+  { cat: "Fleet · agents", title: "A hundred Macs, one prompt", body: "Point an agent at the whole fleet — build, render, test, scrape — running for hours across every machine you own.", thumb: <FleetThumb /> },
 ];
 
-const MORE_USES = ["Simulator UI tests", "TestFlight releases", "Headless CI farm", "Codesign & notarize", "Scrape any site", "Cross-post to socials", "Long-running jobs", "Mac-only toolchains"];
+const MORE_USES = ["Overnight iOS builds", "Browser tasks at scale", "Render farms", "E2E app testing", "Headless CI", "Data extraction", "Long-running agents", "Mac-only toolchains"];
 
 function Stories() {
   return (
