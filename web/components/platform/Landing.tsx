@@ -1170,26 +1170,52 @@ function BrowserTaskThumb() {
   );
 }
 
-function FleetThumb() {
-  const macs = [{ n: "M3 Max", p: 82 }, { n: "Mac mini", p: 64 }, { n: "Mac Studio", p: 91 }, { n: "MacBook", p: 48 }];
+function MiniMac({ hue, pct, label }: { hue: number; pct: number; label: string }) {
   return (
-    <div className="flex h-48 flex-col justify-center gap-2.5 bg-[#edf6f0] px-6">
-      <div className="mx-auto flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-[11px] text-stone-600 shadow-[0_2px_8px_-3px_rgba(20,24,33,0.14)]">
-        <span className="grid h-4 w-4 place-items-center rounded bg-signal-600 text-[8px] font-bold text-white">⌘</span>
-        <span>&ldquo;render every scene&rdquo;</span>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        {macs.map((m) => (
-          <div key={m.n} className="rounded-lg bg-white px-2.5 py-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[9.5px] font-semibold text-stone-700">{m.n}</span>
-              <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-500" />
-            </div>
-            <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-black/[0.07]">
-              <motion.div initial={{ width: 0 }} whileInView={{ width: `${m.p}%` }} viewport={{ once: true }} transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }} className="h-full rounded-full bg-signal-500" />
-            </div>
+    <div className="flex w-[56px] flex-col items-center">
+      <div className="relative w-full rounded-t-[6px] rounded-b-[2px] bg-gradient-to-b from-[#2b2d31] to-[#17181b] p-[2px] shadow-[0_6px_14px_-7px_rgba(20,24,33,0.45)]">
+        <div className="absolute left-1/2 top-0 z-10 h-[3px] w-[13px] -translate-x-1/2 rounded-b-[2px] bg-[#17181b]" />
+        <div className="overflow-hidden rounded-[3.5px] bg-white">
+          <div className="relative h-[28px]" style={{ backgroundImage: `linear-gradient(135deg, hsl(${hue},72%,66%), hsl(${hue + 36},66%,50%))` }}>
+            <span className="absolute right-1 top-1 h-1 w-1 animate-breathe rounded-full bg-white" />
           </div>
-        ))}
+          <div className="px-1.5 py-1.5">
+            <div className="flex items-center justify-between text-[5.5px] text-stone-400"><span>render</span><span className="tnum">{pct}%</span></div>
+            <div className="mt-0.5 h-[2px] overflow-hidden rounded-full bg-black/[0.08]"><motion.div initial={{ width: 0 }} whileInView={{ width: `${pct}%` }} viewport={{ once: true }} transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1] }} className="h-full rounded-full bg-signal-500" /></div>
+          </div>
+        </div>
+      </div>
+      <div className="-mt-px h-[3px] w-full rounded-b-[3px] bg-gradient-to-b from-[#cdd2da] to-[#a8afb9]" />
+      <span className="mt-1 text-[6.5px] font-medium text-stone-500">{label}</span>
+    </div>
+  );
+}
+
+function FleetThumb() {
+  const macs = [
+    { hue: 24, pct: 72, label: "M3 Max" },
+    { hue: 205, pct: 46, label: "M2 Pro" },
+    { hue: 280, pct: 88, label: "Mac mini" },
+    { hue: 150, pct: 33, label: "Studio" },
+    { hue: 338, pct: 61, label: "MacBook" },
+  ];
+  const xs = [11, 30.5, 50, 69.5, 89];
+  return (
+    <div className="relative h-48 overflow-hidden bg-gradient-to-b from-[#eef3ef] to-[#e5efe9]">
+      {/* prompt */}
+      <div className="absolute left-1/2 top-4 z-10 flex -translate-x-1/2 items-center gap-2 rounded-xl bg-white px-3 py-2 shadow-[0_8px_20px_-8px_rgba(20,24,33,0.22)]">
+        <span className="grid h-4 w-4 place-items-center rounded-md bg-signal-600 text-[8px] font-bold text-white">⌘</span>
+        <span className="text-[10px] font-medium text-stone-700">render all 240 frames</span>
+        <span className="rounded-full bg-signal-500/[0.12] px-1.5 py-0.5 text-[8px] font-medium text-signal-700">5 Macs</span>
+      </div>
+      {/* dispatch */}
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full">
+        {xs.map((x, i) => <line key={i} x1="50" y1="20" x2={x} y2="58" className="stroke-signal-500/25" strokeWidth="0.4" />)}
+        {xs.map((x, i) => <motion.circle key={"d" + i} r="0.7" className="fill-signal-500" animate={{ cx: [50, x], cy: [20, 58] }} transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut", delay: i * 0.3 }} />)}
+      </svg>
+      {/* fleet */}
+      <div className="absolute bottom-3.5 left-1/2 flex -translate-x-1/2 gap-1.5">
+        {macs.map((m) => <MiniMac key={m.label} {...m} />)}
       </div>
     </div>
   );
