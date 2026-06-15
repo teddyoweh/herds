@@ -54,14 +54,16 @@ class Daemon:
             try:
                 await self._connect_once()
                 backoff = 1.0  # reset after a clean session
-            except (OSError, websockets.WebSocketException) as exc:
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 — never let the daemon die; always reconnect
                 print(f"herds daemon: connection lost ({exc}); retrying in {backoff:.0f}s",
                       file=sys.stderr)
             await asyncio.sleep(backoff)
-            backoff = min(backoff * 2, 30.0)
+            backoff = min(backoff * 1.7, 10.0)
 
     async def _connect_once(self) -> None:
-        async with websockets.connect(self._ws_url(), max_size=None, ping_interval=20) as ws:
+        async with websockets.connect(self._ws_url(), max_size=None, ping_interval=20, ping_timeout=20) as ws:
             self._ws = ws
             # Handshake: announce who we are and what we are.
             await self._send(Frame(
