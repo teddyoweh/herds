@@ -1066,62 +1066,70 @@ function MessageThumb() {
   );
 }
 
-function QAThumb() {
+const APPLE_APPS: { name: string; bg: string; glyph: React.ReactNode }[] = [
+  { name: "Messages", bg: "#34c759", glyph: <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h7A2.5 2.5 0 0 1 16 5.5v3A2.5 2.5 0 0 1 13.5 11H8l-3.2 2.4A.4.4 0 0 1 4 13z" fill="white" /> },
+  { name: "Photos", bg: "#ffffff", glyph: <g><circle cx="10" cy="6" r="2.4" fill="#ff3b30" /><circle cx="13.5" cy="9" r="2.4" fill="#ffcc00" /><circle cx="12" cy="12.5" r="2.4" fill="#34c759" /><circle cx="8" cy="12.5" r="2.4" fill="#007aff" /><circle cx="6.5" cy="9" r="2.4" fill="#af52de" /></g> },
+  { name: "Notes", bg: "#ffd60a", glyph: <g stroke="#7a5b00" strokeWidth="1.4" strokeLinecap="round"><path d="M6 6h8M6 9h8M6 12h5" /></g> },
+  { name: "Music", bg: "#fa233b", glyph: <g fill="white"><circle cx="7" cy="13" r="2" /><circle cx="13.5" cy="11.5" r="2" /><path d="M9 13V5l6.5-1.4V11.5" stroke="white" strokeWidth="1.4" fill="none" /></g> },
+  { name: "Mail", bg: "#1f8fff", glyph: <g stroke="white" strokeWidth="1.4" fill="none" strokeLinejoin="round"><rect x="4" y="5.5" width="12" height="9" rx="1.6" /><path d="M4.5 6.5L10 10.5 15.5 6.5" /></g> },
+];
+
+function AppleThumb() {
   return (
-    <div className="relative flex h-48 items-center justify-center bg-[#f3eefb] px-6">
-      <div className="w-full max-w-[150px] overflow-hidden rounded-[18px] bg-white shadow-[0_10px_30px_-12px_rgba(20,24,33,0.25)]">
-        <div className="relative flex h-4 items-center justify-center"><span className="absolute top-1.5 h-1 w-8 rounded-full bg-stone-200" /></div>
-        <div className="px-4 pb-4 pt-1">
-          <div className="text-[12px] font-semibold text-stone-900">Sign in</div>
-          <div className="mt-2.5 h-5 rounded-md bg-[#f4f2ec]" />
-          <div className="mt-1.5 h-5 rounded-md bg-[#f4f2ec]" />
-          <div className="mt-2.5 rounded-md bg-signal-600 py-1.5 text-center text-[9.5px] font-medium text-white">Continue</div>
-        </div>
+    <div className="flex h-48 flex-col items-center justify-center gap-4 bg-[#f1eefb] px-6">
+      <div className="flex items-end gap-2.5">
+        {APPLE_APPS.map((a, i) => (
+          <motion.div
+            key={a.name}
+            animate={{ y: i === 0 ? [0, -5, 0] : 0 }}
+            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+            className="grid place-items-center rounded-[13px] shadow-[0_6px_16px_-6px_rgba(20,24,33,0.3)]"
+            style={{ width: i === 0 ? 50 : 44, height: i === 0 ? 50 : 44, backgroundColor: a.bg }}
+          >
+            <svg width={i === 0 ? 24 : 21} height={i === 0 ? 24 : 21} viewBox="0 0 20 20">{a.glyph}</svg>
+          </motion.div>
+        ))}
       </div>
-      <motion.div className="pointer-events-none absolute left-[55%] top-[64%]" animate={{ y: [0, -3, 0] }} transition={{ duration: 1.3, repeat: Infinity }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" className="fill-stone-900"><path d="M4 2l16 7-7 2-2 7z" /></svg>
-      </motion.div>
-      <div className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-[9.5px] font-medium text-stone-600 shadow-[0_2px_8px_-3px_rgba(20,24,33,0.2)]">
-        <Check size={12} /> 24 assertions
+      <div className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[10px] font-medium text-stone-600 shadow-[0_2px_8px_-3px_rgba(20,24,33,0.18)]">
+        <Check size={12} /> Signed in · the real apps
       </div>
     </div>
   );
 }
 
-function CIThumb() {
-  const rows = [["Build", "42.1s"], ["Test · 128", "19.7s"], ["Archive", "8.0s"]];
+function RemoteThumb() {
+  const rows = [["Disk almost full", "cleared 42 GB"], ["Wi-Fi keeps dropping", "reset · stable"], ["12 updates pending", "installed"]];
   return (
-    <div className="flex h-48 items-center justify-center bg-[#fdf6ec] px-6">
-      <div className="w-full max-w-[220px] rounded-xl bg-white p-3 shadow-[0_10px_30px_-14px_rgba(20,24,33,0.2)]">
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-1.5 text-[10.5px] font-semibold text-stone-800"><span className="h-2.5 w-2.5 rounded-full bg-signal-500" /> main</span>
-          <span className="font-mono text-[9.5px] text-stone-400">a91f2c</span>
+    <div className="flex h-48 items-center justify-center bg-[#eef1f6] px-6">
+      <div className="w-full max-w-[238px] overflow-hidden rounded-xl bg-white shadow-[0_10px_30px_-14px_rgba(20,24,33,0.22)]">
+        <div className="flex items-center gap-1.5 bg-[#2a2f37] px-3 py-2">
+          <span className="h-2 w-2 rounded-full bg-[#ff5f57]" /><span className="h-2 w-2 rounded-full bg-[#febc2e]" /><span className="h-2 w-2 rounded-full bg-[#28c840]" />
+          <span className="mx-auto flex items-center gap-1.5 text-[9px] text-stone-300"><span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-400" /> Mom&rsquo;s MacBook · remote</span>
         </div>
-        <div className="mt-2.5 space-y-1.5">
-          {rows.map(([k, t]) => (
-            <div key={k} className="flex items-center gap-2 rounded-lg bg-[#faf7f2] px-2.5 py-1.5">
+        <div className="space-y-1.5 p-3">
+          {rows.map(([issue, fix]) => (
+            <div key={issue} className="flex items-center gap-2 rounded-lg bg-[#f6f5f2] px-2.5 py-1.5">
               <Check size={14} />
-              <span className="text-[10.5px] text-stone-700">{k}</span>
-              <span className="tnum ml-auto font-mono text-[9.5px] text-stone-400">{t}</span>
+              <span className="text-[10px] text-stone-400 line-through">{issue}</span>
+              <span className="ml-auto text-[10px] font-medium text-signal-700">{fix} ✓</span>
             </div>
           ))}
         </div>
-        <div className="mt-2.5 text-[9.5px] text-stone-400">Passed on M2 Pro · 1m 12s</div>
       </div>
     </div>
   );
 }
 
 const STORIES = [
-  { cat: "iOS · overnight", title: "A food-delivery app, shipped overnight", body: "An agent cloned the repo, ran Xcode, fixed the failing tests, and pushed to TestFlight by morning — on a Mac mini in the closet.", thumb: <FoodThumb /> },
+  { cat: "iOS · overnight", title: "A food-delivery app, shipped overnight", body: "An agent cloned the repo, ran Xcode, fixed the failing tests, QA'd the build, and pushed to TestFlight by morning — on a Mac mini in the closet.", thumb: <FoodThumb /> },
+  { cat: "iMessage", title: "iMessage, handled for you", body: "Triage threads, RSVP, reschedule, and reply in your voice — native Messages on a real Mac, around the clock. No bridge, no API.", thumb: <MessageThumb /> },
+  { cat: "Apple apps", title: "It lives in your Apple world", body: "Messages, Mail, Photos, Notes, Music — signed in on a real Mac. Your agent uses the actual Apple apps, not half-built APIs.", thumb: <AppleThumb /> },
+  { cat: "Remote control", title: "Fix anyone's Mac, remotely", body: "Point an agent at a relative's or teammate's Mac — diagnose the slowdown, clear the disk, reset the network, install the update. Hands-on support, hands-free.", thumb: <RemoteThumb /> },
   { cat: "Browser · human", title: "It applies, books, and files — like a person", body: "The real browser on a real Mac: log into the portal, fill the form, hit submit. No brittle scraping API, no headless workarounds.", thumb: <BrowserTaskThumb /> },
-  { cat: "Fleet · agents", title: "A hundred Macs, one prompt", body: "Point an agent at the whole fleet — build, render, test, scrape — running for hours across every machine you own.", thumb: <FleetThumb /> },
-  { cat: "iMessage", title: "iMessage, handled for you", body: "Triage threads, RSVP, reschedule, and reply in your voice — native Messages on a real Mac, around the clock.", thumb: <MessageThumb /> },
-  { cat: "App QA", title: "Tests your app like a real user", body: "Drive the real GUI on a Simulator or device — tap, scroll, screenshot, and assert on actual pixels, every release.", thumb: <QAThumb /> },
-  { cat: "CI", title: "Your iOS CI, on Macs you own", body: "Spare Mac minis become a build farm — clone, build, test, archive on every push. No per-minute cloud bill.", thumb: <CIThumb /> },
+  { cat: "Fleet · agents", title: "A hundred Macs, one prompt", body: "Point an agent at the whole fleet — build, render, scrape, test — running for hours across every machine you own.", thumb: <FleetThumb /> },
 ];
 
-const MORE_USES = ["Overnight iOS builds", "Browser tasks at scale", "Render farms", "E2E app testing", "Headless CI", "Data extraction", "Long-running agents", "Mac-only toolchains"];
+const MORE_USES = ["Build & ship iOS apps", "Native Apple apps", "Remote Mac support", "Browser tasks", "Render farms", "Data extraction", "Long-running agents", "Mac-only software"];
 
 function Stories() {
   return (
