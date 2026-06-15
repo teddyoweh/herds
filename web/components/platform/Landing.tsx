@@ -128,21 +128,37 @@ function Chrome({ title }: { title?: string }) {
  * Hero — command cluster + live dashboard card
  * ------------------------------------------------------------------ */
 
-function CommandBar() {
-  const EX = ["xcodebuild -scheme App build", "swift test --parallel", "npm run build && ./deploy.sh", "open -a Simulator"];
-  const [i, setI] = useState(0);
-  useEffect(() => { const t = setInterval(() => setI((v) => (v + 1) % EX.length), 2800); return () => clearInterval(t); }, []);
+const SETUP: { cmd?: string; ok?: React.ReactNode }[] = [
+  { cmd: "herds host" },
+  { ok: <>This Mac · <span className="text-stone-200">M3 Max</span> · live at <span className="text-signal-400">you.herds.run</span></> },
+  { cmd: "herds connect mac-mini.local" },
+  { ok: <>Mac mini joined the fleet</> },
+  { cmd: "herds connect studio.local" },
+  { ok: <>Mac Studio joined the fleet</> },
+];
+
+/* The hero centerpiece — a setup terminal: a few commands turn your spare Macs
+   into one fleet. (The part everyone loves, made explicit.) */
+function SetupTerminal() {
   return (
-    <div className={`flex items-center gap-3 rounded-2xl px-4 py-3 ${CARD}`}>
-      <span className="font-mono text-[13px] text-signal-600">$</span>
-      <div className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-left font-mono text-[13px] text-stone-400">
-        herds.mac().run(<span className="text-stone-500">&quot;</span>
-        <motion.span key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.45 }} className="text-stone-800">{EX[i]}</motion.span>
-        <span className="text-stone-500">&quot;</span>)
+    <div className="overflow-hidden rounded-2xl bg-[#0f141a] text-left shadow-[0_24px_60px_-26px_rgba(20,24,33,0.55)]">
+      <div className="flex items-center gap-2 bg-white/[0.05] px-4 py-2.5">
+        <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" /><span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" /><span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
+        <span className="mx-auto pr-10 font-mono text-[11px] text-stone-500">herds — zsh</span>
       </div>
-      <Link href="/signup" className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-signal-600 text-white transition hover:bg-signal-500" aria-label="run">
-        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-      </Link>
+      <div className="space-y-1 px-5 py-4 font-mono text-[12.5px] leading-[1.8]">
+        {SETUP.map((l, i) => (
+          <div key={i} className={l.cmd ? "pt-1.5 first:pt-0" : ""}>
+            {l.cmd
+              ? <><span className="text-signal-400">$</span> <span className="text-stone-100">{l.cmd}</span></>
+              : <span className="text-stone-400"><span className="text-signal-400">✓</span> {l.ok}</span>}
+          </div>
+        ))}
+        <div className="mt-2.5 flex items-center gap-2 text-[11.5px] text-stone-400">
+          <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-400" /> <span className="text-stone-300">3 Macs online</span> · ready for agents
+          <span className="ml-1 inline-block h-[12px] w-[6px] translate-y-[2px] animate-breathe bg-signal-400/80 align-middle" />
+        </div>
+      </div>
     </div>
   );
 }
@@ -333,14 +349,13 @@ function Hero() {
         <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }} className="ed-soft mx-auto mt-6 max-w-[37rem] text-[18px] leading-[1.5] text-stone-500 sm:text-[20px]">
           Connect any Mac you own and it becomes a programmable cloud runtime — driven by agents, SDKs, and CLIs from anywhere.
         </motion.p>
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.34 }} className="mx-auto mt-8 max-w-[34rem]">
-          <CommandBar />
-          <div className="mt-3 flex flex-wrap items-center justify-center gap-3">
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.34 }} className="mx-auto mt-8 max-w-[40rem]">
+          <SetupTerminal />
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
             <Link href="/signup" className="inline-flex items-center rounded-full bg-signal-600 px-5 py-2.5 text-[14px] font-medium text-white transition-all hover:-translate-y-px hover:bg-signal-500">Start free</Link>
             <CurlPill />
           </div>
         </motion.div>
-        <div className="mt-12"><DashboardCard /></div>
       </div>
     </section>
   );
@@ -494,25 +509,36 @@ function MacIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill
 function PortIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="text-stone-800"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.07 0l-3 3A5 5 0 0 0 11 21l1.71-1.71" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
 function VolumeIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="text-stone-800"><ellipse cx="12" cy="5" rx="8" ry="3" stroke="currentColor" strokeWidth="1.5" /><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>; }
 function BoltIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="text-stone-800"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>; }
+function ShipIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="text-stone-800"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17l1.5 3h13L20 17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
+function EyeIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="text-stone-800"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><circle cx="12" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.5" /></svg>; }
 
 const CAPS = [
-  { icon: <MacIcon />, title: "The real platform", body: "Xcode, iOS/macOS simulators, codesigning, AppleScript, Homebrew — not a stub or an emulator. The whole machine." },
-  { icon: <PortIcon />, title: "Ports → URLs", body: "Run a server inside a sandbox and get a public link instantly. No inbound ports opened on your network." },
-  { icon: <VolumeIcon />, title: "Persistent state", body: "Snapshot, suspend, resume. Mount durable volumes so caches and builds survive across runs and machines." },
-  { icon: <BoltIcon />, title: "Driven by agents", body: "One API call hands an agent a full machine — files, GUI, network. Scoped, revocable, observable." },
+  { icon: <MacIcon />, title: "Real macOS", body: "Xcode, iOS/macOS simulators, codesigning, AppleScript, Homebrew — the whole platform, not a stub or an emulator." },
+  { icon: <ShipIcon />, title: "Ship iOS, end to end", body: "Clone → build → test → notarize → TestFlight in a single run, autonomously. No CI runners to babysit." },
+  { icon: <PortIcon />, title: "Ports → public URLs", body: "Run a server in a sandbox and get a named subdomain with real TLS — instantly, with zero inbound ports opened." },
+  { icon: <VolumeIcon />, title: "Snapshot & resume", body: "Freeze a machine mid-task and bring it back in seconds. Mount durable volumes so caches and builds persist." },
+  { icon: <EyeIcon />, title: "Fully observable", body: "Stream logs, metrics, and status in real time. Nothing hidden, nothing stale — the machine narrates itself." },
+  { icon: <BoltIcon />, title: "Built for agents", body: "One API call hands an agent a whole machine — files, GUI, network. Scoped, revocable, driven from anywhere." },
 ];
 
 function Capabilities() {
   return (
-    <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} className="mt-16 grid grid-cols-1 gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-4">
-      {CAPS.map((c) => (
-        <motion.div key={c.title} variants={fadeUp}>
-          {c.icon}
-          <h3 className="ed mt-5 text-[21px] leading-snug text-stone-900">{c.title}</h3>
-          <p className="mt-3 text-[13.5px] leading-relaxed text-stone-500">{c.body}</p>
-        </motion.div>
-      ))}
-    </motion.div>
+    <Section>
+      <Reveal className="mx-auto max-w-2xl text-center">
+        <div className="text-[12px] font-medium uppercase tracking-[0.16em] text-signal-600">Capabilities</div>
+        <h2 className="ed mt-3 text-[32px] leading-[1.05] text-stone-900 sm:text-[44px]">Everything a Linux sandbox can&rsquo;t do</h2>
+        <p className="mx-auto mt-4 max-w-xl text-[15.5px] leading-relaxed text-stone-500">Real macOS, exposed as programmable infrastructure — driven by agents, SDKs, and CLIs from anywhere.</p>
+      </Reveal>
+      <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} className="mt-16 grid grid-cols-1 gap-x-10 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
+        {CAPS.map((c) => (
+          <motion.div key={c.title} variants={fadeUp}>
+            {c.icon}
+            <h3 className="ed mt-5 text-[21px] leading-snug text-stone-900">{c.title}</h3>
+            <p className="mt-3 text-[14px] leading-relaxed text-stone-500">{c.body}</p>
+          </motion.div>
+        ))}
+      </motion.div>
+    </Section>
   );
 }
 
@@ -555,22 +581,60 @@ function ShipCard() {
 
 function ExposeCard() {
   return (
-    <Reveal className={`mx-auto mt-14 w-full max-w-[720px] overflow-hidden rounded-3xl ${CARD}`}>
-      <Chrome title="app.you.herds.run" />
-      <div className="relative">
-        {/* faux preview */}
-        <div className="bg-[#f3f2ee] px-8 py-12 text-center">
-          <div className="mx-auto h-2.5 w-24 rounded-full bg-signal-500/30" />
-          <div className="mx-auto mt-4 h-5 w-2/3 rounded-md bg-black/[0.08]" />
-          <div className="mx-auto mt-2.5 h-5 w-1/2 rounded-md bg-black/[0.06]" />
-          <div className="mx-auto mt-6 h-9 w-32 rounded-full bg-signal-500/80" />
-        </div>
-        {/* mapping chip */}
-        <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-white px-4 py-2 font-mono text-[12px]">
-          <span className="text-stone-500">localhost:3000</span>
-          <span className="text-stone-300">→</span>
-          <span className="text-signal-600">app.you.herds.run</span>
-          <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-signal-500/10 px-2 py-0.5 text-[10px] font-medium text-signal-600"><span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-500" /> live</span>
+    <Reveal className="mx-auto mt-14 w-full max-w-[880px]">
+      <div className="rounded-[28px] bg-[#eaf3ee] p-4 sm:p-7">
+        <div className="overflow-hidden rounded-xl bg-white shadow-[0_24px_70px_-24px_rgba(20,24,33,0.4)] ring-1 ring-black/[0.06]">
+          {/* browser chrome */}
+          <div className="flex items-center gap-2 bg-[#e9e8e4] px-3.5 py-2.5">
+            <span className="h-3 w-3 rounded-full bg-[#ff5f57]" /><span className="h-3 w-3 rounded-full bg-[#febc2e]" /><span className="h-3 w-3 rounded-full bg-[#28c840]" />
+            <div className="mx-auto flex items-center gap-1.5 rounded-md bg-white px-3 py-1 text-[11px] text-stone-500">
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-signal-600"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
+              <span className="font-mono">app.you.herds.run</span>
+            </div>
+            <span className="hidden items-center gap-1.5 rounded-full bg-signal-500/10 px-2 py-0.5 text-[10px] font-medium text-signal-700 sm:inline-flex"><span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-500" /> live</span>
+          </div>
+
+          {/* rendered deployed app */}
+          <div className="bg-white">
+            {/* app nav */}
+            <div className="flex items-center justify-between px-6 py-3.5">
+              <span className="flex items-center gap-2 text-[13px] font-semibold text-stone-900"><span className="h-4 w-4 rounded-md bg-signal-600" /> Lumen</span>
+              <div className="hidden items-center gap-5 text-[11.5px] text-stone-500 sm:flex">
+                <span>Features</span><span>Pricing</span><span>Docs</span>
+                <span className="rounded-full bg-stone-900 px-3 py-1 text-[11px] font-medium text-white">Sign up</span>
+              </div>
+            </div>
+            {/* hero */}
+            <div className="px-6 pb-7 pt-6 text-center">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f3f2ee] px-2.5 py-1 text-[10px] font-medium text-stone-500"><span className="h-1.5 w-1.5 rounded-full bg-signal-500" /> Live preview</span>
+              <h3 className="ed mx-auto mt-3 max-w-[18ch] text-[26px] leading-[1.1] text-stone-900">Analytics that explains itself.</h3>
+              <p className="mx-auto mt-2.5 max-w-[34ch] text-[12.5px] leading-relaxed text-stone-500">Dashboards your whole team actually reads — shipped from a sandbox in seconds.</p>
+              <div className="mt-4 flex items-center justify-center gap-2.5">
+                <span className="rounded-full bg-signal-600 px-4 py-2 text-[12px] font-medium text-white">Get started</span>
+                <span className="rounded-full bg-[#f3f2ee] px-4 py-2 text-[12px] font-medium text-stone-700">Book a demo</span>
+              </div>
+              {/* product strip */}
+              <div className="mx-auto mt-7 grid max-w-[440px] grid-cols-3 gap-2.5">
+                {[{ k: "MRR", v: "$48.2k", d: "+12%", s: "0,18 16,14 32,15 48,9 64,11 80,5" }, { k: "Active users", v: "9,310", d: "+4%", s: "0,16 16,13 32,14 48,10 64,12 80,8" }, { k: "Churn", v: "1.2%", d: "-0.3", s: "0,8 16,11 32,9 48,12 64,10 80,13" }].map((m) => (
+                  <div key={m.k} className="rounded-xl bg-[#f7f6f3] p-2.5 text-left">
+                    <div className="text-[9px] font-medium uppercase tracking-[0.08em] text-stone-400">{m.k}</div>
+                    <div className="mt-1 tnum text-[15px] font-semibold tracking-tight text-stone-900">{m.v}</div>
+                    <div className="mt-1"><Spark points={m.s} /></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* mapping status bar */}
+          <div className="flex items-center gap-2 border-t border-black/[0.05] bg-[#f7f6f3] px-4 py-2 font-mono text-[11px]">
+            <span className="text-stone-500">localhost:3000</span>
+            <span className="text-stone-300">→</span>
+            <span className="text-signal-600">app.you.herds.run</span>
+            <span className="ml-auto flex items-center gap-3 text-[10px] text-stone-400">
+              <span>TLS</span><span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-signal-500" /> 2 viewers</span>
+            </span>
+          </div>
         </div>
       </div>
     </Reveal>
@@ -715,42 +779,6 @@ function CodeCard() {
   );
 }
 
-/* ------------------------------------------------------------------ *
- * 10 — Scoped tokens
- * ------------------------------------------------------------------ */
-
-const TOKENS = [
-  { key: "hx_live_a91f…7c2", scope: "run", label: "agent-ci", age: "2d ago" },
-  { key: "hx_live_4be0…9d1", scope: "read", label: "dashboard", age: "5d ago" },
-  { key: "herds_sk_mqoa…EwA", scope: "admin", label: "host", age: "stable" },
-];
-const SCOPE_TONE: Record<string, string> = {
-  run: "bg-signal-500/10 text-signal-600",
-  read: "bg-stone-200/70 text-stone-600",
-  admin: "bg-amber-500/10 text-amber-700",
-};
-
-function TokensCard() {
-  return (
-    <Reveal className={`mx-auto mt-14 w-full max-w-[640px] overflow-hidden rounded-3xl p-5 ${CARD}`}>
-      <div className="mb-3 flex items-center justify-between px-1">
-        <span className="text-[13px] font-semibold tracking-tight text-stone-800">API keys</span>
-        <span className="text-[11px] text-stone-400">scoped · revocable</span>
-      </div>
-      <div className="space-y-2">
-        {TOKENS.map((t) => (
-          <div key={t.key} className={`flex items-center gap-3 rounded-2xl ${INSET} px-4 py-3`}>
-            <span className={`rounded-md px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${SCOPE_TONE[t.scope]}`}>{t.scope}</span>
-            <span className="font-mono text-[12.5px] text-stone-700">{t.key}</span>
-            <span className="hidden text-[12px] text-stone-400 sm:inline">{t.label}</span>
-            <span className="ml-auto text-[11px] text-stone-400">{t.age}</span>
-            <button className="text-[11px] font-medium text-stone-400 transition-colors hover:text-red-500">Revoke</button>
-          </div>
-        ))}
-      </div>
-    </Reveal>
-  );
-}
 
 /* ------------------------------------------------------------------ *
  * 11 — Final CTA
@@ -848,7 +876,7 @@ function Stories() {
       <Reveal>
         <div className="flex items-end justify-between">
           <div>
-            <div className="text-[12px] font-medium uppercase tracking-[0.16em] text-signal-600">Stories</div>
+            <div className="text-[12px] font-medium uppercase tracking-[0.16em] text-signal-600">Use cases</div>
             <h2 className="ed mt-3 text-[32px] leading-[1.05] text-stone-900 sm:text-[40px]">What people build on Herds</h2>
           </div>
           <Link href="/signup" className="hidden text-[13px] text-stone-500 transition-colors hover:text-stone-900 sm:block">Start building →</Link>
@@ -961,46 +989,7 @@ export function Landing() {
       <main>
         <Hero />
 
-        <Section>
-          <Statement eyebrow="Always on" title={<>Wake up to a fleet,<br /> not a laptop.</>} sub="Your Macs stay online while you sleep — agents build, test, and ship through the night on the real hardware your users run." />
-          <MorningCard />
-        </Section>
-
-        <Section>
-          <Statement eyebrow="Real macOS" title={<>The whole platform.<br /> Not a Linux stub.</>} sub="Xcode, simulators, codesigning, AppleScript, Homebrew — the actual machine, exposed as programmable infrastructure." />
-          <MacWindowCard />
-          <Capabilities />
-        </Section>
-
-        <Section>
-          <Statement eyebrow="End to end" title={<>Ship iOS apps, autonomously.</>} sub="From clone to TestFlight in one run — build, test, sign, notarize, deploy. No CI runners to babysit." />
-          <ShipCard />
-        </Section>
-
-        <Section>
-          <Statement eyebrow="Networking" title={<>Expose a port. Get a link.</>} sub="Run a server inside a sandbox and share it instantly — a named subdomain, real TLS, zero inbound ports opened." />
-          <ExposeCard />
-        </Section>
-
-        <Section>
-          <Statement eyebrow="Observability" title={<>Every run, fully observable.</>} sub="Stream logs, metrics, and status in real time. Nothing hidden, nothing stale — the machine narrates itself." />
-          <ObserveCard />
-        </Section>
-
-        <Section>
-          <Statement eyebrow="Stateful" title={<>Snapshot. Suspend. Resume.</>} sub="Freeze a machine mid-task and bring it back in seconds. Mount durable volumes so caches and builds persist." />
-          <LifecycleCard />
-        </Section>
-
-        <Section>
-          <Statement eyebrow="Built for agents" title={<>One API call. A whole machine.</>} sub="Your agents already write the code. Now they build it, run it, click through the app, and verify it — on real macOS." />
-          <CodeCard />
-        </Section>
-
-        <Section>
-          <Statement eyebrow="Security" title={<>A scoped key for every agent.</>} sub="Mint read, run, or admin tokens per task. Hand one to an agent, watch what it does, revoke it the moment you're done." />
-          <TokensCard />
-        </Section>
+        <Capabilities />
 
         <Stories />
 
