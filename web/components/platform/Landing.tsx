@@ -1174,10 +1174,10 @@ function MiniMac({ label }: { label: string }) {
   return (
     <div className="flex w-[64px] flex-col items-center">
       {/* display — matte space-gray bezel (thin) */}
-      <div className="relative w-full rounded-[7px] bg-[#1b1c1f] p-[1.5px] shadow-[0_12px_22px_-11px_rgba(20,24,33,0.5)]">
+      <div className="relative w-full rounded-[5px] bg-[#1b1c1f] p-[1.5px] shadow-[0_12px_22px_-11px_rgba(20,24,33,0.5)]">
         <div className="pointer-events-none absolute inset-x-2 top-[1px] h-px rounded-full bg-white/10" />
         {/* screen ON — light macOS desktop (menu bar + a running window) */}
-        <div className="relative h-[40px] overflow-hidden rounded-[5.5px]">
+        <div className="relative h-[40px] overflow-hidden rounded-[4px]">
           <div className="absolute inset-0" style={{ backgroundImage: "linear-gradient(160deg,#e9eef7 0%,#f0edf4 52%,#f7efe6 100%)" }} />
           {/* menu bar */}
           <div className="absolute inset-x-0 top-0 flex h-[5px] items-center justify-between bg-white/45 px-1 backdrop-blur-[1px]">
@@ -1200,7 +1200,7 @@ function MiniMac({ label }: { label: string }) {
         </div>
       </div>
       {/* matte aluminum base + hinge (thin) */}
-      <div className="relative h-[4px] w-[70px] rounded-b-[5px] bg-gradient-to-b from-[#d6dae1] via-[#c0c6ce] to-[#a3a9b3]">
+      <div className="relative h-[4px] w-[70px] rounded-b-[3.5px] bg-gradient-to-b from-[#d6dae1] via-[#c0c6ce] to-[#a3a9b3]">
         <div className="pointer-events-none absolute inset-x-1.5 top-0 h-px bg-white/45" />
         <span className="absolute left-1/2 top-0 h-[2px] w-[20px] -translate-x-1/2 rounded-b-[2.5px] bg-gradient-to-b from-[#969ca6] to-[#b0b6c0]" />
       </div>
