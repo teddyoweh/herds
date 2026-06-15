@@ -512,14 +512,162 @@ function BoltIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fil
 function ShipIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="text-stone-800"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17l1.5 3h13L20 17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
 function EyeIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="text-stone-800"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><circle cx="12" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.5" /></svg>; }
 
+/* ---- crafted capability illustrations (SVG + UI, animated) ---- */
+
+function FleetViz() {
+  const nodes = [
+    { x: 92, y: 54, label: "M3 Max" },
+    { x: 430, y: 46, label: "Mac mini" },
+    { x: 80, y: 150, label: "Studio" },
+    { x: 440, y: 154, label: "MacBook" },
+  ];
+  return (
+    <svg viewBox="0 0 520 200" className="h-full w-full font-sans">
+      {nodes.map((n, i) => <line key={"l" + i} x1={260} y1={100} x2={n.x} y2={n.y} className="stroke-signal-500/25" strokeWidth="1.4" strokeDasharray="3 5" />)}
+      {nodes.map((n, i) => (
+        <motion.circle key={"d" + i} r="2.6" className="fill-signal-500" initial={{ cx: n.x, cy: n.y }} animate={{ cx: [n.x, 260], cy: [n.y, 100] }} transition={{ duration: 1.9, repeat: Infinity, ease: "easeInOut", delay: i * 0.45 }} />
+      ))}
+      {nodes.map((n, i) => (
+        <g key={"n" + i}>
+          <rect x={n.x - 38} y={n.y - 16} width="76" height="32" rx="9" className="fill-white" />
+          <rect x={n.x - 27} y={n.y - 7} width="13" height="9" rx="1.5" className="fill-none stroke-stone-300" strokeWidth="1.2" />
+          <text x={n.x - 8} y={n.y + 3.5} className="fill-stone-600" fontSize="9.5" fontWeight="600">{n.label}</text>
+          <circle cx={n.x + 30} cy={n.y - 9} r="2.4" className="fill-signal-500" />
+        </g>
+      ))}
+      <motion.circle cx={260} cy={100} r={24} className="fill-none stroke-signal-500/40" strokeWidth="1.4" animate={{ r: [22, 46], opacity: [0.5, 0] }} transition={{ duration: 2.4, repeat: Infinity, ease: "easeOut" }} />
+      <rect x={236} y={76} width="48" height="48" rx="13" className="fill-signal-600" />
+      <g className="stroke-white" strokeWidth="1.6" strokeLinecap="round" opacity="0.85" fill="none"><path d="M260 90 L251 112 M260 90 L269 112 M251 112 L269 112" /></g>
+      <circle cx="260" cy="89" r="3.3" className="fill-white" /><circle cx="250" cy="113" r="3.3" className="fill-white" /><circle cx="270" cy="113" r="3.3" className="fill-white" />
+    </svg>
+  );
+}
+
+function AgentsViz() {
+  const macs = [{ n: "M3 Max", ok: true }, { n: "Mac mini", ok: true }, { n: "Studio", ok: false }];
+  return (
+    <div className="flex h-full flex-col justify-center gap-3 px-6">
+      <div className="mx-auto flex w-full max-w-[230px] items-center gap-2 rounded-xl bg-white px-3 py-2 text-[11px] text-stone-600 shadow-[0_2px_8px_-2px_rgba(20,24,33,0.12)]">
+        <span className="grid h-4 w-4 place-items-center rounded bg-signal-600 text-[8px] font-bold text-white">⌘</span>
+        <span className="truncate">&ldquo;run the suite on every Mac&rdquo;</span>
+      </div>
+      <svg viewBox="0 0 230 22" className="mx-auto h-5 w-[230px]"><g className="stroke-signal-500/40" strokeWidth="1.3" fill="none"><path d="M115 0 V8 M115 8 H40 V20 M115 8 H115 V20 M115 8 H190 V20" /></g></svg>
+      <div className="mx-auto grid w-full max-w-[260px] grid-cols-3 gap-2">
+        {macs.map((m) => (
+          <div key={m.n} className="rounded-lg bg-white px-2 py-2 text-center shadow-[0_1px_4px_-1px_rgba(20,24,33,0.1)]">
+            <div className="mx-auto mb-1 h-1.5 w-1.5 rounded-full" />
+            <div className="text-[9.5px] font-semibold text-stone-700">{m.n}</div>
+            <div className="mt-1 flex justify-center">
+              {m.ok ? <Check size={14} /> : <span className="h-3.5 w-3.5 animate-spin rounded-full border-[1.5px] border-signal-500/30 border-t-signal-500" />}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BrowserViz() {
+  return (
+    <div className="relative flex h-full items-center px-6">
+      <div className="w-full overflow-hidden rounded-xl bg-white shadow-[0_10px_30px_-12px_rgba(20,24,33,0.25)]">
+        <div className="flex items-center gap-1.5 bg-[#f1efe9] px-3 py-2">
+          <span className="h-2 w-2 rounded-full bg-[#ff5f57]" /><span className="h-2 w-2 rounded-full bg-[#febc2e]" /><span className="h-2 w-2 rounded-full bg-[#28c840]" />
+          <span className="mx-auto rounded bg-white px-3 py-0.5 font-mono text-[8.5px] text-stone-400">linkedin.com/in/…</span>
+        </div>
+        <div className="flex items-center gap-2.5 px-3.5 py-3">
+          <span className="h-8 w-8 rounded-full bg-[#dbe6ff]" />
+          <div className="flex-1">
+            <div className="h-2 w-20 rounded bg-stone-200" />
+            <div className="mt-1.5 h-1.5 w-28 rounded bg-stone-100" />
+          </div>
+          <span className="relative rounded-full bg-signal-600 px-3 py-1.5 text-[10px] font-medium text-white">Connect</span>
+        </div>
+      </div>
+      {/* human cursor */}
+      <motion.div className="pointer-events-none absolute" initial={{ left: "44%", top: "44%" }} animate={{ left: ["44%", "78%"], top: ["44%", "62%"] }} transition={{ duration: 1.6, repeat: Infinity, repeatType: "reverse", ease: "easeInOut" }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" className="fill-stone-900 drop-shadow"><path d="M4 2l16 7-7 2-2 7z" /></svg>
+      </motion.div>
+    </div>
+  );
+}
+
+function MacOSViz() {
+  return (
+    <div className="flex h-full items-center px-6">
+      <div className="w-full overflow-hidden rounded-xl bg-white shadow-[0_10px_30px_-12px_rgba(20,24,33,0.22)]">
+        <div className="flex items-center gap-1.5 bg-[#f1efe9] px-3 py-2">
+          <span className="h-2 w-2 rounded-full bg-[#ff5f57]" /><span className="h-2 w-2 rounded-full bg-[#febc2e]" /><span className="h-2 w-2 rounded-full bg-[#28c840]" />
+          <span className="mx-auto font-mono text-[8.5px] text-stone-400">App — Xcode</span>
+        </div>
+        <div className="p-3.5">
+          <div className="flex flex-wrap gap-1.5">
+            {["Xcode", "Simulator", "Codesign", "AppleScript", "Homebrew"].map((t) => (
+              <span key={t} className="rounded-md bg-[#f4f2ec] px-2 py-1 font-mono text-[9px] text-stone-600">{t}</span>
+            ))}
+          </div>
+          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/[0.07]">
+            <motion.div initial={{ width: 0 }} whileInView={{ width: "82%" }} viewport={{ once: true }} transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }} className="h-full rounded-full bg-signal-500" />
+          </div>
+          <div className="mt-2 flex items-center gap-1.5 text-[10px] text-stone-500"><Check size={13} /> Build Succeeded · 42.1s</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShipViz() {
+  const steps = ["Clone", "Build", "Test", "TestFlight"];
+  return (
+    <div className="flex h-full items-center justify-center px-6">
+      <div className="w-full max-w-[200px] space-y-1.5">
+        {steps.map((s, i) => (
+          <div key={s} className="flex items-center gap-2.5 rounded-lg bg-white px-3 py-2 shadow-[0_1px_4px_-1px_rgba(20,24,33,0.08)]">
+            {i < 3 ? <Check size={15} /> : <span className="h-[15px] w-[15px] animate-spin rounded-full border-[1.5px] border-signal-500/30 border-t-signal-500" />}
+            <span className="text-[11px] font-medium text-stone-700">{s}</span>
+            {i === 3 && <span className="ml-auto rounded bg-signal-500/10 px-1.5 py-0.5 text-[8.5px] font-medium text-signal-700">v1.4 (32)</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PortsViz() {
+  return (
+    <div className="flex h-full items-center justify-center gap-3 px-6 sm:gap-6">
+      <span className="rounded-lg bg-white px-3 py-2 font-mono text-[11px] text-stone-600 shadow-[0_1px_4px_-1px_rgba(20,24,33,0.1)]">localhost:3000</span>
+      <svg viewBox="0 0 90 16" className="h-4 w-16 sm:w-24"><line x1="0" y1="8" x2="90" y2="8" className="stroke-signal-500/30" strokeWidth="1.4" strokeDasharray="3 4" /><motion.circle r="2.6" cy="8" className="fill-signal-500" animate={{ cx: [0, 90] }} transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }} /></svg>
+      <span className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 font-mono text-[11px] shadow-[0_1px_4px_-1px_rgba(20,24,33,0.1)]">
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-signal-600"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
+        <span className="text-signal-600">app.you.herds.run</span>
+        <span className="inline-flex items-center gap-1 rounded-full bg-signal-500/10 px-1.5 py-0.5 text-[8.5px] font-medium text-signal-700"><span className="h-1 w-1 animate-breathe rounded-full bg-signal-500" />live</span>
+      </span>
+    </div>
+  );
+}
+
 const CAPS = [
-  { icon: <MacIcon />, title: "Real macOS", body: "Xcode, iOS/macOS simulators, codesigning, AppleScript, Homebrew — the whole platform, not a stub or an emulator." },
-  { icon: <ShipIcon />, title: "Ship iOS, end to end", body: "Clone → build → test → notarize → TestFlight in a single run, autonomously. No CI runners to babysit." },
-  { icon: <PortIcon />, title: "Ports → public URLs", body: "Run a server in a sandbox and get a named subdomain with real TLS — instantly, with zero inbound ports opened." },
-  { icon: <VolumeIcon />, title: "Snapshot & resume", body: "Freeze a machine mid-task and bring it back in seconds. Mount durable volumes so caches and builds persist." },
-  { icon: <EyeIcon />, title: "Fully observable", body: "Stream logs, metrics, and status in real time. Nothing hidden, nothing stale — the machine narrates itself." },
-  { icon: <BoltIcon />, title: "Built for agents", body: "One API call hands an agent a whole machine — files, GUI, network. Scoped, revocable, driven from anywhere." },
+  { viz: <FleetViz />, tint: "#edf6f0", eyebrow: "Fleet", title: "Run a fleet of real Macs", body: "The Studio on your desk, the minis in the closet, the laptop in your bag — one private fleet, online and addressable from anywhere.", span: "lg:col-span-2" },
+  { viz: <AgentsViz />, tint: "#eef0fb", eyebrow: "Agents", title: "Control them all with agents", body: "Dispatch one prompt across the whole fleet — agents drive every machine remotely, in parallel.", span: "" },
+  { viz: <BrowserViz />, tint: "#eef2f8", eyebrow: "Browser", title: "A real browser, like a human", body: "Not a patchy cloud-browser API — the actual browser on a real Mac. Log in, scroll, click, type, exactly like a person.", span: "" },
+  { viz: <MacOSViz />, tint: "#fbf3ec", eyebrow: "Native", title: "The whole of real macOS", body: "Xcode, simulators, codesigning, AppleScript, Homebrew — the real platform, not a stub or an emulator.", span: "" },
+  { viz: <ShipViz />, tint: "#fdf1f1", eyebrow: "End to end", title: "Ship iOS, autonomously", body: "Clone → build → test → notarize → TestFlight, in a single run.", span: "" },
+  { viz: <PortsViz />, tint: "#ecf5f3", eyebrow: "Networking", title: "Expose any port as a public URL", body: "Run a server in a sandbox and get a named subdomain with real TLS — zero inbound ports opened.", span: "lg:col-span-3" },
 ];
+
+function CapCard({ c }: { c: (typeof CAPS)[number] }) {
+  return (
+    <motion.div variants={fadeUp} className={c.span}>
+      <div className="h-[200px] overflow-hidden rounded-2xl" style={{ backgroundColor: c.tint }}>{c.viz}</div>
+      <div className="px-1 pt-5">
+        <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-signal-600">{c.eyebrow}</div>
+        <h3 className="ed mt-2 text-[20px] leading-snug text-stone-900">{c.title}</h3>
+        <p className="mt-2 max-w-[44ch] text-[13.5px] leading-relaxed text-stone-500">{c.body}</p>
+      </div>
+    </motion.div>
+  );
+}
 
 function Capabilities() {
   return (
@@ -527,16 +675,10 @@ function Capabilities() {
       <Reveal className="mx-auto max-w-2xl text-center">
         <div className="text-[12px] font-medium uppercase tracking-[0.16em] text-signal-600">Capabilities</div>
         <h2 className="ed mt-3 text-[32px] leading-[1.05] text-stone-900 sm:text-[44px]">Everything a Linux sandbox can&rsquo;t do</h2>
-        <p className="mx-auto mt-4 max-w-xl text-[15.5px] leading-relaxed text-stone-500">Real macOS, exposed as programmable infrastructure — driven by agents, SDKs, and CLIs from anywhere.</p>
+        <p className="mx-auto mt-4 max-w-xl text-[15.5px] leading-relaxed text-stone-500">A fleet of real Macs, driven by agents from anywhere — the things a Linux box in the cloud simply can&rsquo;t be.</p>
       </Reveal>
-      <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} className="mt-16 grid grid-cols-1 gap-x-10 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
-        {CAPS.map((c) => (
-          <motion.div key={c.title} variants={fadeUp}>
-            {c.icon}
-            <h3 className="ed mt-5 text-[21px] leading-snug text-stone-900">{c.title}</h3>
-            <p className="mt-3 text-[14px] leading-relaxed text-stone-500">{c.body}</p>
-          </motion.div>
-        ))}
+      <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} className="mt-14 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        {CAPS.map((c) => <CapCard key={c.title} c={c} />)}
       </motion.div>
     </Section>
   );
