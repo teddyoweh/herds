@@ -5,7 +5,7 @@ from __future__ import annotations
 from .app import App, Function, RemoteExecutionError
 from .client import CommandError, HerdsClient, HerdsError, Result, configure
 from .image import Image
-from .mac import Mac, mac, machines
+from .mac import Mac, mac, machines, fleet, Fleet
 from .sandbox import Sandbox
 from .secret import Secret
 from .volume import Volume
@@ -22,6 +22,8 @@ __all__ = [
     "Mac",
     "mac",
     "machines",
+    "fleet",
+    "Fleet",
     "configure",
     "Sandbox",
     "Secret",

@@ -29,9 +29,11 @@ from .sdk import (
     configure,
     mac,
     machines,
+    fleet,
+    Fleet,
 )
 
-__version__ = "0.1.12"
+__version__ = "0.1.13"
 
 __all__ = [
     "App",
@@ -49,5 +51,7 @@ __all__ = [
     "configure",
     "mac",
     "machines",
+    "fleet",
+    "Fleet",
     "__version__",
 ]

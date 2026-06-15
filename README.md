@@ -150,6 +150,9 @@ for stream, line in mac.stream("xcodebuild build"):
 # fan out across inputs, in parallel (Modal-style .map):
 results = mac.map("pytest {}", ["tests/unit", "tests/integration", "tests/e2e"])
 results = mac.map(lambda v: f"swift build -c {v}", ["debug", "release"])
+
+# spread across EVERY connected Mac (more Macs → more throughput):
+herds.fleet().map("pytest {}", ALL_TEST_DIRS)
 ```
 
 One Mac handles many concurrent commands — verified at 10 parallel runs — so a

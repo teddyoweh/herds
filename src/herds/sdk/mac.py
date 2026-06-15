@@ -220,3 +220,48 @@ def machines(
         client = HerdsClient(control_plane=url, api_key=token)
     c = client or default_client()
     return [Mac(m["machine_id"], client=c) for m in c.list_machines()]
+
+
+class Fleet:
+    """Your whole pool of connected Macs — run work spread across all of them."""
+
+    def __init__(self, *, url: Optional[str] = None, token: Optional[str] = None,
+                 client: Optional[HerdsClient] = None):
+        if client is None and (url or token):
+            client = HerdsClient(control_plane=url, api_key=token)
+        self._client = client or default_client()
+
+    def macs(self) -> list[Mac]:
+        """Online Macs in the pool."""
+        return [Mac(m["machine_id"], client=self._client)
+                for m in self._client.list_machines() if m.get("status") == "online"]
+
+    def map(self, command, items, *, max_workers: Optional[int] = None, **run_kwargs) -> list["Result"]:
+        """Run a command across many inputs, **distributed over every online Mac**::
+
+            herds.fleet().map("pytest {}", ALL_TEST_DIRS)   # N Macs → N× throughput
+
+        Items are round-robined across Macs and run in parallel; returns one
+        ``Result`` per item, in input order.
+        """
+        import concurrent.futures as cf
+
+        macs = self.macs()
+        if not macs:
+            from .client import HerdsError
+            raise HerdsError("No Macs are connected — run `herds host` on at least one Mac.")
+        items = list(items)
+
+        def _one(pair):
+            i, item = pair
+            cmd = command(item) if callable(command) else command.format(item)
+            return macs[i % len(macs)].run(cmd, **run_kwargs)
+
+        with cf.ThreadPoolExecutor(max_workers=max_workers or max(1, len(items))) as ex:
+            return list(ex.map(_one, enumerate(items)))
+
+
+def fleet(*, url: Optional[str] = None, token: Optional[str] = None,
+          client: Optional[HerdsClient] = None) -> Fleet:
+    """Your pool of Macs — ``herds.fleet().map("pytest {}", dirs)``."""
+    return Fleet(url=url, token=token, client=client)
