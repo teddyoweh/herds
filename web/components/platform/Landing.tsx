@@ -1249,35 +1249,33 @@ function RunsEverything() {
   const [active, setActive] = useState(0);
   useEffect(() => { const t = setInterval(() => setActive((v) => (v + 1) % APPS.length), 1500); return () => clearInterval(t); }, []);
   return (
-    <section className="relative w-full overflow-hidden bg-[#0a0e13]">
-      {/* cinematic light */}
-      <div aria-hidden className="pointer-events-none absolute -top-1/3 left-1/4 h-[640px] w-[820px] rounded-full bg-signal-500/20 blur-[150px]" />
-      <div aria-hidden className="pointer-events-none absolute -bottom-1/4 right-0 h-[560px] w-[760px] rounded-full bg-[#1f4e6b]/40 blur-[170px]" />
-      <div aria-hidden className="absolute inset-0 [background-image:radial-gradient(circle,rgba(255,255,255,0.045)_1px,transparent_1px)] [background-size:34px_34px] [mask-image:radial-gradient(ellipse_70%_60%_at_30%_40%,black,transparent)]" />
-      <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-[#0a0e13] via-transparent to-[#0a0e13]/60" />
+    <section className="relative w-full overflow-hidden bg-[#f6f7f6]">
+      {/* soft light atmosphere */}
+      <div aria-hidden className="pointer-events-none absolute -top-1/3 left-1/4 h-[640px] w-[820px] rounded-full bg-signal-500/[0.07] blur-[150px]" />
+      <div aria-hidden className="absolute inset-0 [background-image:radial-gradient(circle,rgba(0,0,0,0.04)_1px,transparent_1px)] [background-size:34px_34px] [mask-image:radial-gradient(ellipse_70%_60%_at_30%_40%,black,transparent)]" />
 
       <div className="relative mx-auto max-w-[1080px] px-6 py-28 sm:py-36">
-        <div className="text-[12px] font-medium uppercase tracking-[0.18em] text-signal-400">Real macOS</div>
-        <h2 className="ed mt-4 max-w-[16ch] text-[32px] leading-[1.08] text-white sm:text-[46px]">It runs the apps a real Mac runs</h2>
+        <div className="text-[12px] font-medium uppercase tracking-[0.18em] text-signal-600">Real macOS</div>
+        <h2 className="ed mt-4 max-w-[16ch] text-[32px] leading-[1.08] text-stone-900 sm:text-[46px]">It runs the apps a real Mac runs</h2>
         <div className="mt-10 flex flex-col gap-1">
           {APPS.map((a, i) => (
             <div key={a} className="flex items-center gap-4">
               <motion.span
-                animate={{ opacity: i === active ? 1 : 0.22, x: i === active ? 0 : -2 }}
+                animate={{ opacity: i === active ? 1 : 0.26, x: i === active ? 0 : -2 }}
                 transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                className="ed text-[30px] leading-[1.16] text-white sm:text-[42px]"
+                className="ed text-[30px] leading-[1.16] text-stone-900 sm:text-[42px]"
               >
                 {a}
               </motion.span>
               <motion.span
                 animate={{ opacity: i === active ? 1 : 0, scale: i === active ? 1 : 0.6 }}
                 transition={{ duration: 0.4 }}
-                className="h-1.5 w-1.5 rounded-full bg-signal-400 shadow-[0_0_10px_2px_rgba(52,211,158,0.5)]"
+                className="h-1.5 w-1.5 rounded-full bg-signal-500 shadow-[0_0_10px_2px_rgba(27,189,134,0.4)]"
               />
             </div>
           ))}
         </div>
-        <p className="mt-10 max-w-[40rem] text-[15.5px] leading-relaxed text-stone-400">
+        <p className="mt-10 max-w-[40rem] text-[15.5px] leading-relaxed text-stone-500">
           Not a container, not an emulator — the actual macOS userland. If it installs on a Mac, it runs on Herds.
         </p>
       </div>
