@@ -290,6 +290,74 @@ def open_dashboard():
     webbrowser.open(open_url)
 
 
+@app.command("mcp")
+def mcp_serve(
+    machine: str = typer.Option("default", "--machine", "-m", help="Target machine id."),
+    url: Optional[str] = typer.Option(None, "--url", help="Control-plane / relay URL."),
+    token: Optional[str] = typer.Option(None, "--token", help="Access token."),
+):
+    """Expose your Mac as an MCP server (stdio) — any agent can drive it natively.
+
+    Add to an MCP client (e.g. Claude Desktop / Code):
+
+      "herds": { "command": "herds", "args": ["mcp"],
+        "env": {"HERDS_CONTROL_PLANE": "https://you.relay.herds.run", "HERDS_API_KEY": "hx_…"} }
+    """
+    try:
+        from mcp.server.fastmcp import FastMCP, Image
+    except ImportError:
+        err.print("[red]MCP support isn't installed.[/red] Run: [bold]pip install 'herds[mcp]'[/bold]")
+        raise typer.Exit(1)
+    import herds
+
+    if url or token:
+        herds.configure(url=url, token=token)
+    m = herds.mac(machine)
+    server = FastMCP("herds")
+
+    @server.tool()
+    def run(command: str, timeout: int = 300) -> str:
+        """Run a shell command on the Mac. Returns exit code, stdout and stderr."""
+        r = m.run(command, timeout=timeout)
+        return f"exit_code: {r.exit_code}\n\n[stdout]\n{r.stdout}\n[stderr]\n{r.stderr}"
+
+    @server.tool()
+    def read_file(path: str) -> str:
+        """Read a text file from the Mac."""
+        return m.read_text(path)
+
+    @server.tool()
+    def write_file(path: str, content: str) -> str:
+        """Write a text file on the Mac (creates parent dirs)."""
+        m.write(path, content)
+        return f"wrote {len(content)} chars to {path}"
+
+    @server.tool()
+    def list_dir(path: str = ".") -> list:
+        """List a directory on the Mac → [{name, dir, size, mtime_ms}]."""
+        return m.ls(path)
+
+    @server.tool()
+    def screenshot():
+        """Capture the Mac's screen as a PNG (needs Screen Recording permission)."""
+        # No return annotation: `Image` is a local import, so FastMCP's
+        # get_type_hints() can't resolve it — it detects the Image value at runtime.
+        return Image(data=m.screenshot(), format="png")
+
+    @server.tool()
+    def notify(message: str, title: str = "Herds") -> str:
+        """Show a macOS notification banner on the Mac."""
+        m.notify(message, title)
+        return "ok"
+
+    @server.tool()
+    def list_macs() -> list:
+        """List the connected Macs you can target (machine ids)."""
+        return [x.machine_id for x in herds.machines()]
+
+    server.run()  # stdio MCP transport
+
+
 @app.command()
 def relay(
     port: int = typer.Option(8888, help="Relay port."),

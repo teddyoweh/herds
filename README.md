@@ -122,6 +122,18 @@ herds.configure(url="https://you.relay.herds.run", token="hx_…")
 Commands **and live log streams** tunnel through the relay — control plane → your
 Mac → back — so the agent needs no SSH, no VPN, and no inbound ports.
 
+**Or skip the SDK entirely — plug the Mac into any MCP client:**
+
+```bash
+pip install 'herds[mcp]'
+herds mcp        # serves run / read_file / write_file / list_dir / screenshot / notify
+```
+```jsonc
+// Claude Desktop / Code / Cursor — mcpServers:
+"herds": { "command": "herds", "args": ["mcp"],
+  "env": { "HERDS_CONTROL_PLANE": "https://you.relay.herds.run", "HERDS_API_KEY": "hx_…" } }
+```
+
 Don't hand an agent your full token — mint a **scoped, revocable** one:
 
 ```bash
@@ -272,6 +284,7 @@ run history — all polling the same API the SDK and CLI use.
 herds auth               sign in (free) — get a stable, branded link
 herds host               self-host: control plane + dashboard + public link
 herds skill [--install]  print/install the agent skill (SKILL.md) for Claude Code
+herds mcp                MCP server — expose this Mac as tools for ANY agent
 herds open               open your live dashboard in the browser
 herds token new|ls|revoke   scoped, revocable tokens (read|run|admin) for agents/CI
 herds schedule add|ls|rm    recurring cron jobs that run on your Mac
