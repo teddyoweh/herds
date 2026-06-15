@@ -187,8 +187,149 @@ class Mac:
             local, remote, client=self._client, machine=self.machine_id, clean=clean, ignore=ignore,
         )
 
+    # -- Mac-native primitives: the stuff only a real Mac can do ------------- #
+
+    def screenshot(self, path: Optional[str] = None, *, timeout: int = 60):
+        """Capture the Mac's screen — returns PNG bytes, or writes to ``path``::
+
+            mac.screenshot("home.png")
+
+        Needs Screen Recording permission for whatever runs ``herds host``
+        (System Settings → Privacy & Security → Screen Recording)."""
+        import base64
+        r = self.run(
+            ["/bin/zsh", "-lc",
+             'f=$(mktemp /tmp/herds_shot_XXXXXX).png && screencapture -x "$f" && base64 < "$f" && rm -f "$f"'],
+            timeout=timeout,
+        )
+        if not r.ok:
+            from .client import HerdsError
+            raise HerdsError(
+                f"screenshot failed ({r.stderr.strip() or 'no output'}) — grant Screen Recording "
+                "to whatever runs `herds host` (System Settings → Privacy & Security → Screen Recording).")
+        data = base64.b64decode(r.stdout)
+        if path:
+            with open(path, "wb") as fh:
+                fh.write(data)
+            return path
+        return data
+
+    def read_bytes(self, remote_path: str, *, timeout: int = 60) -> bytes:
+        """Read a file off the Mac as bytes."""
+        import base64
+        r = self.run(["base64", "-i", remote_path], timeout=timeout)
+        if not r.ok:
+            from .client import HerdsError
+            raise HerdsError(f"read {remote_path}: {r.stderr.strip()}")
+        return base64.b64decode(r.stdout)
+
+    def read_text(self, remote_path: str, encoding: str = "utf-8", *, timeout: int = 60) -> str:
+        """Read a text file off the Mac."""
+        return self.read_bytes(remote_path, timeout=timeout).decode(encoding, errors="replace")
+
+    def write(self, remote_path: str, data, *, timeout: int = 60) -> None:
+        """Write text/bytes to a file on the Mac (creates parent dirs). For whole
+        trees use ``mac.push`` / ``Volume.put`` instead."""
+        import base64
+        raw = data.encode() if isinstance(data, str) else bytes(data)
+        r = self.run(
+            ["python3", "-c",
+             "import sys,base64,os\np=sys.argv[1]\nos.makedirs(os.path.dirname(p) or '.',exist_ok=True)\n"
+             "open(p,'wb').write(base64.b64decode(sys.argv[2]))",
+             remote_path, base64.b64encode(raw).decode()],
+            timeout=timeout,
+        )
+        if not r.ok:
+            from .client import HerdsError
+            raise HerdsError(f"write {remote_path}: {r.stderr.strip()}")
+
+    def ls(self, path: str = ".", *, timeout: int = 30) -> list:
+        """List a directory on the Mac → ``[{name, dir, size, mtime_ms}]``."""
+        import json
+        r = self.run(["python3", "-c", _LS_SRC, path], timeout=timeout)
+        if not r.ok:
+            from .client import HerdsError
+            raise HerdsError(f"ls {path}: {r.stderr.strip()}")
+        return json.loads(r.stdout or "[]")
+
+    def clipboard(self, *, timeout: int = 15) -> str:
+        """Read the Mac's clipboard (text)."""
+        return self.run(["pbpaste"], timeout=timeout).stdout
+
+    def copy(self, text: str, *, timeout: int = 15) -> None:
+        """Set the Mac's clipboard."""
+        self.run(["osascript", "-e", f"set the clipboard to {_as(text)}"], timeout=timeout)
+
+    def notify(self, message: str, title: str = "Herds", *, timeout: int = 15) -> None:
+        """Post a macOS notification banner."""
+        self.run(["osascript", "-e",
+                  f"display notification {_as(message)} with title {_as(title)}"], timeout=timeout)
+
+    @property
+    def ui(self) -> "_UI":
+        """Keyboard/GUI control (needs Accessibility permission): ``mac.ui.type(...)``."""
+        return _UI(self)
+
     def __repr__(self) -> str:
         return f"Mac({self.machine_id!r})"
+
+
+def _as(s: str) -> str:
+    """Render a Python string as an AppleScript string literal."""
+    return '"' + str(s).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+_LS_SRC = (
+    "import os,sys,json\n"
+    "p=sys.argv[1]\n"
+    "print(json.dumps([{'name':n,"
+    "'dir':os.path.isdir(os.path.join(p,n)),"
+    "'size':(os.path.getsize(os.path.join(p,n)) if os.path.isfile(os.path.join(p,n)) else 0),"
+    "'mtime_ms':int(os.path.getmtime(os.path.join(p,n))*1000)} "
+    "for n in sorted(os.listdir(p))]))"
+)
+
+_KEYCODES = {"return": 36, "enter": 36, "tab": 48, "space": 49, "delete": 51,
+             "escape": 53, "esc": 53, "left": 123, "right": 124, "down": 125, "up": 126}
+
+_MODIFIERS = {"cmd": "command down", "command": "command down", "option": "option down",
+              "alt": "option down", "control": "control down", "ctrl": "control down",
+              "shift": "shift down"}
+
+
+class _UI:
+    """Drive the Mac's keyboard/GUI via System Events (Accessibility permission)."""
+
+    def __init__(self, mac: "Mac"):
+        self._m = mac
+
+    def _osa(self, script: str, *, timeout: int = 30) -> str:
+        r = self._m.run(["osascript", "-e", script], timeout=timeout)
+        if not r.ok:
+            from .client import HerdsError
+            raise HerdsError(f"ui action failed: {r.stderr.strip() or 'grant Accessibility permission?'}")
+        return r.stdout.strip()
+
+    def type(self, text: str) -> None:
+        """Type text into the focused field."""
+        self._osa(f'tell application "System Events" to keystroke {_as(text)}')
+
+    def key(self, name: str) -> None:
+        """Press a named key — return, tab, escape, space, up/down/left/right."""
+        code = _KEYCODES.get(name.lower())
+        if code is None:
+            self._osa(f'tell application "System Events" to keystroke {_as(name)}')
+        else:
+            self._osa(f'tell application "System Events" to key code {code}')
+
+    def hotkey(self, *keys: str) -> None:
+        """Press a chord, e.g. ``mac.ui.hotkey("cmd", "s")`` (mods: cmd/option/control/shift)."""
+        if not keys:
+            return
+        *mods, final = keys
+        using = ", ".join(_MODIFIERS[m.lower()] for m in mods)
+        clause = f" using {{{using}}}" if using else ""
+        self._osa(f'tell application "System Events" to keystroke {_as(final)}{clause}')
 
 
 def mac(

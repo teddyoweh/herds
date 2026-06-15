@@ -57,6 +57,19 @@ sbx.put("./my-project")                                     # …or straight int
 sbx.exec("python3 main.py")
 ```
 
+## Mac-native control (only a real Mac can do this)
+
+```python
+mac.screenshot("home.png")           # capture the screen
+mac.write("/tmp/x.json", data); mac.read_text("~/notes.md"); mac.ls("~/Projects")
+mac.copy("hi"); mac.clipboard()      # clipboard
+mac.notify("done")                   # notification banner
+mac.ui.type("hello"); mac.ui.key("return"); mac.ui.hotkey("cmd", "s")  # keyboard/GUI
+```
+
+`screenshot` / `mac.ui.*` need Screen Recording / Accessibility granted to the
+process running `herds host` (System Settings → Privacy & Security).
+
 ## Sandboxes — isolated, persistent workspaces
 
 ```python

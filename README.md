@@ -220,6 +220,23 @@ tunnel through the agent WebSocket — control plane → daemon → the sandbox'
 `localhost:port` — so it works behind NAT with no inbound ports. With a wildcard
 domain you get named subdomains (`https://myapi--teddy.herds.run`).
 
+### Mac-native control — the stuff only a real Mac can do
+
+```python
+mac.screenshot("home.png")           # capture the screen (needs Screen Recording perm)
+mac.write("/tmp/config.json", data)  # write a file on the Mac
+text = mac.read_text("~/notes.md")   # read one back
+mac.ls("~/Projects")                 # → [{name, dir, size, mtime_ms}]
+mac.copy("hello"); mac.clipboard()   # the Mac's clipboard
+mac.notify("build done")             # a notification banner
+mac.ui.type("hello"); mac.ui.key("return")        # keyboard control
+mac.ui.hotkey("cmd", "s")            # chords (needs Accessibility perm)
+```
+
+Real macOS GUI + system control — native app testing, screenshots, automation —
+the things a Linux sandbox can't do. `screenshot`/`ui.*` need Screen Recording /
+Accessibility granted to whatever runs `herds host` (System Settings → Privacy).
+
 ### Apps & functions — run real Python on your Mac
 
 ```python
