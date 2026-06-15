@@ -87,6 +87,15 @@ body {
   font-feature-settings: "tnum", "cv01";
 }
 
+/* Hide the scrollbar while keeping the area scrollable (docs sidebar, etc). */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Skeleton shimmer — platforms never flash blank while loading. */
 @keyframes shimmer {
   100% {

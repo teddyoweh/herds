@@ -102,7 +102,7 @@ export function Docs() {
 
       <div className="mx-auto flex max-w-[1320px] gap-0 px-0 sm:px-6">
         {/* ── sidebar ────────────────────────────────────────────── */}
-        <aside className={`${mobileNav ? "block" : "hidden"} fixed inset-x-0 top-[58px] z-40 max-h-[calc(100vh-58px)] overflow-y-auto border-b border-stone-200 bg-white px-5 pb-10 pt-5 lg:sticky lg:top-[58px] lg:z-0 lg:block lg:max-h-[calc(100vh-58px)] lg:w-[248px] lg:flex-none lg:border-b-0 lg:px-0 lg:pr-6`}>
+        <aside className={`${mobileNav ? "block" : "hidden"} no-scrollbar fixed inset-x-0 top-[58px] z-40 max-h-[calc(100vh-58px)] overflow-y-auto border-b border-stone-200 bg-white px-5 pb-10 pt-5 lg:sticky lg:top-[58px] lg:z-0 lg:block lg:max-h-[calc(100vh-58px)] lg:w-[248px] lg:flex-none lg:border-b-0 lg:px-0 lg:pr-6`}>
           <div className="relative mb-5">
             <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" strokeLinecap="round" /></svg>
             <input
