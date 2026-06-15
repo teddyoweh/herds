@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 import uuid
 from collections import deque
 from pathlib import Path
@@ -148,6 +149,54 @@ class Hub:
         if request_id in self.finished and not self.subscribers.get(request_id):
             self.buffers.pop(request_id, None)
             self.finished.discard(request_id)
+
+
+def _cron_field(expr: str, lo: int, hi: int) -> set:
+    """Parse one crontab field into the set of matching values. Supports
+    ``*``, ``*/N``, ``a-b``, ``a-b/N``, ``a,b,c`` and plain ``N``."""
+    out: set = set()
+    for part in expr.split(","):
+        step = 1
+        rng = part
+        if "/" in part:
+            rng, st = part.split("/", 1)
+            step = int(st)
+        if rng in ("*", ""):
+            start, end = lo, hi
+        elif "-" in rng:
+            a, b = rng.split("-", 1)
+            start, end = int(a), int(b)
+        else:
+            start = end = int(rng)
+        v = start
+        while v <= end:
+            if lo <= v <= hi:
+                out.add(v)
+            v += step
+    return out
+
+
+def cron_due(expr: str, dt) -> bool:
+    """True if a 5-field crontab expression matches datetime ``dt`` (local time)."""
+    parts = expr.split()
+    if len(parts) != 5:
+        return False
+    m, h, dom, mon, dow = parts
+    if dt.minute not in _cron_field(m, 0, 59):
+        return False
+    if dt.hour not in _cron_field(h, 0, 23):
+        return False
+    if dt.month not in _cron_field(mon, 1, 12):
+        return False
+    # cron weekday: 0/7 = Sunday … 6 = Saturday; python weekday() is Mon=0.
+    cron_dow = (dt.weekday() + 1) % 7
+    dow_set = _cron_field(dow.replace("7", "0"), 0, 6)
+    dom_ok = dt.day in _cron_field(dom, 1, 31)
+    dow_ok = cron_dow in dow_set
+    dom_r, dow_r = dom.strip() != "*", dow.strip() != "*"
+    if dom_r and dow_r:        # Vixie cron: OR when both are restricted
+        return dom_ok or dow_ok
+    return dom_ok and dow_ok
 
 
 def create_app(db_path: str | Path = ":memory:") -> FastAPI:
@@ -339,6 +388,69 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
         machine_id = _resolve_machine(machine_id, owner)
         request_id = await _dispatch(machine_id, req, owner)
         return ExecAccepted(request_id=request_id, machine_id=machine_id)
+
+    # -- schedules (recurring jobs) ----------------------------------------- #
+
+    @app.post("/v1/schedules")
+    async def create_schedule_ep(body: "ScheduleBody", authorization: Optional[str] = Header(None)):
+        owner = require_scope(authorization, "run")
+        if len(body.cron.split()) != 5:
+            raise HTTPException(400, "cron must have 5 fields: 'min hour day-of-month month day-of-week'")
+        sid = "sch_" + uuid.uuid4().hex[:10]
+        store.create_schedule(sid, owner, body.machine_id or "default",
+                              body.command, body.cron, config.now_ms())
+        return {"id": sid, "cron": body.cron, "command": body.command,
+                "machine_id": body.machine_id or "default"}
+
+    @app.get("/v1/schedules")
+    async def list_schedules_ep(authorization: Optional[str] = Header(None)):
+        owner = require_scope(authorization, "read")
+        return {"schedules": store.list_schedules(None if owner == DEFAULT_OWNER else owner)}
+
+    @app.delete("/v1/schedules/{sid}")
+    async def delete_schedule_ep(sid: str, authorization: Optional[str] = Header(None)):
+        owner = require_scope(authorization, "run")
+        # admin/local owner may delete any; otherwise only its own.
+        target = next((s for s in store.list_schedules() if s["id"] == sid), None)
+        if target is None:
+            raise HTTPException(404, "no such schedule")
+        if owner != DEFAULT_OWNER and target["owner"] != owner:
+            raise HTTPException(403, "schedule not owned by caller")
+        store.delete_schedule(sid, target["owner"])
+        return {"ok": True}
+
+    async def _run_scheduler() -> None:
+        """Fire due schedules once per minute. Persists in SQLite, so it resumes
+        after a control-plane restart; offline machines are skipped (retried next
+        matching minute)."""
+        import datetime
+
+        while True:
+            try:
+                now = datetime.datetime.now()
+                await asyncio.sleep(max(1.0, 60 - now.second - now.microsecond / 1e6))
+                now = datetime.datetime.now()
+                key = now.strftime("%Y%m%d%H%M")
+                for sch in store.list_schedules():
+                    if not sch.get("enabled", 1) or sch.get("last_run_key") == key:
+                        continue
+                    if not cron_due(sch["cron"], now):
+                        continue
+                    try:
+                        mid = _resolve_machine(sch["machine_id"] or "default", sch["owner"])
+                        await _dispatch(mid, ExecRequest(command=sch["command"]), sch["owner"])
+                        store.mark_schedule_run(sch["id"], key, config.now_ms())
+                    except Exception as exc:  # noqa: BLE001 — offline machine, etc.
+                        print(f"herds scheduler: {sch['id']} skipped ({exc})", file=sys.stderr)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 — never let the loop die
+                print(f"herds scheduler loop error: {exc}", file=sys.stderr)
+                await asyncio.sleep(5)
+
+    @app.on_event("startup")
+    async def _start_scheduler() -> None:
+        asyncio.create_task(_run_scheduler())
 
     @app.post("/v1/machines/{machine_id}/sandboxes")
     async def create_sandbox(
@@ -832,6 +944,12 @@ class KeyBody(BaseModel):
 class PortBody(BaseModel):
     port: int
     name: str = ""
+
+
+class ScheduleBody(BaseModel):
+    command: str
+    cron: str
+    machine_id: Optional[str] = None
 
 
 def _resolve_default_machine(store: Store, hub: Hub, owner: str) -> str:

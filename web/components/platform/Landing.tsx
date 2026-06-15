@@ -1522,9 +1522,9 @@ function Cmt({ c }: { c: string }) {
 function GetStarted() {
   return (
     <Section>
-      <Reveal className="flex items-baseline gap-3">
-        <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-signal-600">Get started</span>
-        <h2 className="ed text-[22px] leading-tight text-stone-900 sm:text-[26px]">Live in three commands</h2>
+      <Reveal>
+        <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-signal-600">Get started</div>
+        <h2 className="ed mt-2 text-[24px] leading-tight text-stone-900 sm:text-[30px]">Live in three commands</h2>
       </Reveal>
       <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} className="mt-7 grid grid-cols-1 items-stretch gap-5 lg:grid-cols-3">
         <StepCard step="01" label="Install & sign in" chrome="your Mac — zsh">

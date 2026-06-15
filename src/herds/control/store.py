@@ -87,6 +87,17 @@ CREATE TABLE IF NOT EXISTS exposed_ports (
     created_ms INTEGER,
     PRIMARY KEY (sandbox_id, port)
 );
+CREATE TABLE IF NOT EXISTS schedules (
+    id           TEXT PRIMARY KEY,
+    owner        TEXT NOT NULL,
+    machine_id   TEXT NOT NULL,
+    command      TEXT NOT NULL,
+    cron         TEXT NOT NULL,
+    enabled      INTEGER NOT NULL DEFAULT 1,
+    last_run_key TEXT,
+    last_run_ms  INTEGER,
+    created_ms   INTEGER
+);
 """
 
 
@@ -515,6 +526,41 @@ class Store:
         )
         self.db.commit()
         return cur.rowcount > 0
+
+    # -- schedules (recurring jobs) ----------------------------------------- #
+
+    def create_schedule(self, sid: str, owner: str, machine_id: str, command: str,
+                        cron: str, created_ms: int) -> None:
+        self.db.execute(
+            """INSERT OR REPLACE INTO schedules
+               (id, owner, machine_id, command, cron, enabled, created_ms)
+               VALUES (?, ?, ?, ?, ?, 1, ?)""",
+            (sid, owner, machine_id, command, cron, created_ms),
+        )
+        self.db.commit()
+
+    def list_schedules(self, owner: Optional[str] = None) -> list[dict]:
+        if owner is None:
+            rows = self.db.execute("SELECT * FROM schedules ORDER BY created_ms").fetchall()
+        else:
+            rows = self.db.execute(
+                "SELECT * FROM schedules WHERE owner=? ORDER BY created_ms", (owner,)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_schedule(self, sid: str, owner: str) -> bool:
+        cur = self.db.execute(
+            "DELETE FROM schedules WHERE id=? AND owner=?", (sid, owner)
+        )
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def mark_schedule_run(self, sid: str, run_key: str, run_ms: int) -> None:
+        self.db.execute(
+            "UPDATE schedules SET last_run_key=?, last_run_ms=? WHERE id=?",
+            (run_key, run_ms, sid),
+        )
+        self.db.commit()
 
     # -- volumes (reported by the daemon) ----------------------------------- #
 
