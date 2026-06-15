@@ -8,7 +8,7 @@
  * numbers, muted-gray comments — readable and on-brand.
  * ------------------------------------------------------------------ */
 
-import { useState, type ReactNode } from "react";
+import { useState, type MouseEvent, type ReactNode } from "react";
 
 /* ---- syntax highlighting -------------------------------------------------- */
 
@@ -259,10 +259,10 @@ export function Co({ children }: { children: ReactNode }) {
   return <code className="rounded bg-stone-100 px-1.5 py-0.5 font-mono text-[0.86em] text-stone-800 ring-1 ring-stone-200/70">{children}</code>;
 }
 
-export function A({ href, children }: { href: string; children: ReactNode }) {
+export function A({ href, children, onClick }: { href: string; children: ReactNode; onClick?: (e: MouseEvent) => void }) {
   const ext = href.startsWith("http");
   return (
-    <a href={href} {...(ext ? { target: "_blank", rel: "noreferrer" } : {})} className="text-signal-600 underline decoration-signal-500/30 underline-offset-2 transition-colors hover:text-signal-500">
+    <a href={href} onClick={onClick} {...(ext ? { target: "_blank", rel: "noreferrer" } : {})} className="text-signal-600 underline decoration-signal-500/30 underline-offset-2 transition-colors hover:text-signal-500">
       {children}
     </a>
   );

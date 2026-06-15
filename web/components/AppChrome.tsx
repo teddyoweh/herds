@@ -9,11 +9,13 @@ import { TokenGate } from "./TokenGate";
 
 const PLATFORM = process.env.NEXT_PUBLIC_HERDS_MODE === "platform";
 // Marketing + auth pages render bare (their own layout, no dashboard chrome).
-const BARE = new Set(["/login", "/signup", "/welcome", "/skill", "/dashboard"]);
+const BARE = new Set(["/login", "/signup", "/welcome", "/skill", "/docs", "/dashboard"]);
 
 export function AppChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const bare = BARE.has(pathname) || (PLATFORM && pathname === "/");
+  // Normalize static-export paths (/docs.html, trailing slash) before matching.
+  const norm = pathname.replace(/\.html$/, "").replace(/\/+$/, "") || "/";
+  const bare = BARE.has(norm) || (PLATFORM && norm === "/");
   if (bare) return <>{children}</>;
   return (
     <TokenGate>

@@ -90,6 +90,7 @@ function TopBar() {
             </Link>
           ) : (
             <>
+              <Link href="/docs" className="hidden rounded-lg px-3 py-1.5 text-[13px] text-stone-500 transition-colors hover:text-stone-900 sm:inline-flex">Docs</Link>
               <Link href="/login" className="hidden rounded-lg px-3 py-1.5 text-[13px] text-stone-500 transition-colors hover:text-stone-900 sm:inline-flex">Log in</Link>
               <Link href="/signup" className="inline-flex items-center rounded-full bg-signal-600 px-4 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-signal-500">Start free</Link>
             </>
@@ -1078,10 +1079,10 @@ function FleetThumb() {
 
 function MessageThumb() {
   return (
-    <div className="flex h-48 flex-col justify-center gap-2 bg-[#eef6f1] px-7">
+    <div className="flex h-48 flex-col justify-center gap-2 bg-[#eef1f6] px-7">
       <div className="text-center text-[9px] text-stone-400">Today 9:14 AM</div>
-      <div className="max-w-[82%] self-start rounded-2xl rounded-bl-md bg-white px-3 py-2 text-[11px] text-stone-700 shadow-[0_1px_3px_-1px_rgba(20,24,33,0.12)]">Are we still on for dinner Friday?</div>
-      <div className="max-w-[84%] self-end rounded-2xl rounded-br-md bg-signal-600 px-3 py-2 text-[11px] leading-snug text-white">Yes — booked 7:30 at Nopa and sent them the address ✓</div>
+      <div className="max-w-[82%] self-start rounded-[18px] rounded-bl-[6px] bg-[#e9e9eb] px-3.5 py-2 text-[11.5px] text-stone-800">Are we still on for dinner Friday?</div>
+      <div className="max-w-[84%] self-end rounded-[18px] rounded-br-[6px] bg-gradient-to-b from-[#28a3ff] to-[#0a84ff] px-3.5 py-2 text-[11.5px] leading-snug text-white">Yes — booked 7:30 at Nopa and sent them the address</div>
       <div className="self-end pr-1 text-[9px] text-stone-400">Delivered · handled by Herds</div>
     </div>
   );
@@ -1194,7 +1195,7 @@ const FOOTER_COLS: { head: string; links: { label: string; href: string }[] }[] 
     { label: "iMessage", href: "/signup" }, { label: "CI runners", href: "/signup" }, { label: "Agent infrastructure", href: "/skill" },
   ] },
   { head: "Developers", links: [
-    { label: "Docs", href: GITHUB }, { label: "Python SDK", href: GITHUB }, { label: "CLI", href: GITHUB },
+    { label: "Docs", href: "/docs" }, { label: "Python SDK", href: "/docs#commands" }, { label: "CLI", href: "/docs#cli" },
     { label: "Agent skill", href: "/skill" }, { label: "Install", href: "/signup" },
   ] },
   { head: "Company", links: [
