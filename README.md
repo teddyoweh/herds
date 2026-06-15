@@ -257,6 +257,7 @@ herds host               self-host: control plane + dashboard + public link
 herds skill [--install]  print/install the agent skill (SKILL.md) for Claude Code
 herds open               open your live dashboard in the browser
 herds token new|ls|revoke   scoped, revocable tokens (read|run|admin) for agents/CI
+herds schedule add|ls|rm    recurring cron jobs that run on your Mac
 herds connect <link> <token>   join another Mac to a host
 herds serve              run a bare control plane locally
 herds machines           list your connected Macs

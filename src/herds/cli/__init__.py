@@ -37,9 +37,11 @@ app = typer.Typer(
 volume_app = typer.Typer(help="Manage volumes (persistent directories on the Mac).")
 image_app = typer.Typer(help="Inspect toolchain images available on this Mac.")
 token_app = typer.Typer(help="Mint scoped, revocable tokens (e.g. for agents/CI).")
+schedule_app = typer.Typer(help="Recurring scheduled jobs (cron) that run on your Mac.")
 app.add_typer(volume_app, name="volume")
 app.add_typer(image_app, name="image")
 app.add_typer(token_app, name="token")
+app.add_typer(schedule_app, name="schedule")
 
 
 def _control_http(url: Optional[str], tok: Optional[str]):
@@ -102,6 +104,64 @@ def token_revoke(
         err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
         raise typer.Exit(1)
     console.print(f"[green]✓[/green] revoked [cyan]{prefix}[/cyan]")
+
+
+@schedule_app.command("add")
+def schedule_add(
+    cron: str = typer.Argument(..., help='Cron expr, e.g. "0 9 * * *" (min hour dom mon dow).'),
+    command: list[str] = typer.Argument(..., help="The command (after --)."),
+    machine: Optional[str] = typer.Option(None, "--machine", "-m", help="Target machine id."),
+    url: Optional[str] = typer.Option(None, "--url"),
+    token: Optional[str] = typer.Option(None, "--token"),
+):
+    """Schedule a recurring command. e.g. herds schedule add "0 9 * * *" -- swift test"""
+    cmd = " ".join(command)
+    r = _control_http(url, token).post(
+        "/v1/schedules", json={"cron": cron, "command": cmd, "machine_id": machine})
+    if r.status_code >= 400:
+        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        raise typer.Exit(1)
+    d = r.json()
+    console.print(f"[green]✓[/green] scheduled [cyan]{d['id']}[/cyan]  [dim]{d['cron']}[/dim]  {d['command']}")
+
+
+@schedule_app.command("ls")
+def schedule_ls(
+    url: Optional[str] = typer.Option(None, "--url"),
+    token: Optional[str] = typer.Option(None, "--token"),
+):
+    """List recurring schedules."""
+    r = _control_http(url, token).get("/v1/schedules")
+    if r.status_code >= 400:
+        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        raise typer.Exit(1)
+    rows = r.json().get("schedules", [])
+    if not rows:
+        console.print("[dim]No schedules yet.[/dim]")
+        return
+    table = Table(title="Schedules")
+    table.add_column("ID", style="cyan")
+    table.add_column("Cron")
+    table.add_column("Command")
+    table.add_column("Machine", style="dim")
+    for s in rows:
+        table.add_row(s["id"], s["cron"], (s["command"] or "")[:48], s.get("machine_id") or "default")
+    console.print(table)
+
+
+@schedule_app.command("rm")
+def schedule_rm(
+    schedule_id: str,
+    url: Optional[str] = typer.Option(None, "--url"),
+    token: Optional[str] = typer.Option(None, "--token"),
+):
+    """Remove a schedule by id."""
+    r = _control_http(url, token).delete(f"/v1/schedules/{schedule_id}")
+    if r.status_code >= 400:
+        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        raise typer.Exit(1)
+    console.print(f"[green]✓[/green] removed [cyan]{schedule_id}[/cyan]")
+
 
 console = Console()
 err = Console(stderr=True)
