@@ -16,6 +16,7 @@ Everything degrades gracefully: missing tools never hard-fail a run.
 from __future__ import annotations
 
 import asyncio
+import codecs
 import os
 import shutil
 import signal
@@ -268,11 +269,22 @@ class Executor:
             argv = _wrap_command(command, sandbox, volume_paths, network)
 
         async def pump(stream: asyncio.StreamReader, name: str) -> None:
+            # Read fixed-size chunks, not readline(): a single line longer than the
+            # StreamReader limit (e.g. base64 of a screenshot — one ~1.3MB line)
+            # makes readline() raise LimitOverrunError, which would crash the pump
+            # and hang the SDK waiting for output that never arrives. An incremental
+            # UTF-8 decoder keeps multibyte chars intact across chunk boundaries.
+            dec = codecs.getincrementaldecoder("utf-8")("replace")
             while True:
-                line = await stream.readline()
-                if not line:
+                chunk = await stream.read(65536)
+                if not chunk:
+                    tail = dec.decode(b"", final=True)
+                    if tail:
+                        await sink(name, tail)
                     break
-                await sink(name, line.decode(errors="replace"))
+                text = dec.decode(chunk)
+                if text:
+                    await sink(name, text)
 
         code = -1
         attempt = 0
@@ -286,6 +298,7 @@ class Executor:
                     cwd=cwd,
                     env=full_env,
                     start_new_session=True,  # own process group -> killable tree
+                    limit=4 * 1024 * 1024,   # roomy buffer so big bursts don't stall flow control
                 )
             except (OSError, ValueError) as exc:
                 await sink("stderr", f"herds: failed to launch: {exc}\n")

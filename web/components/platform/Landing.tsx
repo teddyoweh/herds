@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Logo } from "@/components/Logo";
 import { GitHubMark } from "@/components/Auth";
 import { getSession } from "@/lib/platform";
 import Link from "next/link";
-import { motion, type Variants } from "framer-motion";
+import { motion, useMotionValue, useTransform, animate, type Variants } from "framer-motion";
 
 /* ------------------------------------------------------------------ *
  * Herds — public marketing landing page.
@@ -80,7 +80,7 @@ function TopBar() {
     <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl">
       <div className="mx-auto flex h-[60px] max-w-[1120px] items-center justify-between px-6">
         <Link href="/" className="flex items-center gap-2.5">
-          <Logo size={22} />
+          <Logo size={32} />
           <span className="text-[16px] font-semibold tracking-tight text-stone-900">Herds</span>
         </Link>
         <div className="flex items-center gap-2">
@@ -90,6 +90,7 @@ function TopBar() {
             </Link>
           ) : (
             <>
+              <Link href="/setup" className="hidden rounded-lg px-3 py-1.5 text-[13px] text-stone-500 transition-colors hover:text-stone-900 sm:inline-flex">Setup</Link>
               <Link href="/docs" className="hidden rounded-lg px-3 py-1.5 text-[13px] text-stone-500 transition-colors hover:text-stone-900 sm:inline-flex">Docs</Link>
               <Link href="/login" className="hidden rounded-lg px-3 py-1.5 text-[13px] text-stone-500 transition-colors hover:text-stone-900 sm:inline-flex">Log in</Link>
               <Link href="/signup" className="inline-flex items-center rounded-full bg-signal-600 px-4 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-signal-500">Start free</Link>
@@ -150,35 +151,198 @@ function Chrome({ title }: { title?: string }) {
  * Hero — command cluster + live dashboard card
  * ------------------------------------------------------------------ */
 
-const SETUP: { cmd?: string; ok?: React.ReactNode }[] = [
-  { cmd: "herds host" },
-  { ok: <>This Mac · <span className="text-stone-200">M3 Max</span> · live at <span className="text-signal-400">you.herds.run</span></> },
-  { cmd: "herds connect mac-mini.local" },
-  { ok: <>Mac mini joined the fleet</> },
-  { cmd: "herds connect studio.local" },
-  { ok: <>Mac Studio joined the fleet</> },
-];
+/* ---- Hero centerpiece: the fleet forming live ---------------------------- *
+ * A terminal types the herds commands while, in sync, each Mac materialises in
+ * a constellation wired to the you.herds.run hub — and agents (the flock) fly
+ * the links to every machine. CSS keyframes drive the typewriter/rings; SMIL
+ * animateMotion flies the birds; framer handles the entrance. */
 
-/* The hero centerpiece — a setup terminal: a few commands turn your spare Macs
-   into one fleet. (The part everyone loves, made explicit.) */
-function SetupTerminal() {
+const BIRD_D = "M0 -2 C4 -6 8 -5 12 -2 C8 -2.5 4 -1 0 1 C-4 -1 -8 -2.5 -12 -2 C-8 -5 -4 -6 0 -2 Z";
+
+const HERO_CSS = `
+@keyframes herdsType{from{width:0}to{width:var(--tw)}}
+@keyframes herdsRise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes herdsFade{from{opacity:0}to{opacity:1}}
+@keyframes herdsBlink{50%{opacity:0}}
+@keyframes herdsRing{0%{transform:scale(1);opacity:.5}100%{transform:scale(1.6);opacity:0}}`;
+
+function Type({ text, delay, className }: { text: string; delay: number; className?: string }) {
   return (
-    <div className="overflow-hidden rounded-2xl bg-[#0f141a] text-left shadow-[0_24px_60px_-26px_rgba(20,24,33,0.55)]">
-      <div className="flex items-center gap-2 bg-white/[0.05] px-4 py-2.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" /><span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" /><span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
-        <span className="mx-auto pr-10 font-mono text-[11px] text-stone-500">herds — zsh</span>
-      </div>
-      <div className="space-y-1 px-5 py-4 font-mono text-[12.5px] leading-[1.8]">
-        {SETUP.map((l, i) => (
-          <div key={i} className={l.cmd ? "pt-1.5 first:pt-0" : ""}>
-            {l.cmd
-              ? <><span className="text-signal-400">$</span> <span className="text-stone-100">{l.cmd}</span></>
-              : <span className="text-stone-400"><span className="text-signal-400">✓</span> {l.ok}</span>}
-          </div>
+    <span
+      className={className}
+      style={{ display: "inline-block", overflow: "hidden", whiteSpace: "nowrap", verticalAlign: "bottom", width: 0, ["--tw" as string]: `${text.length}ch`, animation: `herdsType ${Math.max(0.3, text.length * 0.04)}s steps(${text.length},end) forwards`, animationDelay: `${delay}s` } as React.CSSProperties}
+    >
+      {text}
+    </span>
+  );
+}
+
+function TOut({ delay, children }: { delay: number; children: React.ReactNode }) {
+  return <div className="pl-[15px] text-[11.5px] leading-[1.7] text-stone-500" style={{ opacity: 0, animation: "herdsRise .5s ease forwards", animationDelay: `${delay}s` }}>{children}</div>;
+}
+
+/* device silhouette drawn in SVG (local coords, ~22px), placed inside a node */
+/* hyper-real Apple device renders — aluminium gradients, screen, bezels, ports,
+   a contact shadow. Each is drawn in its own local space; placement per kind. */
+function DeviceGlyph({ kind }: { kind: "laptop" | "mini" | "studio" }) {
+  if (kind === "laptop")
+    return (
+      <>
+        <ellipse cx="13" cy="21.5" rx="13" ry="1.6" fill="url(#devSh)" />
+        <rect x="3" y="1.5" width="20" height="13.5" rx="2.2" fill="url(#alu)" />
+        <rect x="4.6" y="3" width="16.8" height="10.6" rx="1" fill="url(#scr)" />
+        <rect x="11.3" y="3" width="3.4" height="0.9" rx="0.45" fill="#0a0e13" />
+        <rect x="4.6" y="3" width="16.8" height="4" rx="1" fill="#ffffff" opacity="0.05" />
+        <path d="M0.5 16 H25.5 L24 19.4 a1.4 1.4 0 0 1 -1.3 0.9 H3.3 A1.4 1.4 0 0 1 2 19.4 Z" fill="url(#alu)" />
+        <rect x="0.5" y="15.4" width="25" height="1.4" rx="0.6" fill="#d7d3ca" />
+        <rect x="10" y="16" width="6" height="0.8" rx="0.4" fill="#b3afa6" />
+      </>
+    );
+  if (kind === "studio")
+    return (
+      <>
+        <ellipse cx="13" cy="21.5" rx="12" ry="1.5" fill="url(#devSh)" />
+        <rect x="3.5" y="2.5" width="19" height="18.5" rx="3.6" fill="url(#alu)" />
+        <rect x="3.5" y="2.5" width="19" height="5.2" rx="3.6" fill="url(#aluTop)" />
+        <g fill="#b6b2a8"><circle cx="8" cy="17.3" r="1" /><circle cx="11.6" cy="17.3" r="1" /><rect x="14.2" y="16.4" width="4.2" height="1.8" rx="0.9" /></g>
+        <circle cx="18.5" cy="6" r="0.85" fill="#1bbd86" />
+      </>
+    );
+  return (
+    <>
+      <ellipse cx="13" cy="19.5" rx="12" ry="1.5" fill="url(#devSh)" />
+      <rect x="2" y="7.5" width="22" height="10.5" rx="3.4" fill="url(#alu)" />
+      <rect x="2" y="7.5" width="22" height="4.5" rx="3.4" fill="url(#aluTop)" />
+      <circle cx="6.5" cy="14.8" r="0.85" fill="#bdb9b0" />
+      <circle cx="20" cy="14.8" r="2" fill="#1bbd86" opacity="0.18" /><circle cx="20" cy="14.8" r="1.05" fill="#1bbd86" />
+    </>
+  );
+}
+
+const DEVICE_TF: Record<string, string> = { laptop: "translate(11 16) scale(0.92)", mini: "translate(11 19) scale(0.92)", studio: "translate(12 16) scale(0.92)" };
+
+/* a fleet node — a machine card drawn entirely in SVG so it shares the
+   constellation's coordinate space (never clips) and scales with it. */
+function SvgNode({ x, y, name, chip, kind, load, delay }: { x: number; y: number; name: string; chip: string; kind: "laptop" | "mini" | "studio"; load: number; delay: number }) {
+  return (
+    <g transform={`translate(${x} ${y})`} opacity="0" filter="url(#nodeShadow)">
+      <animate attributeName="opacity" values="0;1" dur="0.55s" begin={`${delay}s`} fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1" />
+      <rect width="178" height="58" rx="15" fill="url(#cardG)" />
+      <rect x="0.5" y="0.5" width="177" height="57" rx="14.5" fill="none" stroke="#000000" strokeOpacity="0.05" />
+      <rect x="6" y="1.5" width="166" height="20" rx="11" fill="#ffffff" opacity="0.5" />
+      <g transform={DEVICE_TF[kind]}><DeviceGlyph kind={kind} /></g>
+      <text x="48" y="25" fontFamily="-apple-system,system-ui,sans-serif" fontSize="13" fontWeight="600" letterSpacing="-0.2" fill="#1c1917">{name}</text>
+      <text x="48" y="39" fontFamily="ui-monospace,monospace" fontSize="9.5" fill="#a8a29e">{chip}</text>
+      <circle cx="164" cy="16" r="5" fill="#1bbd86" opacity="0.16" />
+      <circle cx="164" cy="16" r="3" fill="#1bbd86"><animate attributeName="opacity" values="1;0.35;1" dur="2.4s" repeatCount="indefinite" begin={`${delay}s`} /></circle>
+      <rect x="48" y="45" width="118" height="3.5" rx="1.75" fill="#ecebe6" />
+      <rect x="48" y="45" width="0" height="3.5" rx="1.75" fill="url(#barG)"><animate attributeName="width" values={`0;${(118 * load) / 100}`} dur="0.9s" begin={`${delay + 0.2}s`} fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.22 1 0.36 1" /></rect>
+    </g>
+  );
+}
+
+/* one agent-bird flying hub → mac along a path, looping forever */
+function FlyBird({ path, dur, begin }: { path: string; dur: number; begin: number }) {
+  return (
+    <path d={BIRD_D} fill="url(#heroG)" transform="scale(0.46)">
+      <animateMotion dur={`${dur}s`} begin={`${begin}s`} repeatCount="indefinite" rotate="auto" calcMode="spline" keyPoints="0;1" keyTimes="0;1" keySplines="0.45 0 0.2 1">
+        <mpath href={`#${path}`} />
+      </animateMotion>
+      <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.12;0.82;1" dur={`${dur}s`} begin={`${begin}s`} repeatCount="indefinite" />
+    </path>
+  );
+}
+
+/* the whole constellation as one self-scaling SVG — hub, links, flying agents
+   and machine nodes in a single coordinate space, so nothing can clip. */
+function FleetSVG() {
+  const hubBirds = [
+    { t: "translate(8 45) scale(0.66)", o: 0.4 }, { t: "translate(56 45) scale(0.66)", o: 0.4 },
+    { t: "translate(16 37) scale(1.05)", o: 0.7 }, { t: "translate(48 37) scale(1.05)", o: 0.7 },
+    { t: "translate(32 27) scale(1.6)", o: 1 },
+  ];
+  return (
+    <svg viewBox="0 0 560 344" className="h-auto w-full max-w-[560px]" role="img" aria-label="A Mac fleet wired to the you.herds.run hub">
+      <defs>
+        <linearGradient id="heroG" x1="0" y1="0" x2="0.3" y2="1"><stop offset="0" stopColor="#46e3ad" /><stop offset="0.5" stopColor="#1bbd86" /><stop offset="1" stopColor="#0b9266" /></linearGradient>
+        <radialGradient id="heroHub" cx="0.3" cy="0.25" r="1"><stop offset="0" stopColor="#16291f" /><stop offset="1" stopColor="#0a1611" /></radialGradient>
+        <filter id="nodeShadow" x="-40%" y="-40%" width="180%" height="200%"><feDropShadow dx="0" dy="6" stdDeviation="13" floodColor="#3f4a57" floodOpacity="0.10" /></filter>
+        <linearGradient id="alu" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#f6f5f2" /><stop offset="0.5" stopColor="#e2dfd8" /><stop offset="1" stopColor="#cbc7bd" /></linearGradient>
+        <linearGradient id="aluTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffffff" /><stop offset="1" stopColor="#eceae4" /></linearGradient>
+        <linearGradient id="scr" x1="0" y1="0" x2="0.3" y2="1"><stop offset="0" stopColor="#1b2630" /><stop offset="1" stopColor="#0a0e13" /></linearGradient>
+        <linearGradient id="cardG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffffff" /><stop offset="1" stopColor="#fbfbf9" /></linearGradient>
+        <linearGradient id="barG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#2ee08a" /><stop offset="1" stopColor="#12a866" /></linearGradient>
+        <radialGradient id="devSh" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stopColor="#3f4a57" stopOpacity="0.16" /><stop offset="1" stopColor="#3f4a57" stopOpacity="0" /></radialGradient>
+        <path id="hp1" d="M138 162 C 226 130 250 70 348 64" fill="none" />
+        <path id="hp2" d="M142 172 C 236 170 300 170 348 172" fill="none" />
+        <path id="hp3" d="M138 182 C 226 214 250 274 348 280" fill="none" />
+      </defs>
+
+      {/* links */}
+      <g fill="none" stroke="#1bbd86" strokeWidth="1.6" strokeDasharray="3 5" strokeLinecap="round">
+        <use href="#hp1" strokeOpacity="0.32" style={{ opacity: 0, animation: "herdsFade .6s ease forwards", animationDelay: "1.1s" }} />
+        <use href="#hp2" strokeOpacity="0.32" style={{ opacity: 0, animation: "herdsFade .6s ease forwards", animationDelay: "2.5s" }} />
+        <use href="#hp3" strokeOpacity="0.32" style={{ opacity: 0, animation: "herdsFade .6s ease forwards", animationDelay: "4.0s" }} />
+      </g>
+      <FlyBird path="hp1" dur={2.0} begin={1.4} />
+      <FlyBird path="hp2" dur={2.2} begin={2.8} />
+      <FlyBird path="hp3" dur={2.4} begin={4.3} />
+
+      {/* hub: the you.herds.run control plane, wearing the flock */}
+      <g>
+        {[0, 1.3].map((d, i) => (
+          <rect key={i} x="42" y="124" width="92" height="92" rx="22" fill="none" stroke="#1bbd86" strokeOpacity="0.5"
+            style={{ transformBox: "fill-box", transformOrigin: "center", animation: `herdsRing 2.6s ease-out infinite ${d}s` } as React.CSSProperties} />
         ))}
-        <div className="mt-2.5 flex items-center gap-2 text-[11.5px] text-stone-400">
-          <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-400" /> <span className="text-stone-300">3 Macs online</span> · ready for agents
-          <span className="ml-1 inline-block h-[12px] w-[6px] translate-y-[2px] animate-breathe bg-signal-400/80 align-middle" />
+        <rect x="42" y="124" width="92" height="92" rx="22" fill="url(#heroHub)" />
+        <g transform="translate(65 147) scale(0.72)" fill="url(#heroG)">
+          {hubBirds.map((b, i) => <path key={i} d={BIRD_D} transform={b.t} opacity={b.o} />)}
+        </g>
+      </g>
+      <text x="88" y="236" textAnchor="middle" fontFamily="ui-monospace,monospace" fontSize="11" fontWeight="600" fill="#0f9d6e">you.herds.run</text>
+
+      {/* the fleet */}
+      <SvgNode x={348} y={36} name="This Mac" chip="M3 Max · 16C" kind="laptop" load={58} delay={1.1} />
+      <SvgNode x={348} y={144} name="Mac mini" chip="M2 Pro · 12C" kind="mini" load={34} delay={2.5} />
+      <SvgNode x={348} y={252} name="Mac Studio" chip="M2 Ultra · 24C" kind="studio" load={71} delay={4.0} />
+    </svg>
+  );
+}
+
+function HeroFleet() {
+  return (
+    <div className="relative mx-auto w-full max-w-[940px] overflow-hidden rounded-[26px] bg-gradient-to-b from-white to-[#f6f5f2] ring-1 ring-black/[0.04]">
+      <style>{HERO_CSS}</style>
+      <div className="grid grid-cols-1 md:grid-cols-[400px_1fr]">
+        {/* terminal */}
+        <div className="bg-[#0c1016] text-left">
+          <div className="flex items-center gap-1.5 px-4 py-3" style={{ background: "rgba(255,255,255,0.04)" }}>
+            <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" /><span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" /><span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
+            <span className="mx-auto pr-9 font-mono text-[11px] text-stone-500">herds — zsh</span>
+          </div>
+          <div className="px-5 py-5 font-mono text-[12.5px] leading-[2]">
+            <div><span className="text-signal-400">$</span> <Type text="herds host" delay={0.3} className="text-stone-100" /></div>
+            <TOut delay={1.0}><span className="text-signal-400">✓</span> This Mac · <span className="text-stone-300">M3 Max</span> · live at <span className="text-signal-400">you.herds.run</span></TOut>
+            <div className="h-2.5" />
+            <div><span className="text-signal-400">$</span> <Type text="herds connect mac-mini.local" delay={1.5} className="text-stone-100" /></div>
+            <TOut delay={2.4}><span className="text-signal-400">✓</span> Mac mini joined the fleet</TOut>
+            <div className="h-2.5" />
+            <div><span className="text-signal-400">$</span> <Type text="herds connect studio.local" delay={3.0} className="text-stone-100" /></div>
+            <TOut delay={3.9}><span className="text-signal-400">✓</span> Mac Studio joined the fleet</TOut>
+            <div className="h-2.5" />
+            <div style={{ opacity: 0, animation: "herdsFade .3s ease forwards", animationDelay: "4.5s" }}>
+              <span className="text-signal-400">$</span> <Type text="herds run --all " delay={4.5} className="text-stone-100" /><span className="text-stone-500">&quot;xcodebuild&quot;</span>
+              <span className="ml-0.5 inline-block h-[13px] w-[6px] translate-y-[2px] bg-signal-400 align-middle" style={{ animation: "herdsBlink 1s steps(1) infinite", animationDelay: "5.3s" }} />
+            </div>
+            <div className="mt-2 flex items-center gap-2 text-[11.5px] text-stone-400" style={{ opacity: 0, animation: "herdsRise .5s ease forwards", animationDelay: "5.4s" }}>
+              <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-400" /> <span className="text-stone-300">3 Macs online</span> · agents dispatched
+            </div>
+          </div>
+        </div>
+
+        {/* fleet constellation — one self-scaling SVG, can't clip */}
+        <div className="grid place-items-center px-5 py-6">
+          <FleetSVG />
         </div>
       </div>
     </div>
@@ -371,9 +535,9 @@ function Hero() {
         <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }} className="ed-soft mx-auto mt-6 max-w-[37rem] text-[18px] leading-[1.5] text-stone-500 sm:text-[20px]">
           Connect any Mac you own and it becomes a programmable cloud runtime — driven by agents, SDKs, and CLIs from anywhere.
         </motion.p>
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.34 }} className="mx-auto mt-8 max-w-[40rem]">
-          <SetupTerminal />
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.34 }} className="mx-auto mt-9 max-w-[940px]">
+          <HeroFleet />
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
             <Link href="/signup" className="inline-flex items-center rounded-full bg-signal-600 px-5 py-2.5 text-[14px] font-medium text-white transition-all hover:-translate-y-px hover:bg-signal-500">Start free</Link>
             <CurlPill />
           </div>
@@ -583,10 +747,15 @@ function FleetViz() {
       {[0, 1].map((k) => (
         <motion.circle key={k} cx="260" cy="100" r="24" className="fill-none stroke-signal-500/40" strokeWidth="1.3" animate={{ r: [24, 52], opacity: [0.45, 0] }} transition={{ duration: 2.6, repeat: Infinity, ease: "easeOut", delay: k * 1.3 }} />
       ))}
-      {/* hub */}
+      {/* hub — the Herds flock */}
       <rect x={236} y={76} width="48" height="48" rx="14" className="fill-signal-600" />
-      <g className="stroke-white" strokeWidth="1.7" strokeLinecap="round" opacity="0.9" fill="none"><path d="M260 90 L251 112 M260 90 L269 112 M251 112 L269 112" /></g>
-      <circle cx="260" cy="89" r="3.4" className="fill-white" /><circle cx="250" cy="113" r="3.4" className="fill-white" /><circle cx="270" cy="113" r="3.4" className="fill-white" />
+      <g transform="translate(236 76) scale(0.75)" className="fill-white">
+        <path d={BIRD_D} transform="translate(8 45) scale(0.66)" opacity="0.5" />
+        <path d={BIRD_D} transform="translate(56 45) scale(0.66)" opacity="0.5" />
+        <path d={BIRD_D} transform="translate(16 37) scale(1.05)" opacity="0.8" />
+        <path d={BIRD_D} transform="translate(48 37) scale(1.05)" opacity="0.8" />
+        <path d={BIRD_D} transform="translate(32 27) scale(1.6)" />
+      </g>
       {/* status pill */}
       <rect x="18" y="16" width="96" height="22" rx="11" className="fill-white" />
       <circle cx="33" cy="27" r="3" className="fill-signal-500" />
@@ -726,7 +895,7 @@ function Capabilities() {
     <Section>
       <Reveal className="mx-auto max-w-2xl text-center">
         <div className="text-[12px] font-medium uppercase tracking-[0.16em] text-signal-600">Capabilities</div>
-        <h2 className="ed mt-3 text-[32px] leading-[1.05] text-stone-900 sm:text-[44px]">Everything a Linux sandbox can&rsquo;t do</h2>
+        <h2 className="ed mt-3 text-[26px] leading-[1.08] text-stone-900 sm:whitespace-nowrap sm:text-[38px]">Everything a Linux sandbox can&rsquo;t do</h2>
         <p className="mx-auto mt-4 max-w-xl text-[15.5px] leading-relaxed text-stone-500">A fleet of real Macs, driven by agents from anywhere — the things a Linux box in the cloud simply can&rsquo;t be.</p>
       </Reveal>
       <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} className="mt-14 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -978,23 +1147,79 @@ function CodeCard() {
  * 11 — Final CTA
  * ------------------------------------------------------------------ */
 
+const CTA_CSS = `
+@keyframes ctaGlow{0%,100%{opacity:.8;transform:scale(1)}50%{opacity:1;transform:scale(1.06)}}
+@keyframes ctaBlink{50%{opacity:0}}`;
+
+/* ambient agents — a faint flock drifting across the panel, plus a couple that
+   fly the full width like dispatched agents passing through. */
+const CTA_BIRDS = [
+  { x: 150, y: 92, s: 0.95, o: 0.22 }, { x: 262, y: 150, s: 0.6, o: 0.15 }, { x: 470, y: 64, s: 0.5, o: 0.12 },
+  { x: 884, y: 112, s: 1.0, o: 0.2 }, { x: 786, y: 72, s: 0.55, o: 0.13 }, { x: 936, y: 330, s: 0.7, o: 0.15 },
+  { x: 128, y: 348, s: 0.65, o: 0.14 }, { x: 628, y: 384, s: 0.6, o: 0.12 },
+];
+
+function CtaFlock() {
+  return (
+    <svg viewBox="0 0 1040 460" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 h-full w-full" aria-hidden>
+      <g fill="#1bbd86">
+        <animateTransform attributeName="transform" type="translate" values="0 0; -16 6; 0 0" dur="22s" repeatCount="indefinite" />
+        {CTA_BIRDS.map((b, i) => (
+          <path key={i} d={BIRD_D} transform={`translate(${b.x} ${b.y}) scale(${b.s})`} opacity={b.o}>
+            <animate attributeName="opacity" values={`${b.o};${b.o * 0.4};${b.o}`} dur={`${6 + i}s`} repeatCount="indefinite" />
+          </path>
+        ))}
+      </g>
+      <path d={BIRD_D} fill="#1bbd86" opacity="0.5" transform="scale(0.7)">
+        <animateMotion path="M-40 140 C 300 90 740 200 1090 120" dur="13s" repeatCount="indefinite" rotate="auto" />
+        <animate attributeName="opacity" values="0;0.5;0.5;0" keyTimes="0;.1;.9;1" dur="13s" repeatCount="indefinite" />
+      </path>
+      <path d={BIRD_D} fill="#1bbd86" opacity="0.4" transform="scale(0.55)">
+        <animateMotion path="M-40 322 C 360 360 720 238 1090 300" dur="17s" begin="5s" repeatCount="indefinite" rotate="auto" />
+        <animate attributeName="opacity" values="0;0.4;0.4;0" keyTimes="0;.1;.9;1" dur="17s" begin="5s" repeatCount="indefinite" />
+      </path>
+    </svg>
+  );
+}
+
 function FinalCTA() {
   return (
-    <Section>
+    <section className="mx-auto max-w-[1180px] px-6 py-20">
       <Reveal>
-        <div className="relative overflow-hidden rounded-[28px] bg-stone-900 px-8 py-16 text-center sm:px-16 sm:py-20">
+        <div className="relative overflow-hidden rounded-[32px] px-8 py-14 text-center sm:px-16 sm:py-16" style={{ background: "linear-gradient(165deg,#0e1319,#090b0f)" }}>
+          <style>{CTA_CSS}</style>
+          {/* ambient layers */}
+          <div aria-hidden className="pointer-events-none absolute inset-0">
+            <div className="absolute -left-20 -top-28 h-80 w-[520px] rounded-full blur-[70px]" style={{ background: "radial-gradient(closest-side,rgba(27,189,134,0.32),transparent)", animation: "ctaGlow 7s ease-in-out infinite" }} />
+            <div className="absolute -bottom-28 -right-16 h-72 w-[420px] rounded-full blur-[70px]" style={{ background: "radial-gradient(closest-side,rgba(27,189,134,0.2),transparent)", animation: "ctaGlow 7s ease-in-out infinite 3.5s" }} />
+            <div className="absolute inset-0" style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.05) 1px,transparent 1px)", backgroundSize: "22px 22px", maskImage: "radial-gradient(120% 90% at 50% 30%,#000,transparent 75%)", WebkitMaskImage: "radial-gradient(120% 90% at 50% 30%,#000,transparent 75%)" }} />
+            <div className="absolute inset-x-[10%] top-0 h-px" style={{ background: "linear-gradient(90deg,transparent,rgba(255,255,255,0.22),transparent)" }} />
+            <CtaFlock />
+          </div>
+
+          {/* content */}
           <div className="relative">
-            <h2 className="ed text-[32px] leading-[1.05] text-white sm:text-[46px]">Connect your Mac in 60 seconds.</h2>
-            <p className="ed-soft mx-auto mt-4 max-w-md text-[18px] leading-relaxed text-stone-400">Every Mac becomes an API. Your own machine, your own infra — live with one command.</p>
+            <span className="inline-flex items-center gap-2 rounded-full bg-white/[0.06] px-3.5 py-1.5 text-[12px] font-medium text-stone-300">
+              <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-500 shadow-[0_0_8px_1px_rgba(27,189,134,0.7)]" /> Ready when you are
+            </span>
+            <h2 className="ed mx-auto mt-6 max-w-[18ch] bg-gradient-to-b from-white to-stone-400 bg-clip-text text-[28px] leading-[1.05] text-transparent sm:text-[42px]">Connect your Mac in 60 seconds.</h2>
+            <p className="mx-auto mt-5 max-w-md text-[16.5px] leading-relaxed text-stone-400">Every Mac you own becomes an API. Your machine, your infra — live with a single command.</p>
             <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-              <Link href="/signup" className="inline-flex items-center rounded-full bg-signal-500 px-6 py-3 text-[14px] font-medium text-white transition-colors hover:bg-signal-400">Start free</Link>
-              <Link href="/login" className="inline-flex items-center rounded-full bg-white/[0.08] px-6 py-3 text-[14px] font-medium text-stone-200 transition-colors hover:bg-white/[0.14]">Log in</Link>
+              <Link href="/signup" className="group inline-flex items-center gap-2 rounded-full bg-signal-500 px-6 py-3 text-[14.5px] font-semibold text-white shadow-[0_0_0_1px_rgba(70,227,173,0.45),0_14px_34px_-10px_rgba(27,189,134,0.7)] transition hover:-translate-y-px hover:bg-signal-400">
+                Start free
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="transition-transform group-hover:translate-x-0.5"><path d="M3 8h9M8 4l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </Link>
+              <Link href="/login" className="inline-flex items-center rounded-full bg-white/[0.07] px-6 py-3 text-[14.5px] font-semibold text-stone-200 ring-1 ring-white/10 transition hover:bg-white/[0.12]">Log in</Link>
             </div>
-            <div className="mt-6 font-mono text-[12.5px] text-stone-500"><span className="text-signal-400">$</span> herds host</div>
+            <div className="mx-auto mt-8 inline-flex items-center gap-3 rounded-xl bg-white/[0.045] px-4 py-2.5 font-mono text-[12.5px] ring-1 ring-white/[0.08]">
+              <span><span className="text-signal-400">$</span> <span className="text-stone-100">herds host</span><span className="ml-0.5 inline-block h-[13px] w-[6px] translate-y-[2px] bg-signal-400 align-middle" style={{ animation: "ctaBlink 1s steps(1) infinite" }} /></span>
+              <span className="h-3 w-px bg-white/15" />
+              <span className="text-stone-500"><span className="text-signal-400">✓</span> live at <span className="text-signal-400">you.herds.run</span></span>
+            </div>
           </div>
         </div>
       </Reveal>
-    </Section>
+    </section>
   );
 }
 
@@ -1453,42 +1678,217 @@ function Footer() {
 
 const APPS = ["Xcode", "Final Cut Pro", "Logic Pro", "Blender", "iOS Simulator", "Safari & WebKit", "Homebrew", "Playwright"];
 
+const REEL_ITEM_H = 64; // px per row in the slider
+const REEL_VISIBLE = 5; // rows in view
+
+/* One row of the reel. Opacity peaks as the row crosses the center line and
+   fades toward the top/bottom edges — driven off the shared scroll value so
+   the emphasis tracks the motion, not a discrete active index. */
+function ReelItem({ label, index, mv, viewCenter }: { label: string; index: number; mv: ReturnType<typeof useMotionValue<number>>; viewCenter: number }) {
+  const center = useTransform(mv, (v) => index * REEL_ITEM_H + v + REEL_ITEM_H / 2);
+  const opacity = useTransform(center, [viewCenter - REEL_ITEM_H * 1.7, viewCenter, viewCenter + REEL_ITEM_H * 1.7], [0.14, 1, 0.14]);
+  return (
+    <motion.div style={{ height: REEL_ITEM_H, opacity }} className="ed flex items-center whitespace-nowrap text-[30px] leading-none text-stone-900 sm:text-[40px]">
+      {label}
+    </motion.div>
+  );
+}
+
+/* An upward-stepping reel of app names: it advances one row at a time, settling
+   on each app with a hold before moving up to the next. Two copies make the
+   loop seamless; a fixed signal dot marks the center line each app settles on. */
+function AppReel() {
+  const viewH = REEL_ITEM_H * REEL_VISIBLE;
+  const viewCenter = viewH / 2;
+  const n = APPS.length;
+  const base = viewCenter - REEL_ITEM_H / 2; // y that centers row 0
+  const mv = useMotionValue(base);
+  const idx = useRef(0);
+  useEffect(() => {
+    let cancelled = false;
+    let hold: ReturnType<typeof setTimeout>;
+    let controls: ReturnType<typeof animate> | undefined;
+    const step = () => {
+      if (cancelled) return;
+      const next = idx.current + 1;
+      controls = animate(mv, base - next * REEL_ITEM_H, {
+        duration: 0.5,
+        ease: [0.5, 0, 0.2, 1],
+        onComplete: () => {
+          idx.current = next;
+          if (next >= n) {
+            // seamless wrap: jump back by one full list — the rows line up
+            idx.current = next - n;
+            mv.set(mv.get() + n * REEL_ITEM_H);
+          }
+          hold = setTimeout(step, 1100);
+        },
+      });
+    };
+    hold = setTimeout(step, 1100);
+    return () => { cancelled = true; clearTimeout(hold); controls?.stop(); };
+  }, [mv, n, base]);
+  // enough copies to keep the viewport full at every offset in the loop
+  const items = [...APPS, ...APPS, ...APPS.slice(0, REEL_VISIBLE)];
+  return (
+    <div className="relative" style={{ height: viewH }}>
+      <span className="pointer-events-none absolute right-1 top-1/2 z-10 block h-2 w-2 -translate-y-1/2 rounded-full bg-signal-500 shadow-[0_0_12px_3px_rgba(27,189,134,0.45)]" />
+      <div
+        className="relative overflow-hidden"
+        style={{ height: viewH, maskImage: "linear-gradient(to bottom, transparent, black 24%, black 76%, transparent)", WebkitMaskImage: "linear-gradient(to bottom, transparent, black 24%, black 76%, transparent)" }}
+      >
+        <motion.div style={{ y: mv }}>
+          {items.map((a, i) => (
+            <ReelItem key={i} label={a} index={i} mv={mv} viewCenter={viewCenter} />
+          ))}
+        </motion.div>
+      </div>
+    </div>
+  );
+}
+
 function RunsEverything() {
-  const [active, setActive] = useState(0);
-  useEffect(() => { const t = setInterval(() => setActive((v) => (v + 1) % APPS.length), 1500); return () => clearInterval(t); }, []);
   return (
     <section className="relative w-full overflow-hidden bg-white">
-      <div className="relative mx-auto max-w-[1080px] px-6 py-28 sm:py-36">
-        <div className="text-[12px] font-medium uppercase tracking-[0.18em] text-signal-600">Real macOS</div>
-        <h2 className="ed mt-4 max-w-[16ch] text-[32px] leading-[1.08] text-stone-900 sm:text-[46px]">It runs the apps a real Mac runs</h2>
-        <div className="mt-10 flex flex-col gap-1">
-          {APPS.map((a, i) => (
-            <div key={a} className="flex items-center gap-4">
-              <motion.span
-                animate={{ opacity: i === active ? 1 : 0.26, x: i === active ? 0 : -2 }}
-                transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                className="ed text-[30px] leading-[1.16] text-stone-900 sm:text-[42px]"
-              >
-                {a}
-              </motion.span>
-              <motion.span
-                animate={{ opacity: i === active ? 1 : 0, scale: i === active ? 1 : 0.6 }}
-                transition={{ duration: 0.4 }}
-                className="h-1.5 w-1.5 rounded-full bg-signal-500 shadow-[0_0_10px_2px_rgba(27,189,134,0.4)]"
-              />
-            </div>
-          ))}
+      <div className="relative mx-auto grid max-w-[1080px] grid-cols-1 items-center gap-12 px-6 py-28 sm:py-36 md:grid-cols-[1fr_300px] md:gap-16">
+        <div>
+          <div className="text-[12px] font-medium uppercase tracking-[0.18em] text-signal-600">Real macOS</div>
+          <h2 className="ed mt-4 text-[26px] leading-[1.1] text-stone-900 sm:whitespace-nowrap sm:text-[36px]">It runs the apps a real Mac runs</h2>
+          <p className="mt-6 max-w-[40rem] text-[15.5px] leading-relaxed text-stone-500">
+            If it installs on a Mac, it runs on Herds.
+          </p>
         </div>
-        <p className="mt-10 max-w-[40rem] text-[15.5px] leading-relaxed text-stone-500">
-          Not a container, not an emulator — the actual macOS userland. If it installs on a Mac, it runs on Herds.
-        </p>
+        <AppReel />
       </div>
     </section>
   );
 }
 
 /* ------------------------------------------------------------------ *
- * Get started — auth → host/connect → Python, three clean cards
+ * One Mac, a hundred sandboxes — a single mini partitions into many
+ * isolated, localized environments. Drive the machine, or fan it out.
+ * ------------------------------------------------------------------ */
+
+/* A faint Apple logo so the chassis reads unmistakably as a Mac. */
+function AppleGlyph({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 28" className={className} fill="currentColor" aria-hidden>
+      <path d="M19 9.6c-.1.1-2.4 1.3-2.4 4.1 0 3.3 2.9 4.4 3 4.5-.1.1-.5 1.6-1.5 3.1-.9 1.3-1.9 2.7-3.3 2.7s-1.8-.9-3.4-.9-2.1.9-3.4.9-2.3-1.2-3.3-2.7C2.9 22.6 1.8 19 1.8 15.6c0-5.4 3.5-8.3 7-8.3 1.4 0 2.6.9 3.5.9.8 0 2.1-1 3.7-1 .6 0 2.9.1 4 2.4zM14.8 4.2c.7-.8 1.2-2 1.2-3.2 0-.2 0-.3-.1-.5-1.1.1-2.5.8-3.3 1.7-.6.7-1.2 1.9-1.2 3.1 0 .2 0 .4.1.5h.4c1 0 2.2-.7 2.9-1.6z" />
+    </svg>
+  );
+}
+
+/* The sandboxes this one Mac is actually running — each its own isolated env,
+   doing real work. Reads left→right: one machine → live sandboxes → capacity. */
+const FEATURED_SBX: { id: string; cmd: string; meta: string; tone: "live" | "build" }[] = [
+  { id: "sbx_1a2", cmd: "vite dev --host", meta: ":3000 live", tone: "live" },
+  { id: "sbx_7f4", cmd: "xcodebuild -scheme App", meta: "0:42", tone: "build" },
+  { id: "sbx_9c1", cmd: "playwright test --headed", meta: "running", tone: "live" },
+];
+const FIELD_ON = new Set([2, 5, 9, 13, 17, 21, 24, 28, 33, 37, 41, 46]);
+
+function SandboxGridViz() {
+  return (
+    <div className="p-6 sm:p-7">
+      <div className="mb-6 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <Logo size={22} />
+          <span className="text-[13px] font-semibold tracking-tight text-stone-800">One Mac mini · M2 Pro</span>
+        </div>
+        <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-[11.5px] font-medium text-stone-600">
+          <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-signal-500" /> 24 sandboxes running
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-6 sm:grid sm:grid-cols-[112px_1fr] sm:items-center">
+        {/* the machine */}
+        <div className="mx-auto sm:mx-0">
+          <div
+            className="relative grid h-[104px] w-[104px] place-items-center rounded-[20px] shadow-[0_10px_26px_-14px_rgba(20,24,33,0.35),inset_0_1px_0_rgba(255,255,255,0.9)]"
+            style={{ background: "linear-gradient(160deg,#fdfdfc,#e4e2dc)" }}
+          >
+            <AppleGlyph className="h-8 w-7 text-stone-900/[0.13]" />
+            <span className="absolute bottom-2 left-1/2 h-1.5 w-1.5 -translate-x-1/2 animate-breathe rounded-full bg-signal-500 shadow-[0_0_9px_2px_rgba(27,189,134,0.55)]" />
+          </div>
+          <div className="mt-2.5 text-center sm:text-left">
+            <div className="text-[12px] font-semibold text-stone-900">M2 Pro</div>
+            <div className="text-[10.5px] text-stone-400">12-core · 32 GB</div>
+          </div>
+        </div>
+
+        {/* live sandboxes → fading out to capacity */}
+        <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-[1fr_136px]">
+          <motion.div variants={stagger} className="flex flex-col gap-2.5">
+            {FEATURED_SBX.map((s) => (
+              <motion.div key={s.id} variants={fadeUp} className="flex items-center gap-3 rounded-xl bg-white px-3.5 py-2.5 shadow-[0_8px_22px_-16px_rgba(20,24,33,0.4)]">
+                <span className={`h-2 w-2 flex-none rounded-full ${s.tone === "live" ? "bg-signal-500 shadow-[0_0_0_3px_rgba(27,189,134,0.16)]" : "bg-[#f5a524] shadow-[0_0_0_3px_rgba(245,165,36,0.16)]"}`} />
+                <span className="flex-none font-mono text-[11px] font-semibold text-stone-400">{s.id}</span>
+                <span className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-stone-800">{s.cmd}</span>
+                <span className={`flex-none font-mono text-[10.5px] ${s.tone === "live" ? "text-signal-600" : "text-stone-400"}`}>{s.meta}</span>
+              </motion.div>
+            ))}
+          </motion.div>
+
+          {/* the other ~76: a field fading to the machine's full capacity */}
+          <div className="hidden sm:block">
+            <div
+              className="grid grid-cols-7 gap-1.5"
+              style={{ maskImage: "linear-gradient(90deg,#000,#000 30%,transparent)", WebkitMaskImage: "linear-gradient(90deg,#000,#000 30%,transparent)" }}
+            >
+              {Array.from({ length: 49 }).map((_, i) => (
+                <span key={i} className={`aspect-square rounded-[3px] ${FIELD_ON.has(i) ? "bg-signal-500/45" : "bg-black/[0.06]"}`} />
+              ))}
+            </div>
+            <div className="mt-2 text-right text-[11px] font-medium text-stone-400">+76 ready · 100 cap</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const SBX_FACTS = [
+  { k: "Isolated", v: "Each gets its own HOME, filesystem, and TMPDIR — nothing leaks between them." },
+  { k: "Localized", v: "Pin a toolchain, env, and volumes per sandbox — a hundred clean worlds on one box." },
+  { k: "Disposable", v: "Spin up, run, and tear down by process group — no residue left behind." },
+];
+
+function Sandboxes() {
+  return (
+    <Section>
+      <Reveal className="mx-auto max-w-2xl text-center">
+        <div className="text-[12px] font-medium uppercase tracking-[0.16em] text-signal-600">One machine, many worlds</div>
+        <h2 className="ed mt-3 text-[32px] leading-[1.05] text-stone-900 sm:text-[44px]">Carve one Mac into a hundred sandboxes</h2>
+        <p className="mx-auto mt-4 max-w-xl text-[15.5px] leading-relaxed text-stone-500">A single Mac mini is two things at once: a machine you drive directly, and a host you partition into dozens of isolated, localized environments — each its own sandbox, all running in parallel.</p>
+      </Reveal>
+      <Reveal className={`mx-auto mt-12 w-full max-w-[760px] overflow-hidden rounded-3xl ${CARD}`} delay={0.05}>
+        <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }}>
+          <SandboxGridViz />
+        </motion.div>
+      </Reveal>
+      <div className="mx-auto mt-7 grid max-w-[760px] grid-cols-1 gap-4 sm:grid-cols-3">
+        {SBX_FACTS.map((f, i) => (
+          <Reveal key={f.k} delay={0.05 * i} className="rounded-2xl bg-[#f7f6f3] p-5">
+            <div className="text-[12.5px] font-semibold tracking-tight text-stone-900">{f.k}</div>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-stone-500">{f.v}</p>
+          </Reveal>
+        ))}
+      </div>
+      <Reveal className="mx-auto mt-8 max-w-[760px] overflow-hidden rounded-2xl bg-[#0d1117] p-5" delay={0.1}>
+        <pre className="overflow-x-auto font-mono text-[12px] leading-[1.9] text-stone-200">
+          <div><span className="text-[#c792ea]">with</span> herds.<span className="text-[#82aaff]">mac</span>(<span className="text-[#e5c07b]">&quot;mac-mini&quot;</span>).<span className="text-[#82aaff]">sandbox</span>(image=<span className="text-[#e5c07b]">&quot;xcode:26&quot;</span>) <span className="text-[#c792ea]">as</span> sbx:</div>
+          <div className="pl-6"><span className="text-stone-100">sbx</span>.<span className="text-[#82aaff]">exec</span>(<span className="text-[#e5c07b]">&quot;xcodebuild -scheme App archive&quot;</span>)</div>
+          <div className="pl-6"><span className="text-stone-100">url</span> = sbx.<span className="text-[#82aaff]">expose</span>(<span className="text-[#6cb6ff]">3000</span>) <span className="text-stone-600"># its own public URL</span></div>
+          <div className="pt-1 text-stone-600"># torn down clean on exit — fan this across the whole grid with .map()</div>
+        </pre>
+      </Reveal>
+    </Section>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Get started — install → sign in (CLI + web) → host/connect → Python.
+ * The full path: from nothing to a fleet you drive from the browser.
  * ------------------------------------------------------------------ */
 
 function StepCard({ step, label, chrome, children }: { step: string; label: string; chrome: string; children: React.ReactNode }) {
@@ -1522,35 +1922,54 @@ function Cmt({ c }: { c: string }) {
 function GetStarted() {
   return (
     <Section>
-      <Reveal>
-        <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-signal-600">Get started</div>
-        <h2 className="ed mt-2 text-[24px] leading-tight text-stone-900 sm:text-[30px]">Live in three commands</h2>
+      <Reveal className="mx-auto max-w-2xl text-center">
+        <div className="text-[12px] font-medium uppercase tracking-[0.16em] text-signal-600">Set it up</div>
+        <h2 className="ed mt-3 text-[32px] leading-[1.05] text-stone-900 sm:text-[44px]">From nothing to a hundred Macs</h2>
+        <p className="mx-auto mt-4 max-w-xl text-[15.5px] leading-relaxed text-stone-500">Install once, sign in, and host. Every Mac you own joins with a single line — then drive the whole fleet from Python or watch it live in the browser.</p>
       </Reveal>
-      <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} className="mt-7 grid grid-cols-1 items-stretch gap-5 lg:grid-cols-3">
+      <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} className="mt-12 grid grid-cols-1 items-stretch gap-5 lg:grid-cols-3">
         <StepCard step="01" label="Install & sign in" chrome="your Mac — zsh">
           <Cmd c="curl -fsSL herds.run/install | sh" />
           <Out>installed herds 0.1</Out>
           <div className="h-2" />
           <Cmd c="herds auth" />
+          <Out>→ approve in your browser…</Out>
           <Out>signed in as you@team.com</Out>
         </StepCard>
-        <StepCard step="02" label="Add Macs to the fleet" chrome="zsh">
-          <Cmt c="# on your main Mac" />
+        <StepCard step="02" label="Host, then add any Mac" chrome="zsh">
+          <Cmt c="# on your main Mac — go live" />
           <Cmd c="herds host" />
           <Out>M3 Max · live at <span className="text-stone-300">you.herds.run</span></Out>
           <div className="h-3" />
-          <Cmt c="# on a second Mac you own" />
+          <Cmt c="# on any other Mac that has herds" />
           <Cmd c="herds connect you.herds.run hx_…" />
           <Out>Mac mini joined the fleet</Out>
         </StepCard>
-        <StepCard step="03" label="Build & drive it from Python" chrome="agent.py">
+        <StepCard step="03" label="Drive it — Python or web" chrome="agent.py">
           <div><span className="text-[#c792ea]">import</span> <span className="text-stone-100">herds</span></div>
           <div className="h-3" />
-          <div><span className="text-stone-100">mac</span> = herds.<span className="text-[#82aaff]">mac</span>(<span className="text-[#e5c07b]">&quot;m3max&quot;</span>)</div>
+          <div><span className="text-stone-100">mac</span> = herds.<span className="text-[#82aaff]">mac</span>(tag=<span className="text-[#e5c07b]">&quot;xcode&quot;</span>) <span className="text-stone-600"># idlest match</span></div>
           <div><span className="text-stone-100">mac</span>.<span className="text-[#82aaff]">run</span>(<span className="text-[#e5c07b]">&quot;xcodebuild -scheme App&quot;</span>)</div>
           <div><span className="text-stone-100">url</span> = <span className="text-stone-100">mac</span>.<span className="text-[#82aaff]">expose</span>(<span className="text-[#6cb6ff]">3000</span>) <span className="text-stone-600"># → public URL</span></div>
         </StepCard>
       </motion.div>
+
+      {/* The web half of the story — same account, signs you straight into the dashboard. */}
+      <Reveal className="mt-6 overflow-hidden rounded-2xl bg-[#f3f2ee]" delay={0.05}>
+        <div className="grid grid-cols-1 items-center gap-6 p-6 sm:grid-cols-[1fr_auto] sm:p-7">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="grid h-5 w-5 place-items-center rounded-full bg-signal-500/15 text-signal-600"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" /></svg></span>
+              <h3 className="text-[15px] font-semibold tracking-tight text-stone-900">Then open it in the browser</h3>
+            </div>
+            <p className="mt-2 max-w-[52ch] text-[13.5px] leading-relaxed text-stone-500">Hosting prints a signed-in dashboard link. Sign in with the same account from anywhere — every Mac, every sandbox, and every run, live on the web. No inbound ports opened.</p>
+          </div>
+          <Link href="/login" className="inline-flex shrink-0 items-center gap-2 self-start rounded-full bg-stone-900 px-5 py-2.5 text-[13px] font-medium text-white transition hover:bg-stone-800 sm:self-auto">
+            Open the dashboard
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 11 11 5M6 5h5v5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </Link>
+        </div>
+      </Reveal>
     </Section>
   );
 }
@@ -1611,6 +2030,8 @@ export function Landing() {
         <Stories />
 
         <GetStarted />
+
+        <Sandboxes />
 
         <FinalCTA />
       </main>

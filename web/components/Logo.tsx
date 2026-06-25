@@ -1,26 +1,48 @@
-/** Herds mark — three connected nodes (a herd of machines) on the signal gradient.
- *  A custom SVG, sized proportionally. Use everywhere instead of an emoji. */
+"use client";
+
+import { useId } from "react";
+
+/* A single gull-bird, centred at the origin, pointing up. The whole mark is a
+   flock of these in formation — a herd, moving as one. */
+const BIRD = "M0 -2 C4 -6 8 -5 12 -2 C8 -2.5 4 -1 0 1 C-4 -1 -8 -2.5 -12 -2 C-8 -5 -4 -6 0 -2 Z";
+
+/**
+ * Herds mark — a flock of birds rising in formation, on the signal-green
+ * gradient. Freestanding (no container): the lead bird carries a soft sheen and
+ * the trailing birds recede for depth. Below ~30px it collapses to a clean trio
+ * so it stays legible in dense nav and favicons.
+ */
 export function Logo({ size = 28, className = "" }: { size?: number; className?: string }) {
-  const g = Math.round(size * 0.66);
+  const uid = useId();
+  const g = `${uid}g`;
+  const s = `${uid}s`;
+  const full = size >= 30;
+  const fill = `url(#${g})`;
+  // Composition fills and centres the 64×64 box so the mark reads large at any size.
+  const lead = full ? "translate(32 27) scale(1.6)" : "translate(32 28) scale(1.72)";
   return (
-    <span
-      className={`relative inline-grid shrink-0 place-items-center overflow-hidden bg-gradient-to-br from-signal-400 to-signal-600 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.22)] ${className}`}
-      style={{ width: size, height: size, borderRadius: Math.max(4, Math.round(size * 0.28)) }}
-      aria-hidden
-    >
-      <svg viewBox="0 0 24 24" width={g} height={g} fill="none">
-        <path
-          d="M12 6.3 L6.4 16.3 M12 6.3 L17.6 16.3 M6.4 16.3 L17.6 16.3"
-          stroke="white"
-          strokeWidth="1.7"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          opacity="0.72"
-        />
-        <circle cx="12" cy="5.9" r="2.55" fill="white" />
-        <circle cx="6" cy="16.7" r="2.55" fill="white" />
-        <circle cx="18" cy="16.7" r="2.55" fill="white" />
-      </svg>
-    </span>
+    <svg width={size} height={size} viewBox="0 0 64 64" className={`shrink-0 ${className}`} role="img" aria-label="Herds">
+      <defs>
+        <linearGradient id={g} x1="0" y1="0" x2="0.32" y2="1">
+          <stop offset="0" stopColor="#46e3ad" />
+          <stop offset="0.5" stopColor="#1bbd86" />
+          <stop offset="1" stopColor="#0b9266" />
+        </linearGradient>
+        <linearGradient id={s} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#fff" stopOpacity="0.32" />
+          <stop offset="0.62" stopColor="#fff" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {full && (
+        <>
+          <path d={BIRD} transform="translate(8 45) scale(0.66)" fill={fill} opacity="0.4" />
+          <path d={BIRD} transform="translate(56 45) scale(0.66)" fill={fill} opacity="0.4" />
+        </>
+      )}
+      <path d={BIRD} transform={full ? "translate(16 37) scale(1.05)" : "translate(15 40) scale(1.06)"} fill={fill} opacity={full ? 0.7 : 0.66} />
+      <path d={BIRD} transform={full ? "translate(48 37) scale(1.05)" : "translate(49 40) scale(1.06)"} fill={fill} opacity={full ? 0.7 : 0.66} />
+      <path d={BIRD} transform={lead} fill={fill} />
+      <path d={BIRD} transform={lead} fill={`url(#${s})`} />
+    </svg>
   );
 }

@@ -316,6 +316,89 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
     accounts = make_accounts(Path(os.environ.get("HERDS_RELAY_STATE", "/tmp/herds_relay.json")))
     hosts: dict[str, _HostConn] = {}
 
+    # --- Device-authorization flow (browser sign-in for `herds auth`) --------- #
+    # The CLI asks for a code, opens the browser to /activate, the user approves
+    # there, and the CLI polls until the token is bound. In-memory is fine: the
+    # relay runs a single uvicorn worker and these records live ~10 minutes.
+    devices: dict[str, dict] = {}      # device_code -> {user_code, status, token, account, url, created}
+    by_user_code: dict[str, str] = {}  # user_code   -> device_code
+    DEVICE_TTL = 600                   # seconds a pending request stays valid
+
+    def _prune_devices() -> None:
+        now = int(_time.time())
+        for dc in [dc for dc, d in devices.items() if now - d["created"] > DEVICE_TTL]:
+            d = devices.pop(dc, None)
+            if d:
+                by_user_code.pop(d["user_code"], None)
+
+    def _gen_user_code() -> str:
+        # Unambiguous alphabet (no 0/O/1/I) so it's easy to read off a screen.
+        alpha = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        raw = "".join(secrets.choice(alpha) for _ in range(8))
+        return raw[:4] + "-" + raw[4:]
+
+    def _site() -> str:
+        return os.environ.get("HERDS_SITE", f"https://{domain}").rstrip("/")
+
+    @app.post("/relay/device/start")
+    async def device_start(request: Request):
+        _prune_devices()
+        body = json.loads(await request.body() or b"{}") or {}
+        device_code = secrets.token_urlsafe(32)
+        user_code = _gen_user_code()
+        while user_code in by_user_code:
+            user_code = _gen_user_code()
+        devices[device_code] = {
+            "user_code": user_code, "status": "pending", "token": None,
+            "account": None, "url": None, "want": body.get("name", "") or "",
+            "created": int(_time.time()),
+        }
+        by_user_code[user_code] = device_code
+        return JSONResponse({
+            "device_code": device_code, "user_code": user_code,
+            "verification_uri": f"{_site()}/activate",
+            "verification_uri_complete": f"{_site()}/activate?code={user_code}",
+            "interval": 2, "expires_in": DEVICE_TTL,
+        })
+
+    @app.get("/relay/device/poll")
+    def device_poll(device_code: str = ""):
+        _prune_devices()
+        d = devices.get(device_code)
+        if not d:
+            return {"status": "expired"}
+        if d["status"] == "approved":  # one-shot: hand off the token, then forget it
+            devices.pop(device_code, None)
+            by_user_code.pop(d["user_code"], None)
+            return {"status": "approved", "token": d["token"], "account": d["account"], "url": d["url"]}
+        return {"status": d["status"]}
+
+    @app.get("/relay/device/lookup")
+    def device_lookup(code: str = ""):
+        # Lets /activate confirm a code is real before asking the user to sign in.
+        _prune_devices()
+        dc = by_user_code.get((code or "").strip().upper())
+        d = devices.get(dc) if dc else None
+        if not d:
+            return JSONResponse({"error": "Unknown or expired code."}, status_code=404)
+        return {"user_code": d["user_code"], "status": d["status"]}
+
+    @app.post("/relay/device/approve")
+    async def device_approve(request: Request):
+        # Called by /activate once the user holds a valid account token: binds the
+        # code to that account so the waiting CLI receives it on its next poll.
+        _prune_devices()
+        body = json.loads(await request.body() or b"{}") or {}
+        dc = by_user_code.get((body.get("user_code") or "").strip().upper())
+        d = devices.get(dc) if dc else None
+        if not d:
+            return JSONResponse({"error": "Unknown or expired code."}, status_code=404)
+        account = accounts.whoami(body.get("token") or "")
+        if not account:
+            return JSONResponse({"error": "Invalid account token."}, status_code=401)
+        d.update(status="approved", token=body["token"], account=account, url=f"https://{account}.{domain}")
+        return {"account": account}
+
     @app.post("/relay/provision")
     async def provision(request: Request):
         body = await request.body()
@@ -379,12 +462,28 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
     @app.websocket("/relay/connect")
     async def connect(ws: WebSocket):
         token = ws.query_params.get("token") or ""
-        account = accounts.whoami(token)
+        # Off-load the (possibly Postgres) lookup so a reconnect storm can't block
+        # the event loop and starve keepalive pings for every other host.
+        account = await asyncio.to_thread(accounts.whoami, token)
         if not account:
             await ws.close(code=4401)
             return
         await ws.accept()
         conn = _HostConn(account, ws)
+        # A reconnect replaces the old link: tear down its tunnelled streams and
+        # fail its pending requests so half-attached agents/SDKs don't wedge.
+        old = hosts.get(account)
+        if old is not None and old is not conn:
+            for aws in list(old.ws_streams.values()):
+                try:
+                    await aws.close()
+                except Exception:  # noqa: BLE001
+                    pass
+            old.ws_streams.clear()
+            for fut in list(old.pending.values()):
+                if not fut.done():
+                    fut.cancel()
+            old.pending.clear()
         hosts[account] = conn
         try:
             async for raw in ws.iter_text():
@@ -515,6 +614,25 @@ def whoami(relay_ws_url: str, token: str) -> Optional[dict]:
 
     r = httpx.get(f"{http_base(relay_ws_url)}/relay/whoami", params={"token": token}, timeout=15)
     return r.json() if r.status_code == 200 else None
+
+
+def device_start(relay_ws_url: str, want: str = "") -> dict:
+    """Begin a browser sign-in: returns a device_code (CLI polls it) and a
+    user_code + verification URL (the human approves it in the browser)."""
+    import httpx
+
+    r = httpx.post(f"{http_base(relay_ws_url)}/relay/device/start", json={"name": want}, timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+
+def device_poll(relay_ws_url: str, device_code: str) -> dict:
+    """Check a pending sign-in. Returns {status: pending|approved|expired, …}."""
+    import httpx
+
+    r = httpx.get(f"{http_base(relay_ws_url)}/relay/device/poll", params={"device_code": device_code}, timeout=15)
+    r.raise_for_status()
+    return r.json()
 
 
 # --------------------------------------------------------------------------- #

@@ -195,6 +195,43 @@ export async function revokeToken(url: string, token: string, prefix: string): P
   if (!res.ok) throw new Error(await readError(res));
 }
 
+/**
+ * Browser sign-in (device flow) — used by /activate.
+ * Confirm a CLI's code is real before asking the user to sign in.
+ * GET `/relay/device/lookup?code=…`.
+ */
+export async function lookupDevice(code: string): Promise<{ user_code: string; status: string }> {
+  let res: Response;
+  try {
+    res = await fetch(`${RELAY_API}/relay/device/lookup?code=${encodeURIComponent(code.trim())}`);
+  } catch {
+    throw new Error("Couldn't reach the relay. Check your connection and try again.");
+  }
+  if (res.status === 404) throw new Error("That code is unknown or has expired.");
+  if (!res.ok) throw new Error(await readError(res));
+  return (await res.json()) as { user_code: string; status: string };
+}
+
+/**
+ * Approve a CLI sign-in: binds the code to the signed-in account's token so the
+ * waiting `herds auth` receives it. POST `/relay/device/approve`.
+ */
+export async function approveDevice(userCode: string, token: string): Promise<{ account: string }> {
+  let res: Response;
+  try {
+    res = await fetch(`${RELAY_API}/relay/device/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_code: userCode.trim(), token }),
+    });
+  } catch {
+    throw new Error("Couldn't reach the relay. Check your connection and try again.");
+  }
+  if (res.status === 404) throw new Error("That code is unknown or has expired.");
+  if (!res.ok) throw new Error(await readError(res));
+  return (await res.json()) as { account: string };
+}
+
 /** Live account status (is the Mac connected?). GET `/relay/status?token=…`. */
 export async function getStatus(token: string): Promise<AccountStatus | null> {
   try {

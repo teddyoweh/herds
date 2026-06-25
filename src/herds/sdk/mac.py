@@ -197,17 +197,23 @@ class Mac:
         Needs Screen Recording permission for whatever runs ``herds host``
         (System Settings → Privacy & Security → Screen Recording)."""
         import base64
+        # Native screen/GUI access must run in your real login session — no Seatbelt
+        # sandbox, real $HOME — or macOS TCC won't honour the Screen Recording grant.
         r = self.run(
             ["/bin/zsh", "-lc",
              'f=$(mktemp /tmp/herds_shot_XXXXXX).png && screencapture -x "$f" && base64 < "$f" && rm -f "$f"'],
-            timeout=timeout,
+            timeout=timeout, inherit_home=True,
         )
+        screen_hint = ("grant Screen Recording to whatever runs `herds host` "
+                       "(System Settings → Privacy & Security → Screen Recording), then restart it")
         if not r.ok:
             from .client import HerdsError
-            raise HerdsError(
-                f"screenshot failed ({r.stderr.strip() or 'no output'}) — grant Screen Recording "
-                "to whatever runs `herds host` (System Settings → Privacy & Security → Screen Recording).")
+            raise HerdsError(f"screenshot failed ({r.stderr.strip() or 'no output'}) — {screen_hint}.")
         data = base64.b64decode(r.stdout)
+        # A TCC denial frequently still exits 0 but yields a tiny/empty capture.
+        if len(data) < 1024:
+            from .client import HerdsError
+            raise HerdsError(f"screenshot came back empty — {screen_hint}.")
         if path:
             with open(path, "wb") as fh:
                 fh.write(data)
@@ -241,7 +247,7 @@ class Mac:
         )
         if not r.ok:
             from .client import HerdsError
-            raise HerdsError(f"write {remote_path}: {r.stderr.strip()}")
+            raise HerdsError(f"write {remote_path}: {_clean_err(r.stderr)}")
 
     def ls(self, path: str = ".", *, timeout: int = 30) -> list:
         """List a directory on the Mac → ``[{name, dir, size, mtime_ms}]``."""
@@ -249,21 +255,21 @@ class Mac:
         r = self.run(["python3", "-c", _LS_SRC, path], timeout=timeout)
         if not r.ok:
             from .client import HerdsError
-            raise HerdsError(f"ls {path}: {r.stderr.strip()}")
+            raise HerdsError(f"ls {path}: {_clean_err(r.stderr)}")
         return json.loads(r.stdout or "[]")
 
     def clipboard(self, *, timeout: int = 15) -> str:
         """Read the Mac's clipboard (text)."""
-        return self.run(["pbpaste"], timeout=timeout).stdout
+        return self.run(["pbpaste"], timeout=timeout, inherit_home=True).stdout
 
     def copy(self, text: str, *, timeout: int = 15) -> None:
         """Set the Mac's clipboard."""
-        self.run(["osascript", "-e", f"set the clipboard to {_as(text)}"], timeout=timeout)
+        self.run(["osascript", "-e", f"set the clipboard to {_as(text)}"], timeout=timeout, inherit_home=True)
 
     def notify(self, message: str, title: str = "Herds", *, timeout: int = 15) -> None:
         """Post a macOS notification banner."""
         self.run(["osascript", "-e",
-                  f"display notification {_as(message)} with title {_as(title)}"], timeout=timeout)
+                  f"display notification {_as(message)} with title {_as(title)}"], timeout=timeout, inherit_home=True)
 
     @property
     def ui(self) -> "_UI":
@@ -283,7 +289,7 @@ class Mac:
         args = []
         if cdp_port:
             args += [f"--remote-debugging-port={cdp_port}", "--remote-allow-origins=*"]
-        self.run(["/bin/zsh", "-lc", f'open -na "Google Chrome" --args {" ".join(args)}'], timeout=30)
+        self.run(["/bin/zsh", "-lc", f'open -na "Google Chrome" --args {" ".join(args)}'], timeout=30, inherit_home=True)
         c = _Chrome(self, cdp_port)
         if url:
             import time
@@ -291,13 +297,114 @@ class Mac:
             c.open(url)
         return c
 
+    # -- agents: run a real agent on this Mac, keyless --------------------- #
+
+    def agent(
+        self,
+        goal: str,
+        *,
+        harness: str = "claude-code",
+        proxy: Optional[str] = None,
+        token: Optional[str] = None,
+        secret: Optional[str] = None,
+        command: Optional[str] = None,
+        workdir: Optional[str] = None,
+        env: Optional[dict[str, str]] = None,
+        volumes: VolumesLike = None,
+        timeout: Optional[int] = None,
+        stream: bool = True,
+        inherit_home: bool = True,
+    ) -> Result:
+        """Run an agent — Claude Code, Codex, or a custom CLI — on this Mac, keyless.
+
+        It routes every model call through your `proxyagent <https://pypi.org/project/proxyagent/>`_
+        proxy, so the model API key never touches this Mac — it only ever holds a
+        scoped, revocable token. Pass that token as a Herds **Secret** (best) so
+        it's injected at run time and never written to disk; output streams live::
+
+            mac.agent("fix the failing tests", proxy="https://proxy.you.com", secret="proxyagent")
+            mac.agent("summarise today's PRs", harness="codex", proxy=PROXY, token="pa_…")
+            mac.agent("ship it", harness="custom", command="my-agent {goal}", proxy=PROXY)
+
+        The Mac needs ``proxyagent`` and the chosen agent CLI installed
+        (``pip install proxyagent`` · ``npm i -g @anthropic-ai/claude-code``).
+        ``inherit_home=True`` (default) runs as you, so the agent uses your real
+        tools, logins and PATH. Returns the :class:`Result` (exit code + output).
+        """
+        proxy, token = _agent_resolve(proxy, token, secret)
+        return self.run(
+            _agent_argv(goal, harness, proxy, command),
+            env={**_agent_env(proxy, token), **(env or {})},
+            secrets=[secret] if secret else None,
+            workdir=workdir, volumes=volumes, timeout=timeout,
+            stream=stream, inherit_home=inherit_home,
+        )
+
     def __repr__(self) -> str:
         return f"Mac({self.machine_id!r})"
+
+
+def _agent_argv(goal: str, harness: str, proxy: Optional[str], command: Optional[str]) -> list[str]:
+    """Build the ``proxyagent run`` argv that launches a real agent CLI, keyless."""
+    argv = ["proxyagent", "run", harness, "--goal", goal]
+    if proxy:
+        argv += ["--proxy", proxy]
+    if command:
+        argv += ["--command", command]
+    return argv
+
+
+def _agent_resolve(proxy: Optional[str], token: Optional[str], secret: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """Resolve the proxy URL and token to forward to the Mac. Both fall back to
+    the caller's ``PROXYAGENT_PROXY`` / ``PROXYAGENT_TOKEN`` env (proxyagent's CLI
+    doesn't read them itself). A Herds ``secret`` means send no plaintext token —
+    it's injected from the secret store instead."""
+    import os as _os
+    proxy = proxy or _os.environ.get("PROXYAGENT_PROXY")
+    token = token if (token or secret) else _os.environ.get("PROXYAGENT_TOKEN")
+    return proxy, token
+
+
+def _agent_env(proxy: Optional[str], token: Optional[str]) -> dict[str, str]:
+    import os as _os
+    env: dict[str, str] = {}
+    proxy = proxy or _os.environ.get("PROXYAGENT_PROXY")
+    if proxy:
+        env["PROXYAGENT_PROXY"] = proxy
+    if token:  # best practice is a Herds Secret instead, so it's never on the wire as plain env
+        env["PROXYAGENT_TOKEN"] = token
+    return env
 
 
 def _as(s: str) -> str:
     """Render a Python string as an AppleScript string literal."""
     return '"' + str(s).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _clean_err(stderr: str) -> str:
+    """The helpers shell out to ``python3 -c`` snippets; on failure stderr is a
+    full traceback. Surface just the final, meaningful line (the actual error)."""
+    lines = [ln for ln in (stderr or "").strip().splitlines() if ln.strip()]
+    if not lines:
+        return "failed"
+    last = lines[-1].strip()
+    # Drop the "OSError: " / "PermissionError: " prefix for a cleaner message.
+    return last.split(": ", 1)[1] if ": " in last and "Error" in last.split(": ", 1)[0] else last
+
+
+def _tcc_hint(stderr: str, default_perm: str) -> str:
+    """Turn an osascript failure into an actionable permission hint. macOS reports
+    a TCC denial with distinct AppleEvent error codes, and the permission to grant
+    differs (Accessibility for keystrokes vs Automation for app control)."""
+    err = (stderr or "").strip()
+    low = err.lower()
+    perm = default_perm
+    if "-1743" in err or "1002" in err or "not authorized to send apple events" in low or "not allowed assistive" in low:
+        perm = "Automation" if "apple events" in low else "Accessibility"
+    pane = {"Accessibility": "Accessibility", "Automation": "Automation",
+            "Screen Recording": "Screen Recording"}.get(perm, perm)
+    return (f"{err or 'permission denied'} — grant {pane} to whatever runs `herds host` "
+            f"(System Settings → Privacy & Security → {pane}), then restart it")
 
 
 _LS_SRC = (
@@ -325,10 +432,10 @@ class _UI:
         self._m = mac
 
     def _osa(self, script: str, *, timeout: int = 30) -> str:
-        r = self._m.run(["osascript", "-e", script], timeout=timeout)
+        r = self._m.run(["osascript", "-e", script], timeout=timeout, inherit_home=True)
         if not r.ok:
             from .client import HerdsError
-            raise HerdsError(f"ui action failed: {r.stderr.strip() or 'grant Accessibility permission?'}")
+            raise HerdsError(f"ui action failed: {_tcc_hint(r.stderr, 'Accessibility')}")
         return r.stdout.strip()
 
     def type(self, text: str) -> None:
@@ -361,10 +468,10 @@ class _Chrome:
         self.cdp_port = cdp_port  # set if launched with the DevTools Protocol
 
     def _osa(self, body: str) -> str:
-        r = self._m.run(["osascript", "-e", f'tell application "Google Chrome" to {body}'], timeout=30)
+        r = self._m.run(["osascript", "-e", f'tell application "Google Chrome" to {body}'], timeout=30, inherit_home=True)
         if not r.ok:
             from .client import HerdsError
-            raise HerdsError(f"chrome: {r.stderr.strip() or 'grant Automation permission for Chrome?'}")
+            raise HerdsError(f"chrome: {_tcc_hint(r.stderr, 'Automation')}")
         return r.stdout.strip()
 
     def open(self, url: str) -> None:
@@ -517,6 +624,65 @@ class Fleet:
         if errors:
             raise errors[0]
         return results
+
+    def agent(
+        self,
+        goal: str,
+        *,
+        harness: str = "claude-code",
+        proxy: Optional[str] = None,
+        token: Optional[str] = None,
+        secret: Optional[str] = None,
+        command: Optional[str] = None,
+        on_output=None,
+        **kwargs,
+    ) -> dict[str, "Result"]:
+        """Run the **same** agent task on **every** online Mac, in parallel — keyless.
+
+            herds.fleet().agent("upgrade deps and run tests", proxy=PROXY, secret="proxyagent")
+
+        Returns ``{machine_name: Result}``. Pass ``on_output=fn(name, stream, text)``
+        to receive live output tagged by machine (otherwise each run is captured).
+        See :meth:`Mac.agent` for the keyless proxyagent setup.
+        """
+        import threading
+
+        proxy, token = _agent_resolve(proxy, token, secret)
+        macs = self.macs()
+        if not macs:
+            from .client import HerdsError
+            raise HerdsError("No Macs are connected — run `herds host` on at least one Mac.")
+
+        out: dict[str, "Result"] = {}
+        errs: dict[str, Exception] = {}
+        lock = threading.Lock()
+
+        def _one(mc: "Mac") -> None:
+            nm = mc.name
+            try:
+                if on_output is not None:
+                    last = None
+                    for s, t in mc.stream(_agent_argv(goal, harness, proxy, command),
+                                          env={**_agent_env(proxy, token), **kwargs.get("env", {})}):
+                        on_output(nm, s, t)
+                    res = Result(exit_code=0, duration_ms=0, stdout="", stderr="")
+                else:
+                    res = mc.agent(goal, harness=harness, proxy=proxy, token=token,
+                                   secret=secret, command=command, stream=False, **kwargs)
+                with lock:
+                    out[nm] = res
+            except Exception as exc:  # noqa: BLE001 — collect per-Mac, don't kill the fleet
+                with lock:
+                    errs[nm] = exc
+
+        threads = [threading.Thread(target=_one, args=(mc,), daemon=True) for mc in macs]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        for nm, exc in errs.items():
+            out[nm] = exc  # surface the failure per machine rather than aborting the rest
+        return out
 
 
 def fleet(*, url: Optional[str] = None, token: Optional[str] = None,

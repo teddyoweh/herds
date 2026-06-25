@@ -28,6 +28,20 @@ from . import machine
 from .executor import Executor
 
 
+def _is_auth_reject(exc: Exception) -> bool:
+    """True when the host/relay rejected our token. The control plane closes with
+    WS code 4401/4400 (post-accept) or rejects the handshake with HTTP 401/403;
+    the relay uses 4401 for an unknown account. Either way, retrying is pointless."""
+    code = getattr(exc, "code", None)  # websockets ConnectionClosed* close code
+    if code in (4401, 4400):
+        return True
+    status = getattr(exc, "status_code", None)  # older websockets InvalidStatusCode
+    resp = getattr(exc, "response", None)  # newer websockets InvalidStatus
+    if resp is not None:
+        status = getattr(resp, "status_code", status)
+    return status in (401, 403)
+
+
 class Daemon:
     def __init__(self, control_plane: str, machine_id: str, device_token: Optional[str]):
         self.control_plane = control_plane
@@ -42,7 +56,13 @@ class Daemon:
     # -- connection --------------------------------------------------------- #
 
     def _ws_url(self) -> str:
-        base = self.control_plane.replace("http://", "ws://").replace("https://", "wss://")
+        # Accept a bare host ("you.herds.run") as well as a full URL: without a
+        # scheme the ws/wss replace below is a no-op and websockets.connect() can't
+        # dial it. Default schemeless hosts to TLS (wss), matching the relay.
+        base = self.control_plane.strip()
+        if "://" not in base:
+            base = "https://" + base
+        base = base.replace("http://", "ws://").replace("https://", "wss://").rstrip("/")
         url = f"{base}/agent/ws?machine_id={self.machine_id}"
         if self.device_token:
             url += f"&token={self.device_token}"
@@ -57,6 +77,12 @@ class Daemon:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 — never let the daemon die; always reconnect
+                if _is_auth_reject(exc):
+                    # A bad/expired token loops forever otherwise. Stop and say so.
+                    print("herds daemon: the host rejected this token. Re-run "
+                          "`herds connect <link> <token>` with a fresh token from `herds host`.",
+                          file=sys.stderr)
+                    return
                 print(f"herds daemon: connection lost ({exc}); retrying in {backoff:.0f}s",
                       file=sys.stderr)
             await asyncio.sleep(backoff)
@@ -84,6 +110,7 @@ class Daemon:
             finally:
                 heartbeat.cancel()
                 metricbeat.cancel()
+                self._ws = None  # don't let stale sends race the next session
 
     async def _volume_heartbeat(self) -> None:
         while True:

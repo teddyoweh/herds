@@ -65,6 +65,7 @@ class AgentConn:
         self.owner = owner
         self.ws = ws
         self.info: dict = {}
+        self.inflight: set[str] = set()   # request_ids dispatched here, awaiting EXIT
 
     async def send(self, frame: Frame) -> None:
         await self.ws.send_text(frame.dump())
@@ -298,6 +299,7 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
                     hub.resolve_rpc(frame.request_id, frame.data)
                 elif frame.type == FrameType.EXIT:
                     hub.started.discard(frame.request_id)
+                    conn.inflight.discard(frame.request_id)
                     hub.publish(frame)
                     store.update_job(
                         frame.request_id,
@@ -316,6 +318,15 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
             pass
         finally:
             hub.remove_agent(machine_id)
+            # Unblock any SDK call waiting on a job this Mac was running. Without a
+            # synthetic EXIT the log stream — and `mac.run()` — would hang forever.
+            for rid in list(conn.inflight):
+                if rid not in hub.finished:
+                    hub.started.discard(rid)
+                    hub.publish(Frame(type=FrameType.EXIT, request_id=rid,
+                                      data={"exit_code": -1, "error": "machine disconnected"}))
+                    store.update_job(rid, JobState.FAILED, -1, None)
+            conn.inflight.clear()
 
     # -- SDK: machines ------------------------------------------------------ #
 
@@ -372,6 +383,8 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
     async def _dispatch(machine_id: str, req: ExecRequest, owner: str) -> str:
         """Create a job, resolve secrets, and push the exec frame. Returns request_id."""
         agent = hub.agent(machine_id)
+        if agent is None:  # raced: the Mac went offline between resolve and dispatch
+            raise HTTPException(409, f"machine {machine_id} went offline")
         request_id = "req_" + uuid.uuid4().hex[:12]
         cmd_str = req.command if isinstance(req.command, str) else " ".join(req.command)
         store.create_job(request_id, machine_id, cmd_str, config.now_ms(), sandbox_id=req.sandbox_id)
@@ -386,12 +399,18 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
         if req.sandbox_id:
             store.touch_sandbox(req.sandbox_id, machine_id, req.image, config.now_ms())
 
-        await agent.send(exec_frame(
-            request_id, req.command,
-            image=req.image, volumes=req.volumes, workdir=req.workdir, env=merged_env,
-            timeout=req.timeout, network=req.network, sandbox_id=req.sandbox_id,
-            inherit_home=req.inherit_home, keep_alive=req.keep_alive,
-        ))
+        agent.inflight.add(request_id)
+        try:
+            await agent.send(exec_frame(
+                request_id, req.command,
+                image=req.image, volumes=req.volumes, workdir=req.workdir, env=merged_env,
+                timeout=req.timeout, network=req.network, sandbox_id=req.sandbox_id,
+                inherit_home=req.inherit_home, keep_alive=req.keep_alive,
+            ))
+        except Exception:  # the socket died mid-send — don't strand the job
+            agent.inflight.discard(request_id)
+            store.update_job(request_id, JobState.FAILED, -1, None)
+            raise HTTPException(409, f"machine {machine_id} disconnected during dispatch")
         store.update_job(request_id, JobState.DISPATCHED)
         return request_id
 
@@ -972,17 +991,21 @@ class TagBody(BaseModel):
 
 
 def _resolve_default_machine(store: Store, hub: Hub, owner: str) -> str:
-    """Pick the machine for ``dc.mac()`` when no id is given: prefer an online one."""
-    online = list(hub.agents.keys())
+    """Pick the machine for ``herds.mac()`` when no id is given: the idlest online
+    Mac the caller owns. Picking by load (not store order) stops it from always
+    landing on the host — which is online too once `herds host` is running."""
+    online = [mid for mid, conn in hub.agents.items()
+              if owner == DEFAULT_OWNER or conn.owner == owner]
+    if not online:
+        raise HTTPException(409, "no machines online; run `herds connect` on a Mac")
     if len(online) == 1:
         return online[0]
-    machines = store.list_machines(None if owner == DEFAULT_OWNER else owner)
-    for m in machines:
-        if m["machine_id"] in hub.agents:
-            return m["machine_id"]
-    if online:
-        return online[0]
-    raise HTTPException(409, "no machines online; run `herds connect` on a Mac")
+
+    def load(mid: str) -> float:
+        samples = hub.metrics.get(mid)
+        return samples[-1][1] if samples else 0.0  # no metrics yet (just joined) → idlest
+
+    return min(online, key=load)
 
 
 def serve(host: str = "127.0.0.1", port: int = 8787, db_path: Optional[str] = None) -> None:

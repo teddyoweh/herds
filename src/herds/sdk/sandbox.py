@@ -176,6 +176,36 @@ class Sandbox:
         ``localhost:port``) as a public URL routed through the control plane."""
         return self._client.expose_port(self.id, port, name).get("url") or f"/p/{self.id}/{port}/"
 
+    def agent(
+        self,
+        goal: str,
+        *,
+        harness: str = "claude-code",
+        proxy: Optional[str] = None,
+        token: Optional[str] = None,
+        command: Optional[str] = None,
+        workdir: Optional[str] = None,
+        env: Optional[dict[str, str]] = None,
+        timeout: Optional[int] = None,
+        stream: bool = True,
+    ) -> Result:
+        """Run an agent inside this sandbox — keyless via proxyagent, output streamed.
+
+            with mac.sandbox(image="xcode:26") as sbx:
+                sbx.agent("build the app and fix any errors", proxy=PROXY, token="pa_…")
+
+        The token routes through your proxy so the model key never lands here; for
+        a never-on-disk token, create the sandbox with ``secrets=["proxyagent"]``
+        (holding ``PROXYAGENT_TOKEN``). See :meth:`herds.Mac.agent`."""
+        from .mac import _agent_argv, _agent_env, _agent_resolve
+
+        proxy, token = _agent_resolve(proxy, token, None)
+        return self.exec(
+            _agent_argv(goal, harness, proxy, command),
+            env={**_agent_env(proxy, token), **(env or {})},
+            workdir=workdir, timeout=timeout, stream=stream,
+        )
+
     def terminate(self) -> None:
         """Destroy the sandbox: stop its processes and wipe its workspace."""
         try:

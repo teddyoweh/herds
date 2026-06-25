@@ -295,32 +295,7 @@ def _host_setup():
     host_setup()
 
 
-@app.command()
-def auth(
-    token: Optional[str] = typer.Option(None, "--token", help="Account token (hx_…)."),
-    name: Optional[str] = typer.Option(None, "--name", help="Preferred subdomain when provisioning."),
-):
-    """Sign in to your Herds account, so `herds host` gets you a stable link."""
-    from ..relay import provision_account, whoami
-
-    config.ensure_dirs()
-    a = config.Auth.load()
-
-    if token:  # bring an existing token (e.g. to a second Mac)
-        info = whoami(a.relay, token)
-        if not info:
-            console.print("[red]✗ Invalid or expired token.[/red]")
-            raise typer.Exit(1)
-        a.token, a.account, a.url = token, info["account"], info.get("url")
-        a.save()
-    elif a.signed_in and not name:
-        console.print(f"[green]✓ Signed in[/green] as [bold]{a.account}[/bold] — run [bold]herds host[/bold].")
-        return
-    else:  # provision a fresh account
-        info = provision_account(a.relay, name or "")
-        a.token, a.account, a.url = info["token"], info["account"], info.get("url")
-        a.save()
-
+def _print_signed_in(a: "config.Auth") -> None:
     console.print(Panel.fit(
         f"[green]✓ Signed in to Herds[/green]\n\n"
         f"[bold]Account[/bold]\n  {a.account}\n\n"
@@ -329,6 +304,87 @@ def auth(
         f"[dim]Now run [bold]herds host[/bold] — your Mac goes live at the link above.[/dim]",
         title="herds auth", border_style="green",
     ))
+
+
+@app.command()
+def auth(
+    token: Optional[str] = typer.Option(None, "--token", help="Account token (hx_…) — sign in headless, no browser."),
+    name: Optional[str] = typer.Option(None, "--name", help="Preferred subdomain when provisioning."),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Print the link + code instead of opening a browser."),
+):
+    """Sign in to Herds — opens your browser to approve, then syncs the token back."""
+    import time as _t
+    import webbrowser
+
+    from ..relay import device_poll, device_start, provision_account, whoami
+
+    config.ensure_dirs()
+    a = config.Auth.load()
+
+    if token:  # bring an existing token (e.g. to a second Mac) — no browser needed
+        info = whoami(a.relay, token)
+        if not info:
+            console.print("[red]✗ Invalid or expired token.[/red]")
+            raise typer.Exit(1)
+        a.token, a.account, a.url = token, info["account"], info.get("url")
+        a.save()
+        _print_signed_in(a)
+        return
+
+    if a.signed_in and not name:
+        console.print(f"[green]✓ Signed in[/green] as [bold]{a.account}[/bold] — run [bold]herds host[/bold].")
+        console.print("[dim]Use [bold]herds auth --name <new>[/bold] to switch accounts.[/dim]")
+        return
+
+    # Browser sign-in (device-authorization flow): grab a code, open the browser,
+    # the user approves on the web, and the token syncs straight back to this Mac.
+    try:
+        start = device_start(a.relay, name or "")
+    except Exception as exc:  # noqa: BLE001 — older relay w/o device flow → passwordless fallback
+        console.print(f"[dim]Browser sign-in unavailable ({exc}); provisioning a token instead…[/dim]")
+        info = provision_account(a.relay, name or "")
+        a.token, a.account, a.url = info["token"], info["account"], info.get("url")
+        a.save()
+        _print_signed_in(a)
+        return
+
+    code = start["user_code"]
+    verify = start.get("verification_uri_complete") or start.get("verification_uri", "")
+    interval = float(start.get("interval", 2) or 2)
+    deadline = _t.time() + float(start.get("expires_in", 600) or 600)
+
+    console.print(Panel.fit(
+        f"[bold]Approve this Mac to finish signing in[/bold]\n\n"
+        f"Open this link in your browser:\n  [cyan]{verify}[/cyan]\n\n"
+        f"and confirm the code matches:\n  [bold yellow]{code}[/bold yellow]",
+        title="herds auth", border_style="green",
+    ))
+    if not no_browser:
+        try:
+            webbrowser.open(verify)
+        except Exception:  # noqa: BLE001 — headless / no browser: the link above still works
+            pass
+
+    with console.status("[dim]Waiting for you to approve in the browser…[/dim]", spinner="dots"):
+        while _t.time() < deadline:
+            _t.sleep(interval)
+            try:
+                res = device_poll(a.relay, start["device_code"])
+            except Exception:  # noqa: BLE001 — transient network blip; keep polling
+                continue
+            status = res.get("status")
+            if status == "approved":
+                a.token, a.account, a.url = res["token"], res["account"], res.get("url")
+                a.save()
+                break
+            if status == "expired":
+                console.print("[red]✗ This sign-in request expired. Run [bold]herds auth[/bold] again.[/red]")
+                raise typer.Exit(1)
+        else:
+            console.print("[red]✗ Timed out waiting for approval. Run [bold]herds auth[/bold] again.[/red]")
+            raise typer.Exit(1)
+
+    _print_signed_in(a)
 
 
 @app.command("open")
@@ -634,6 +690,54 @@ def shell(
 
 
 @app.command()
+def agent(
+    goal: list[str] = typer.Argument(..., help="What the agent should do."),
+    machine: str = typer.Option("default", "--machine", "-m", help="Target Mac (default: the idlest)."),
+    all_macs: bool = typer.Option(False, "--all", help="Run the same task on every online Mac."),
+    sandbox: bool = typer.Option(False, "--sandbox", help="Run inside a fresh, isolated sandbox."),
+    harness: str = typer.Option("claude-code", "--harness", help="claude-code | codex | custom."),
+    proxy: Optional[str] = typer.Option(None, "--proxy", help="proxyagent URL (or $PROXYAGENT_PROXY)."),
+    token: Optional[str] = typer.Option(None, "--token", help="pa_ token (or $PROXYAGENT_TOKEN)."),
+    secret: Optional[str] = typer.Option(None, "--secret", help="Herds Secret holding PROXYAGENT_TOKEN — never on disk."),
+    command: Optional[str] = typer.Option(None, "--command", help="Custom-harness command, e.g. 'my-agent {goal}'."),
+):
+    """Run an agent on your Mac(s) — keyless via proxyagent, streamed live.
+
+    One Mac, an isolated sandbox, or the whole fleet. The model key stays on your
+    proxy; the Mac only ever holds the scoped token (use --secret to keep it off disk).
+
+        herds agent "fix the failing tests" --proxy https://proxy.you.com --secret proxyagent
+        herds agent "summarise today's PRs" --harness codex --all
+        herds agent "build the app" --sandbox -m mac-studio
+    """
+    from ..sdk.mac import Fleet, Mac
+    from ..sdk.sandbox import Sandbox
+
+    cl = _client()
+    g = " ".join(goal)
+    try:
+        if all_macs:
+            out = Fleet(client=cl).agent(g, harness=harness, proxy=proxy, token=token, secret=secret, command=command)
+            for nm, r in out.items():
+                ec = getattr(r, "exit_code", None)
+                console.print(f"[bold]{nm}[/bold]: " + (f"exit {ec}" if ec is not None else f"[red]{r}[/red]"))
+            raise typer.Exit(0)
+        m = Mac(machine, client=cl)
+        if sandbox:
+            sbx = Sandbox.create(secrets=[secret] if secret else None, mac=m, client=cl)
+            try:
+                res = sbx.agent(g, harness=harness, proxy=proxy, token=token, command=command, stream=True)
+            finally:
+                sbx.terminate()
+        else:
+            res = m.agent(g, harness=harness, proxy=proxy, token=token, secret=secret, command=command, stream=True)
+    except Exception as exc:  # noqa: BLE001
+        err.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+    raise typer.Exit(getattr(res, "exit_code", 0) or 0)
+
+
+@app.command()
 def logs(machine: Optional[str] = typer.Option(None, "--machine", "-m")):
     """Show recent jobs."""
     try:
@@ -809,6 +913,10 @@ def _plist_contents(herds_bin: str) -> str:
     <string>host</string>
   </array>
   <key>RunAtLoad</key><true/>
+  <!-- Only load inside a real GUI (Aqua) session: screenshots, AppleScript and
+       UI control need a window server. Without this the agent can load at the
+       login window with no display and silently fail every screen/UI action. -->
+  <key>LimitLoadToSessionType</key><string>Aqua</string>
   <!-- Always keep the host running; it handles network drops itself (in-process
        reconnect), so we don't gate on NetworkState (which would kill it on a blip). -->
   <key>KeepAlive</key><true/>

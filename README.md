@@ -64,28 +64,45 @@ is the cloud.
 
 ## Quickstart
 
+**Three commands — from nothing to a Mac you can drive from anywhere:**
+
 ```bash
-pip install herds      # or: uv tool install herds
-herds auth             # sign in (free) — gives you a stable, branded link
-herds host             # your Mac goes live
+pip install herds      # 1 · install        (or: uv tool install herds)
+herds auth             # 2 · sign in        — opens your browser, syncs a token back
+herds host             # 3 · go live        — your Mac is now an API
 ```
 
 ```
 ✓ Herds host is live
-  Dashboard   https://you.relay.herds.run        ← permanent, zero setup
-  Host token  herds_sk_…
-→ Open your dashboard (opens already signed in)
-  https://you.relay.herds.run/?token=…
+  Dashboard   https://you.herds.run          ← permanent, branded link · zero setup
+  Host token  herds_sk_…                     ← use it to add more Macs / agents
+→ opening your dashboard, already signed in …
 ```
 
-`herds auth` gives you a free account and a **permanent, branded link** —
-no Cloudflare, no Tailscale, no port forwarding. Click the magic link and the
-dashboard opens already signed in. Other Macs join the pool with
-`herds connect <link> <token>`. (No account? `herds host` still works with a
-temporary tunnel.)
+That's it. Your Mac is online at a **permanent, branded link** — no Cloudflare,
+no Tailscale, no port forwarding. `herds auth` opens your browser to approve and
+syncs the token back; the dashboard opens already signed in. (No account?
+`herds host` still works with a temporary tunnel.)
 
-Prefer the web? Sign up at **[herds.run](https://herds.run)** (email + password)
-and manage everything from the platform dashboard.
+**Add more Macs** — one line each:
+
+```bash
+curl -fsSL herds.run/install | sh -s -- you.herds.run hx_…   # a fresh Mac: installs + joins
+herds connect you.herds.run hx_…                             # already has herds? just connect
+```
+
+**Drive it** — from Python, the CLI, or the web dashboard:
+
+```python
+import herds
+
+mac = herds.mac()                              # the idlest Mac in your fleet
+print(mac.run("xcodebuild -version").stdout)   # real Xcode, real macOS
+url = mac.expose(3000)                          # any local port → a public URL
+```
+
+Prefer the web? Sign up at **[herds.run](https://herds.run)** and manage
+everything from the dashboard. New here? Full walkthrough at **[herds.run/setup](https://herds.run/setup)**.
 
 ### Drive it from Python
 
@@ -141,6 +158,35 @@ herds token new my-agent --scope run    # can run commands, can't mint keys or r
 herds token ls                          # read | run | admin
 herds token revoke herds_sk_…           # kill it anytime, without locking yourself out
 ```
+
+## Run an agent *on* your Mac — keyless
+
+The other direction: run a real coding agent (Claude Code, Codex, or your own)
+**on** a Mac and stream its output back — with **no model API key on the Mac**.
+Herds pairs with [`proxyagent`](https://pypi.org/project/proxyagent/): the real key
+stays on your proxy, and the Mac only ever holds a scoped, revocable token — best
+of all a Herds **Secret**, so it's injected at run time and never written to disk.
+
+```bash
+herds agent "fix the failing tests" --proxy https://proxy.you.com --secret proxyagent
+herds agent "upgrade deps" --all                       # every online Mac, in parallel
+herds agent "build the app" --sandbox -m mac-studio    # in an isolated sandbox
+herds agent "summarise today's PRs" --harness codex    # Codex instead of Claude Code
+```
+
+```python
+import herds
+mac = herds.mac()
+
+mac.agent("fix the failing tests", proxy=PROXY, secret="proxyagent")    # keyless, streamed
+mac.sandbox().agent("run the suite", proxy=PROXY, token="pa_…")         # isolated
+herds.fleet().agent("upgrade deps", proxy=PROXY, secret="proxyagent")   # → {mac: Result}
+```
+
+Every model call the agent makes routes through your proxy — authenticated,
+scoped, and logged — and the real key never leaves it. The Mac just needs
+`proxyagent` and the agent CLI installed (`pip install proxyagent` ·
+`npm i -g @anthropic-ai/claude-code`).
 
 ## The SDK
 
