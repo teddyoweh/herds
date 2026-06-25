@@ -44,6 +44,7 @@ const Introduction = ({ go }: { go: Go }) => (
       <LI>Mount durable <strong className="font-semibold text-stone-800">volumes</strong> so caches, builds, and state survive across runs.</LI>
       <LI>Run a Python function <strong className="font-semibold text-stone-800">remotely</strong> on the Mac with a decorator.</LI>
       <LI>Join several Macs into one <strong className="font-semibold text-stone-800">fleet</strong> and address them by name.</LI>
+      <LI>Run a real <strong className="font-semibold text-stone-800">agent</strong> — Claude Code, Codex, or your own — <em>on</em> a Mac, keyless, with output streamed back.</LI>
     </UL>
 
     <H2>Start here</H2>
@@ -52,61 +53,128 @@ const Introduction = ({ go }: { go: Go }) => (
       <Card title="How it works" desc="The daemon, the control plane, and the relay — and why there are no inbound ports." onClick={() => go("how-it-works")} />
       <Card title="Running commands" desc="run, stream, and map — the core of the Python SDK." onClick={() => go("commands")} />
       <Card title="Sandboxes" desc="Isolated, persistent workspaces with public URLs." onClick={() => go("sandboxes")} />
+      <Card title="Agents (keyless)" desc="Run Claude Code / Codex on a Mac — no model key on the machine." onClick={() => go("agents")} />
     </CardGrid>
   </>
 );
 
 const Quickstart = ({ go }: { go: Go }) => (
   <>
-    <Lead>Two paths: you were handed a Mac (a URL + token), or you want to connect your own. Both take about a minute.</Lead>
+    <Lead>Three commands and your Mac is an API you can drive from anywhere — install, sign in, go live.</Lead>
 
-    <H2>Install</H2>
+    <H2>1 · Install</H2>
     <Code lang="bash">{`pip install herds        # or:  uv tool install herds`}</Code>
     <P>
       Herds needs Python 3.11+. The package ships both the <Co>herds</Co> Python SDK and the <Co>herds</Co> command-line tool.
     </P>
 
-    <H2>Path A — you were given a Mac</H2>
-    <P>
-      If someone handed you a Herds <strong className="font-semibold text-stone-800">URL + token</strong>, that&rsquo;s all you need. Point the SDK at it
-      and run:
-    </P>
-    <Code lang="python">{`import herds
-
-herds.configure(url="https://you.relay.herds.run", token="hx_…")
-print(herds.mac().run("uname -msr").stdout)   # runs on that Mac, from anywhere`}</Code>
-    <Callout type="note">
-      <Co>configure()</Co> is identical to setting the <Co>HERDS_CONTROL_PLANE</Co> and <Co>HERDS_API_KEY</Co> environment variables.
-      See <A href="#env-vars">Environment variables</A>.
-    </Callout>
-
-    <H2>Path B — connect your own Mac</H2>
+    <H2>2 · Sign in &amp; go live</H2>
     <P>On the Mac you want to make callable:</P>
-    <Code lang="bash">{`pip install herds
-herds auth          # sign in — creates a free account + a permanent link
-herds host          # control plane + dashboard + public link, in one command`}</Code>
+    <Code lang="bash">{`herds auth          # sign in — opens your browser to approve, syncs a token back
+herds host          # your Mac goes live: control plane + dashboard + public link`}</Code>
+    <Code lang="text">{`✓ Herds host is live
+  Dashboard   https://you.herds.run        ← permanent, branded link · zero setup
+  Host token  herds_sk_…                    ← use it to add more Macs / agents
+→ opening your dashboard, already signed in …`}</Code>
     <P>
-      <Co>herds auth</Co> mints your account token and assigns a subdomain like <Co>you.relay.herds.run</Co>. <Co>herds host</Co> starts a
-      local control plane, registers this Mac, and brings up a public link — without opening a single inbound port.
+      <Co>herds auth</Co> mints your account token and a permanent subdomain like <Co>you.herds.run</Co>; <Co>herds host</Co> starts a
+      local control plane, registers this Mac, and opens a public link — without opening a single inbound port.
     </P>
 
-    <H2>Run your first command</H2>
+    <H2>3 · Run your first command</H2>
     <Code lang="python">{`import herds
 
-mac = herds.mac()                       # your online Mac
-r = mac.run("sw_vers")
-print(r.stdout, r.exit_code)
+mac = herds.mac()                       # the idlest Mac in your fleet
+print(mac.run("sw_vers").stdout)
+mac.run("xcodebuild -scheme App test", check=True)   # real Xcode; raises on non-zero exit`}</Code>
 
-mac.run("xcodebuild -scheme App test", check=True)   # raises on non-zero exit`}</Code>
+    <H2>Add more Macs</H2>
+    <P>Any other Mac joins the same fleet with one line:</P>
+    <Code lang="bash">{`curl -fsSL herds.run/install | sh -s -- you.herds.run hx_…   # fresh Mac: installs + joins
+herds connect you.herds.run hx_…                             # already has herds? just connect`}</Code>
+
+    <H2>Were you handed a Mac?</H2>
+    <P>
+      If someone gave you a Herds <strong className="font-semibold text-stone-800">URL + token</strong>, point the SDK at it — that&rsquo;s all you need:
+    </P>
+    <Code lang="python">{`import herds
+herds.configure(url="https://you.herds.run", token="hx_…")   # or env: HERDS_CONTROL_PLANE / HERDS_API_KEY
+print(herds.mac().run("uname -msr").stdout)`}</Code>
 
     <Callout type="tip">
-      Driving this from an agent? Install the agent skill with <Co>herds skill --install</Co>, or read it at <A href="/skill">herds.run/skill</A>.
+      Want an agent to <em>drive</em> — or run keyless <em>on</em> — your Mac? See <A href="#" onClick={(e) => { e.preventDefault(); go("agents"); }}>Agents</A>,
+      or install the agent skill with <Co>herds skill --install</Co>.
     </Callout>
 
     <Divider />
     <P>
       Next: <A href="#" onClick={(e) => { e.preventDefault(); go("commands"); }}>Running commands</A> covers <Co>run</Co>, <Co>stream</Co>, and{" "}
       <Co>map</Co> in depth.
+    </P>
+  </>
+);
+
+const Agents = ({ go }: { go: Go }) => (
+  <>
+    <Lead>
+      Run a real coding agent — Claude Code, Codex, or your own — <em>on</em> a Mac, a sandbox, or the whole fleet, with{" "}
+      <strong className="font-semibold text-stone-800">no model API key on the machine</strong>. Output streams back live.
+    </Lead>
+
+    <H2>How it&rsquo;s keyless</H2>
+    <P>
+      Herds pairs with <A href="https://pypi.org/project/proxyagent/">proxyagent</A>: you run one proxy that holds the real model key, and the Mac
+      only ever holds a scoped, revocable <Co>pa_</Co> token. Every model call the agent makes routes through your proxy — authenticated, scoped,
+      and logged — and the real key never leaves it.
+    </P>
+    <Callout type="tip" title="Keep the token off disk">
+      Store the <Co>pa_</Co> token as a Herds{" "}
+      <A href="#" onClick={(e) => { e.preventDefault(); go("secrets"); }}>Secret</A> and pass <Co>secret=&quot;proxyagent&quot;</Co> — it&rsquo;s injected
+      into the agent&rsquo;s environment at run time and never written to the Mac&rsquo;s disk.
+    </Callout>
+
+    <H2>One Mac</H2>
+    <Code lang="python">{`import herds
+mac = herds.mac()
+
+mac.agent("fix the failing tests and open a PR",
+          proxy="https://proxy.you.com", secret="proxyagent")   # keyless, streamed`}</Code>
+
+    <H2>A sandbox</H2>
+    <Code lang="python">{`with mac.sandbox(image="xcode:26") as sbx:
+    sbx.agent("build the app and fix any errors", proxy=PROXY, token="pa_…")`}</Code>
+
+    <H2>The whole fleet</H2>
+    <Code lang="python">{`results = herds.fleet().agent("upgrade dependencies", proxy=PROXY, secret="proxyagent")
+for name, r in results.items():
+    print(name, r.exit_code)   # {machine: Result}, run in parallel`}</Code>
+
+    <H2>From the CLI</H2>
+    <Code lang="bash">{`herds agent "summarise today's PRs" --proxy https://proxy.you.com --secret proxyagent
+herds agent "upgrade deps" --all                       # every online Mac, in parallel
+herds agent "build the app" --sandbox -m mac-studio    # in an isolated sandbox
+herds agent "ship it" --harness codex                  # Codex instead of Claude Code`}</Code>
+
+    <H2>Options</H2>
+    <Params
+      rows={[
+        { name: "harness", type: "str", default: '"claude-code"', desc: <><Co>claude-code</Co>, <Co>codex</Co>, or <Co>custom</Co> (with <Co>command=&quot;my-agent {"{goal}"}&quot;</Co>).</> },
+        { name: "proxy", type: "str", desc: <>Your proxyagent URL. Falls back to <Co>PROXYAGENT_PROXY</Co>.</> },
+        { name: "secret", type: "str", desc: <>A Herds Secret holding <Co>PROXYAGENT_TOKEN</Co> — injected at run time, never on disk. Preferred over <Co>token</Co>.</> },
+        { name: "token", type: "str", desc: <>A <Co>pa_</Co> token passed directly. Falls back to <Co>PROXYAGENT_TOKEN</Co>.</> },
+        { name: "stream", type: "bool", default: "True", desc: <>Mirror the agent&rsquo;s output live as it works.</> },
+      ]}
+    />
+
+    <H2>Setup on the Mac</H2>
+    <P>The Mac needs <Co>proxyagent</Co> and the agent CLI installed; mint a token on your proxy with <Co>proxyagent token new &lt;label&gt;</Co>:</P>
+    <Code lang="bash">{`pip install proxyagent
+npm i -g @anthropic-ai/claude-code     # or @openai/codex`}</Code>
+
+    <Divider />
+    <P>
+      Related: <A href="#" onClick={(e) => { e.preventDefault(); go("secrets"); }}>Secrets</A> ·{" "}
+      <A href="#" onClick={(e) => { e.preventDefault(); go("sandboxes"); }}>Sandboxes</A>.
     </P>
   </>
 );
@@ -699,6 +767,7 @@ export const PAGES: DocPage[] = [
 
   { id: "commands", group: "Python SDK", title: "Running commands", description: "run, stream, and map.", Body: Commands },
   { id: "sandboxes", group: "Python SDK", title: "Sandboxes", description: "Isolated, persistent workspaces.", Body: Sandboxes },
+  { id: "agents", group: "Python SDK", title: "Agents (keyless)", description: "Run Claude Code / Codex on a Mac — no key on the machine.", Body: Agents },
   { id: "volumes", group: "Python SDK", title: "Volumes", description: "Durable named directories.", Body: Volumes },
   { id: "images", group: "Python SDK", title: "Images", description: "Select toolchains on the Mac.", Body: Images },
   { id: "secrets", group: "Python SDK", title: "Secrets", description: "Injected environment bundles.", Body: Secrets },
