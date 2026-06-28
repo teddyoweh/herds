@@ -89,7 +89,13 @@ class Daemon:
             backoff = min(backoff * 1.7, 10.0)
 
     async def _connect_once(self) -> None:
-        async with websockets.connect(self._ws_url(), max_size=None, ping_interval=20, ping_timeout=20) as ws:
+        from ..relay import _wss_ssl_context
+
+        url = self._ws_url()
+        async with websockets.connect(
+            url, max_size=None, ping_interval=20, ping_timeout=20,
+            ssl=_wss_ssl_context(url),
+        ) as ws:
             self._ws = ws
             # Handshake: announce who we are and what we are.
             await self._send(Frame(

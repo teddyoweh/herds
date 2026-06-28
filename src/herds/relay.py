@@ -47,6 +47,25 @@ def http_base(relay_ws_url: str) -> str:
     return relay_ws_url.replace("wss://", "https://").replace("ws://", "http://").rstrip("/")
 
 
+def _wss_ssl_context(url: str):
+    """SSL context for dialing a ``wss://`` relay, or ``None`` for plain ``ws://``.
+
+    ``websockets`` builds its TLS context from Python's *default* verify paths,
+    which on macOS point at a Homebrew/OpenSSL cert file that may be missing or
+    empty — yielding ``CERTIFICATE_VERIFY_FAILED: unable to get local issuer
+    certificate`` and a relay that never links up. httpx already dodges this by
+    trusting ``certifi``'s bundle; we do the same here so the WebSocket path
+    verifies against the same CA store the rest of the CLI does.
+    """
+    if not url.lower().startswith("wss://"):
+        return None  # local ws:// tunnel — no TLS
+    import ssl
+
+    import certifi
+
+    return ssl.create_default_context(cafile=certifi.where())
+
+
 # --------------------------------------------------------------------------- #
 # Server side
 # --------------------------------------------------------------------------- #
@@ -645,6 +664,7 @@ async def _run_client(relay_ws_url: str, token: str, local_url: str) -> None:
     import websockets
 
     url = f"{relay_ws_url.rstrip('/')}/relay/connect?token={token}"
+    ssl_ctx = _wss_ssl_context(url)
     backoff = 1.0
     while True:
         try:
@@ -656,7 +676,7 @@ async def _run_client(relay_ws_url: str, token: str, local_url: str) -> None:
             # offloading response encoding to a thread, so they're safe under load.)
             async with websockets.connect(
                 url, max_size=None, ping_interval=20, ping_timeout=20,
-                open_timeout=20, close_timeout=5,
+                open_timeout=20, close_timeout=5, ssl=ssl_ctx,
             ) as ws:
                 backoff = 1.0
                 print("herds relay: link up", file=sys.stderr)

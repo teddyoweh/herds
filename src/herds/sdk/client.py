@@ -135,7 +135,10 @@ class HerdsClient:
         # The control plane authenticates the log stream via a ?token= query param
         # when auth is enforced (it can't read an Authorization header on a WS upgrade).
         q = f"?token={self.api_key}" if self.api_key else ""
-        with ws_connect(f"{ws_url}/v1/jobs/{request_id}/logs{q}", max_size=None) as ws:
+        from ..relay import _wss_ssl_context
+
+        log_url = f"{ws_url}/v1/jobs/{request_id}/logs{q}"
+        with ws_connect(log_url, max_size=None, ssl=_wss_ssl_context(log_url)) as ws:
             for raw in ws:
                 frame = Frame.load(raw)
                 if on_output and frame.type in (FrameType.STDOUT, FrameType.STDERR):
