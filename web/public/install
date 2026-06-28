@@ -25,14 +25,15 @@ UV="$(command -v uv 2>/dev/null || true)"
 [ -z "$UV" ] && [ -x "$HOME/.local/bin/uv" ] && UV="$HOME/.local/bin/uv"
 [ -z "$UV" ] && [ -x "$HOME/.cargo/bin/uv" ] && UV="$HOME/.cargo/bin/uv"
 
-# 3. Install herds.
+# 3. Install herds. --force/-U so re-running always lands the latest release,
+#    upgrading an existing install in place rather than no-opping on the old one.
 if [ -n "$UV" ]; then
-  "$UV" tool install herds || { e "uv tool install failed."; exit 1; }
+  "$UV" tool install --force herds || { e "uv tool install failed."; exit 1; }
   "$UV" tool update-shell >/dev/null 2>&1 || true
 elif command -v pipx >/dev/null 2>&1; then
-  pipx install herds
+  pipx install --force herds
 elif command -v pip3 >/dev/null 2>&1; then
-  pip3 install --user herds
+  pip3 install --user -U herds
 else
   e "Couldn't install uv, and no pipx/pip3 found."
   e "Install Python 3.11+ (brew install python) or uv, then re-run."
