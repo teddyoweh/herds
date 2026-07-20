@@ -30,18 +30,53 @@ def _macos_version() -> str | None:
         return None
 
 
-def _pretty_name(model: str | None, chip: str | None) -> str:
+def _model_name() -> str | None:
+    """Authoritative marketing model name (e.g. 'MacBook Pro') via system_profiler.
+
+    Apple-Silicon model identifiers (``Mac15,3``) can't be classified reliably by
+    prefix, so we read the real name once. Runs a single time (gather is cached)."""
+    try:
+        out = subprocess.run(
+            ["system_profiler", "SPHardwareDataType"], capture_output=True, text=True, timeout=6
+        ).stdout
+        for line in out.splitlines():
+            line = line.strip()
+            if line.startswith("Model Name:"):
+                return line.split(":", 1)[1].strip() or None
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return None
+
+
+_TYPE_SLUGS = (
+    ("macbook pro", "macbook_pro"), ("macbookpro", "macbook_pro"),
+    ("macbook air", "macbook_air"), ("macbookair", "macbook_air"),
+    ("mac mini", "mac_mini"), ("macmini", "mac_mini"),
+    ("mac studio", "mac_studio"), ("macstudio", "mac_studio"),
+    ("mac pro", "mac_pro"), ("macpro", "mac_pro"),
+    ("imac", "imac"), ("macbook", "macbook"),
+)
+
+
+def _device_type(model_name: str | None, model_id: str | None) -> str | None:
+    """Machine-readable form factor from the model name and/or identifier."""
+    hay = " ".join(x for x in (model_name, model_id) if x).lower()
+    for needle, slug in _TYPE_SLUGS:
+        if needle in hay:
+            return slug
+    return None
+
+
+def _pretty_name(model_name: str | None, model_id: str | None, chip: str | None) -> str:
     """Best-effort friendly name like 'MacBook Pro (Apple M4)'."""
-    if model and model.startswith("MacBook"):
-        base = "MacBook Pro" if "Pro" in model else "MacBook"
-    elif model and "Macmini" in model:
-        base = "Mac mini"
-    elif model and "MacStudio" in model:
-        base = "Mac Studio"
-    elif model and "iMac" in model:
-        base = "iMac"
-    else:
-        base = platform.node().split(".")[0] or "Mac"
+    base = model_name
+    if not base:
+        slug = _device_type(None, model_id)
+        base = {
+            "macbook_pro": "MacBook Pro", "macbook_air": "MacBook Air", "macbook": "MacBook",
+            "mac_mini": "Mac mini", "mac_studio": "Mac Studio", "mac_pro": "Mac Pro",
+            "imac": "iMac",
+        }.get(slug or "", platform.node().split(".")[0] or "Mac")
     return f"{base} ({chip})" if chip else base
 
 
@@ -51,10 +86,12 @@ def gather(machine_id: str, agent_version: str = "0.1.0") -> MachineInfo:
     model = _sysctl("hw.model")
     mem_bytes = _sysctl("hw.memsize")
     cpu_count = _sysctl("hw.ncpu")
+    model_name = _model_name()
     return MachineInfo(
         machine_id=machine_id,
-        name=_pretty_name(model, chip),
+        name=_pretty_name(model_name, model, chip),
         model=model,
+        device_type=_device_type(model_name, model),
         chip=chip,
         arch=platform.machine(),
         cpu_count=int(cpu_count) if cpu_count and cpu_count.isdigit() else None,

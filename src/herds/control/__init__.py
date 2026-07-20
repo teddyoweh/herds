@@ -103,6 +103,9 @@ class Hub:
         self.started: set[str] = set()
         # Live CPU/memory samples per machine: (t_ms, cpu, mem). ~1h at 5s.
         self.metrics: dict[str, deque] = {}
+        # Live battery per machine: machine_id -> (pct|None, charging|None). In-memory
+        # only (no DB migration) — a UI wants "current", not history.
+        self.battery: dict[str, tuple] = {}
         # In-flight request→response RPCs to agents (filesystem ops), by id.
         self.pending: dict[str, asyncio.Future] = {}
         # Raw TCP tunnels: stream_id -> the client WebSocket bound to that tunnel,
@@ -316,6 +319,10 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
                     _t, _cpu, _mem = config.now_ms(), frame.data.get("cpu", 0.0), frame.data.get("mem", 0.0)
                     hub.record_metric(machine_id, _t, _cpu, _mem)
                     store.record_metric_sample(machine_id, _t, _cpu, _mem)
+                    if "battery_pct" in frame.data:  # live-only battery cache (no DB)
+                        hub.battery[machine_id] = (
+                            frame.data.get("battery_pct"), frame.data.get("battery_charging"),
+                        )
                 elif frame.type in (FrameType.FS_RESULT, FrameType.HTTP_RESPONSE,
                                     FrameType.SNAPSHOT_RESULT):
                     hub.resolve_rpc(frame.request_id, frame.data)
@@ -407,6 +414,9 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
             latest = store.latest_metric(m["machine_id"]) if m["status"] == "online" else None
             m["live_cpu"] = round(latest[0], 1) if latest else None
             m["live_mem"] = round(latest[1], 1) if latest else None
+            bat = hub.battery.get(m["machine_id"]) if m["status"] == "online" else None
+            m["live_battery"] = bat[0] if bat else None
+            m["battery_charging"] = bat[1] if bat else None
         return {"machines": machines}
 
     @app.get("/v1/machines/{machine_id}")

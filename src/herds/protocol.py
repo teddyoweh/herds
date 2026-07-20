@@ -96,6 +96,7 @@ class MachineInfo(BaseModel):
     machine_id: str
     name: str                       # e.g. "MacBook Pro"
     model: Optional[str] = None     # e.g. "Mac15,3"
+    device_type: Optional[str] = None  # machine-readable form factor: macbook_pro|macbook_air|mac_mini|mac_studio|imac|mac_pro
     chip: Optional[str] = None      # e.g. "Apple M4"
     arch: str = "arm64"
     cpu_count: Optional[int] = None

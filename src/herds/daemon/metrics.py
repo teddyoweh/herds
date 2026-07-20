@@ -48,10 +48,32 @@ def _mem_percent() -> float:
     return round(used / total * 100.0, 1)
 
 
+def _battery() -> tuple[float | None, bool | None]:
+    """(%, charging?) from ``pmset -g batt``. (None, None) on desktops / no battery."""
+    try:
+        out = subprocess.run(
+            ["pmset", "-g", "batt"], capture_output=True, text=True, timeout=2
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None, None
+    m = re.search(r"(\d+)%", out)
+    if not m:
+        return None, None  # desktop (mini/Studio/Pro/iMac) — no battery line
+    pct = float(m.group(1))
+    low = out.lower()
+    charging = ("discharging" not in low) and (
+        "charging" in low or "charged" in low or "ac power" in low or "ac attached" in low
+    )
+    return pct, charging
+
+
 def sample() -> dict:
-    """A single CPU/memory sample."""
+    """A single CPU/memory/battery sample."""
+    battery_pct, battery_charging = _battery()
     return {
         "cpu": _cpu_percent(),
         "mem": _mem_percent(),
         "load1": round(os.getloadavg()[0], 2) if hasattr(os, "getloadavg") else 0.0,
+        "battery_pct": battery_pct,
+        "battery_charging": battery_charging,
     }
