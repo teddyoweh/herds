@@ -188,6 +188,66 @@ scoped, and logged — and the real key never leaves it. The Mac just needs
 `proxyagent` and the agent CLI installed (`pip install proxyagent` ·
 `npm i -g @anthropic-ai/claude-code`).
 
+## Keep the agent alive — drive it turn by turn
+
+`herds agent` above is one-shot. A **Session** is the other thing: a resident
+process you start *once* and feed **turn after turn**, streaming its output the
+whole time. Run a long-lived agent (or any stdin-driven driver) on a live
+sandbox and keep prompting it — state persists between turns, and because the
+session is addressed through the control plane, **any worker can send the next
+turn** (cross-worker input is free).
+
+```python
+import json, herds
+mac = herds.mac()
+
+# a long-lived agent in stream-json mode — it stays alive across prompts:
+s = mac.session(
+    "claude --print --input-format stream-json --output-format stream-json --verbose",
+    env={"ANTHROPIC_BASE_URL": PROXY, "ANTHROPIC_API_KEY": TOKEN},   # keyless: no real key on the Mac
+)
+
+def turn(text):
+    s.send(json.dumps({"type": "user",
+        "message": {"role": "user", "content": text}}) + "\n")
+
+turn("clone the repo and run the tests")
+for stream, text in s.stream():        # JSON events stream back as it drives
+    print(text, end="")
+turn("now fix the failing ones")        # SAME live session — it kept its state
+s.close()                               # EOF → the agent finishes and exits
+```
+
+This is the **exact shape Modal runs a persistent agent driver in**: one resident
+process, one stdin turn per prompt, JSON events streamed from stdout, model calls
+routed through a proxy. Point the session's command at your *own* driver script
+and it drops straight in. `mac.session(cmd)` and `sandbox.session(cmd)` return a
+`Session` with `send(text)` · `stream()` · `close()`. Idle sessions are reaped
+automatically (see [Bounding a Mac](#bounding-a-mac)).
+
+## Browse the web — on a real Mac, real residential IP
+
+A Sandbox is a whole Mac shell, so browser automation needs **no special API**:
+the agent (or your script) installs Playwright, drives Chromium, and reads the
+screenshots back — full, dynamic, free-reign control.
+
+```python
+shots = herds.Volume.from_name("shots")
+with herds.Sandbox.create(volumes={"out": shots}) as sbx:
+    sbx.exec("pip install playwright && playwright install chromium", check=True)
+    sbx.put("scrape.py")                          # your Playwright script → writes ./out/*.png
+    sbx.exec("python scrape.py", check=True)      # runs ON the Mac
+shots.get("home.png", "./home.png")               # pull a screenshot back out
+```
+
+Because the browser runs *on the Mac*, its traffic exits the Mac's own
+connection — a **real residential IP**, real consumer hardware, a real browser
+fingerprint. And each Sandbox has its own `HOME`/profile, so you can run **many
+isolated browser sessions in parallel on one Mac** (separate cookies/logins) —
+all sharing that one residential IP. To *watch* or drive the browser from off the
+Mac (a live view, or an external Playwright over CDP), open a
+[raw tunnel](#raw-tunnels--any-port-as-a-live-byte-stream) to its DevTools port.
+
 ## The SDK
 
 ### Run commands
@@ -233,6 +293,17 @@ On a Mac an Image isn't a container — it's a recipe that selects the right Xco
 toolchain isn't installed, the command still runs against the host and Herds
 tells you what it would have pinned.
 
+**Provisioning that actually runs.** `run_commands(...)` executes on the Mac
+*before* your command and is **cached by a content hash** — the first run
+installs, every repeat is a no-op:
+
+```python
+img = herds.Image.macos().run_commands(
+    "pip install playwright", "playwright install chromium",
+)
+mac.run("python scrape.py", image=img)   # installs once; cached thereafter
+```
+
 ### Volumes — persistent directories on the Mac
 
 ```python
@@ -246,6 +317,15 @@ mac.run("xcodebuild archive -archivePath $HERDS_VOLUME_IOS_BUILDS/App.xcarchive"
 herds.Volume.from_name("repo").put("./my-project")        # dir → volume root
 herds.Volume.from_name("data").put("model.bin", "weights/")  # one file
 mac.run("python3 app/main.py", volumes={"app": herds.Volume.from_name("repo")})
+```
+
+Read files back **out** of a volume, list it, or delete from it — no mount needed:
+
+```python
+data = herds.Volume.from_name("data").get("weights/model.bin")    # → bytes
+herds.Volume.from_name("shots").get("home.png", "./home.png")     # → save locally
+herds.Volume.from_name("repo").listdir("src")                     # → [{name,dir,size,mtime_ms}]
+herds.Volume.from_name("tmp").remove("scratch")                   # delete (recursive)
 ```
 
 …or from the CLI: `herds volume put repo ./my-project --url https://you.relay.herds.run --token hx_…`
@@ -270,6 +350,17 @@ Each sandbox is its own directory tree with redirected `HOME`/`TMPDIR` and
 toolchain caches, its own process session (so timeouts kill the whole tree), and
 an optional `sandbox-exec` write-fence. Files persist between `exec` calls.
 
+**Snapshot a provisioned sandbox into a reusable base** (Modal's
+`snapshot_filesystem`) so the next one starts pre-populated:
+
+```python
+with herds.Sandbox.create() as sbx:
+    sbx.exec("pip install playwright && playwright install chromium", check=True)
+    base = sbx.snapshot_filesystem("browser-env")     # tar workspace+home → named base
+
+fresh = herds.Sandbox.create(image=base)              # starts already provisioned
+```
+
 ### Expose a server — a sandbox becomes a URL
 
 ```python
@@ -281,6 +372,25 @@ Run a web app or API inside a sandbox and get a hittable public link. Requests
 tunnel through the agent WebSocket — control plane → daemon → the sandbox's
 `localhost:port` — so it works behind NAT with no inbound ports. With a wildcard
 domain you get named subdomains (`https://myapi--teddy.herds.run`).
+
+### Raw tunnels — any port as a live byte stream
+
+`expose()` is buffered HTTP request/response. When you need a **persistent,
+bidirectional** connection — a websocket, a database port, or Chrome DevTools
+(CDP) — open a raw tunnel instead. Bytes flow both ways, untouched:
+
+```python
+with sbx.tunnel(9222) as t:        # raw pipe to localhost:9222 in the sandbox
+    t.send(b"…"); data = t.recv()
+
+url = sbx.tunnel_url(9222)          # or hand the ws:// URL to a CDP/websocket client
+```
+
+This is what lets you attach an **external** Playwright to a Chromium running on
+the Mac, or stream a live browser view — control plane → daemon → the sandbox's
+`localhost:port`, over the same NAT-friendly socket, no inbound ports. (An agent
+running *inside* the sandbox never needs this — it drives Chromium over its own
+localhost.)
 
 ### Mac-native control — the stuff only a real Mac can do
 
@@ -313,6 +423,20 @@ def inspect(target: str) -> dict:
 def main():
     print(inspect.remote("release"))   # ships source, runs on the Mac
 ```
+
+### Bounding a Mac
+
+A Mac isn't partitioned like a rented container, so Herds *bounds* it instead: a
+cap on concurrent sandboxes with a small waiting queue, idle-session reaping, and
+garbage-collection of stale sandbox trees so disk never silently fills. All
+configurable, with safe defaults:
+
+| env | default | what it does |
+|---|---|---|
+| `HERDS_MAX_LIVE_SANDBOXES` | `8` | max concurrent sandboxes/sessions before new work queues |
+| `HERDS_ADMISSION_QUEUE_MAX` | `32` | queue depth once the cap is hit (past it, work is rejected, not piled up) |
+| `HERDS_SESSION_IDLE_TIMEOUT_MS` | `30 min` | a resident session with no input this long is reaped |
+| `HERDS_SANDBOX_TTL_MS` | `24 h` | a sandbox tree untouched this long (no live process) is garbage-collected |
 
 ## The dashboard
 
@@ -400,6 +524,11 @@ Live today, end-to-end:
   → manage your Macs from the web dashboard.
 - Connect Macs, run/stream commands, mount volumes, drive sandboxes, expose ports
   as URLs, run remote Python.
+- **Resident sessions** — feed a live process turn-by-turn (long-lived agents,
+  the way spawn drives a Modal driver) — plus **raw port tunnels**
+  (CDP/websockets), **image provisioning** (cached `run_commands`), **filesystem
+  snapshots**, a full **volume read API** (get/listdir/remove), and per-Mac
+  **admission control + idle/GC reaping**.
 
 See [`ROADMAP.md`](ROADMAP.md) for what's next (Tart VM backend, per-token scopes,
 code-shipping for functions).

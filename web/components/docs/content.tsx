@@ -53,6 +53,7 @@ const Introduction = ({ go }: { go: Go }) => (
       <Card title="How it works" desc="The daemon, the control plane, and the relay — and why there are no inbound ports." onClick={() => go("how-it-works")} />
       <Card title="Running commands" desc="run, stream, and map — the core of the Python SDK." onClick={() => go("commands")} />
       <Card title="Sandboxes" desc="Isolated, persistent workspaces with public URLs." onClick={() => go("sandboxes")} />
+      <Card title="Sessions" desc="Long-lived processes you drive turn by turn — how a resident agent runs on a Mac." onClick={() => go("sessions")} />
       <Card title="Agents (keyless)" desc="Run Claude Code / Codex on a Mac — no model key on the machine." onClick={() => go("agents")} />
     </CardGrid>
   </>
@@ -377,6 +378,57 @@ sbx.stop()                                    # stop processes (workspace stays)
       subdomain when a ports domain is configured on the host.
     </P>
 
+    <H2>Raw tunnels</H2>
+    <P>
+      <Co>expose()</Co> is buffered HTTP — one request, one response. A <strong className="font-semibold text-stone-800">tunnel</strong> is
+      a raw, persistent, bidirectional byte pipe straight to a port on the sandbox, routed control plane → daemon → sandbox{" "}
+      <Co>localhost:port</Co>. Because nothing is framed as HTTP, protocols that keep a socket open survive: CDP, WebSockets, and
+      database ports all work.
+    </P>
+    <Code lang="python">{`# Attach an EXTERNAL Playwright to a Chromium running on the Mac:
+with sbx.tunnel(9222) as t:            # alias: sbx.connect_port(9222)
+    t.send(b"GET /json/version HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n")
+    print(t.recv(timeout=5))           # raw bytes back
+
+ws_url = sbx.tunnel_url(9222)          # a URL you can hand to a WS/CDP client`}</Code>
+    <P>
+      A <Co>TcpTunnel</Co> has <Co>send(bytes | str)</Co>, <Co>recv(timeout=None) → bytes</Co>, and <Co>close()</Co>, and works as a
+      context manager. Use it to drive or watch a live browser from <em>outside</em> the Mac — an agent running <em>inside</em> the
+      sandbox never needs one; it just talks to <Co>localhost</Co> directly.
+    </P>
+
+    <H2>Web automation</H2>
+    <P>
+      There is no browser primitive to learn: a sandbox is a whole Mac shell, so a script or agent simply installs Playwright and drives
+      Chromium itself, with free reign, and takes screenshots.
+    </P>
+    <Code lang="python">{`with herds.Sandbox.create(volumes={"out": herds.Volume.from_name("shots")}) as sbx:
+    sbx.exec("pip install playwright && playwright install chromium", check=True)
+    sbx.put("scrape.py")
+    sbx.exec("python scrape.py", check=True)   # writes screenshots into ./out
+
+herds.Volume.from_name("shots").get("home.png", "./home.png")`}</Code>
+    <Callout type="tip" title="Real residential IP, real fingerprint">
+      Because Chromium runs on the Mac, its traffic exits the Mac&rsquo;s own connection — a real residential IP, on real hardware.
+      Each sandbox gets its own <Co>HOME</Co> and profile, so many isolated browser sessions (separate cookies and logins) run in
+      parallel on one Mac, all sharing that single residential IP. To drive or watch from outside the Mac, open a raw tunnel to the
+      CDP port.
+    </Callout>
+
+    <H2>Snapshots</H2>
+    <P>
+      Provision a sandbox once — install toolchains, clone a repo, warm caches — then <Co>snapshot_filesystem()</Co> it into a reusable
+      base Image. New sandboxes created from that Image start pre-populated, so you pay the setup cost once.
+    </P>
+    <Code lang="python">{`with herds.Sandbox.create() as sbx:
+    sbx.exec("pip install playwright && playwright install chromium", check=True)
+    base = sbx.snapshot_filesystem(name="pw-base")     # → an Image
+
+# Later, anywhere — starts with Playwright already installed:
+img = herds.Image.from_id(base.image_id)
+with herds.Sandbox.create(image=img) as sbx:
+    sbx.exec("python scrape.py", check=True)`}</Code>
+
     <H2>Methods</H2>
     <Params
       rows={[
@@ -385,7 +437,10 @@ sbx.stop()                                    # stop processes (workspace stays)
         { name: "sbx.exec(command, ...)", type: "→ Result", desc: <>Run a command and wait. Same options as <Co>mac.run</Co> (<Co>workdir</Co>, <Co>env</Co>, <Co>timeout</Co>, <Co>network</Co>, <Co>stream</Co>, <Co>check</Co>).</> },
         { name: "sbx.stream(command, ...)", type: "→ iterator", desc: <>Yield <Co>(stream, text)</Co> chunks live.</> },
         { name: "sbx.spawn(command, ...)", type: "→ str", desc: <>Start without waiting; returns a request id. <Co>keep_alive=True</Co> supervises it.</> },
-        { name: "sbx.expose(port, name='')", type: "→ str", desc: "Expose a port as a public URL." },
+        { name: "sbx.expose(port, name='')", type: "→ str", desc: "Expose a port as a public URL (buffered HTTP)." },
+        { name: "sbx.tunnel(port, timeout=20.0)", type: "→ TcpTunnel", desc: <>Open a raw bidirectional byte pipe to a port. Alias: <Co>connect_port</Co>.</> },
+        { name: "sbx.tunnel_url(port)", type: "→ str", desc: "URL for the raw tunnel, for a WS/CDP client." },
+        { name: "sbx.snapshot_filesystem(name='')", type: "→ Image", desc: "Snapshot the sandbox tree into a reusable base Image." },
         { name: "sbx.stop()", type: "→ dict", desc: "Stop running processes; the workspace stays on disk." },
         { name: "sbx.terminate()", type: "→ None", desc: "Stop processes and wipe the workspace." },
       ]}
@@ -395,6 +450,87 @@ sbx.stop()                                    # stop processes (workspace stays)
       Sandboxes are process-level isolation for code you trust, not a security boundary for untrusted code. They persist on the Mac
       until you <Co>terminate()</Co> them. Need durable shared state? Mount a <A href="#" onClick={(e) => { e.preventDefault(); go("volumes"); }}>volume</A>.
     </Callout>
+  </>
+);
+
+const Sessions = ({ go }: { go: Go }) => (
+  <>
+    <Lead>
+      A session is a <strong className="font-semibold text-stone-800">resident process</strong> on the Mac that you feed one turn at a
+      time. You write to its stdin, read its stdout as it works, and the process — and all its state — stays alive between turns.
+    </Lead>
+
+    <H2>Why sessions exist</H2>
+    <P>
+      <Co>run</Co> and <Co>exec</Co> are one-shot: a command starts, finishes, and its process is gone. A session is the opposite — a
+      long-lived process you drive turn by turn. This is exactly how you run a long-lived agent on a Mac: one resident process, one
+      stdin turn per prompt, JSON events streamed back from stdout, and model calls routed through a proxy. It is the same shape spawn&rsquo;s
+      persistent driver runs in on Modal.
+    </P>
+
+    <H2>Start a session</H2>
+    <Code lang="python">{`import herds
+
+mac = herds.mac()
+s = mac.session("python3 -i")     # a resident REPL
+s.send("print(6 * 7)\\n")
+for stream, text in s.stream():   # live output until the process exits
+    print(text, end="")
+s.close()                          # EOF → the process finishes`}</Code>
+    <P>
+      <Co>send()</Co> writes one turn to stdin, <Co>stream()</Co> yields <Co>(stream, text)</Co> chunks live until the process exits,
+      and <Co>close()</Co> sends EOF so it can finish. Sandboxes have the same primitive: <Co>sbx.session(command, ...)</Co>.
+    </P>
+
+    <H2>A long-lived agent (keyless)</H2>
+    <P>
+      Run a coding agent as a resident process and drive it across many prompts on one live session. Point it at a proxy that holds the
+      real model key, so no key ever lands on the Mac (see <A href="#" onClick={(e) => { e.preventDefault(); go("agents"); }}>Agents</A>).
+    </P>
+    <Code lang="python">{`import json, herds
+
+mac = herds.mac()
+s = mac.session(
+    "claude --print --input-format stream-json --output-format stream-json --verbose",
+    env={"ANTHROPIC_BASE_URL": PROXY, "ANTHROPIC_API_KEY": TOKEN},   # keyless via proxy
+)
+
+# Turn 1 — write one user message to stdin:
+s.send(json.dumps({"type": "user", "message": {"role": "user",
+        "content": "clone the repo and run tests"}}) + "\\n")
+for stream, text in s.stream():
+    print(text, end="")
+
+# Turn 2 — SAME live session; the agent's state persists:
+s.send(json.dumps({"type": "user", "message": {"role": "user",
+        "content": "now fix the first failing test"}}) + "\\n")
+for stream, text in s.stream():
+    print(text, end="")
+
+s.close()`}</Code>
+
+    <H2>Methods</H2>
+    <Params
+      rows={[
+        { name: "mac.session(command, ...)", type: "→ Session", desc: <>Start a resident process on the Mac. Options: <Co>image</Co>, <Co>volumes</Co>, <Co>workdir</Co>, <Co>env</Co>, <Co>network</Co>, <Co>inherit_home</Co>.</> },
+        { name: "sbx.session(command, ...)", type: "→ Session", desc: <>Start a resident process in a sandbox. Options: <Co>workdir</Co>, <Co>env</Co>, <Co>network</Co>.</> },
+        { name: "Session.send(data)", type: "→ None", desc: "Write one turn to the process's stdin." },
+        { name: "Session.stream()", type: "→ iterator", desc: <>Yield <Co>(stream, text)</Co> chunks live until the process exits.</> },
+        { name: "Session.close()", type: "→ None", desc: "Send EOF so the process finishes." },
+      ]}
+    />
+
+    <Callout type="note">
+      Idle sessions are reaped after <Co>HERDS_SESSION_IDLE_TIMEOUT_MS</Co> (default 30 minutes). Send a turn to keep one alive, or{" "}
+      <Co>close()</Co> it when you&rsquo;re done. Concurrent sessions count against{" "}
+      <A href="#" onClick={(e) => { e.preventDefault(); go("env-vars"); }}><Co>HERDS_MAX_LIVE_SANDBOXES</Co></A>.
+    </Callout>
+
+    <Divider />
+    <P>
+      Related: <A href="#" onClick={(e) => { e.preventDefault(); go("sandboxes"); }}>Sandboxes</A> ·{" "}
+      <A href="#" onClick={(e) => { e.preventDefault(); go("agents"); }}>Agents</A>.
+    </P>
   </>
 );
 
@@ -421,11 +557,26 @@ mac.run("xcodebuild archive", volumes={"out": vol})    # mounted as ./out`}</Cod
 .next  .turbo  .cache  .mypy_cache  .pytest_cache  .DS_Store  target  …`}</Code>
     <P>Add your own patterns with <Co>ignore=[...]</Co>, or wipe the destination first with <Co>clean=True</Co>.</P>
 
+    <H2>Read &amp; manage</H2>
+    <P>Read files back out, list what&rsquo;s there, and delete — without spinning up a command on the Mac.</P>
+    <Code lang="python">{`vol = herds.Volume.from_name("shots")
+
+data = vol.get("home.png")               # → bytes
+vol.get("home.png", "./home.png")        # also save it locally
+
+for entry in vol.listdir("screens"):     # name / dir / size / mtime_ms
+    print(entry["name"], entry["size"])
+
+vol.remove("screens/old.png")            # delete a file or dir (recursive)`}</Code>
+
     <H2>API</H2>
     <Params
       rows={[
         { name: "Volume.from_name(name)", type: "→ Volume", desc: "Reference a volume by name; created lazily on first write." },
         { name: "vol.put(local, remote='', ...)", type: "→ dict", desc: <>Copy a file/dir into the volume. Options: <Co>clean</Co>, <Co>ignore</Co>, <Co>machine</Co>.</> },
+        { name: "vol.get(remote, local=None)", type: "→ bytes", desc: <>Read a file out. If <Co>local</Co> is given, also save it there.</> },
+        { name: "vol.listdir(path='')", type: "→ list[dict]", desc: <>List a directory. Entries carry <Co>name</Co>, <Co>dir</Co>, <Co>size</Co>, <Co>mtime_ms</Co>.</> },
+        { name: "vol.remove(path)", type: "→ dict", desc: "Delete a file or dir (recursive). Path-traversal protected." },
         { name: "mac.push(local, volume, remote='')", type: "→ dict", desc: <>Sugar for <Co>Volume.from_name(volume).put(local, remote)</Co>.</> },
       ]}
     />
@@ -455,16 +606,36 @@ herds.Image.from_name("ruby:3.3")`}</Code>
     <Code lang="python">{`img = (
     herds.Image.xcode("26")
     .env_vars(CONFIGURATION="Release")
-    .run_commands("brew install swiftlint")   # run once before your command
+    .run_commands("brew install swiftlint")   # actually runs before your command
 )
-mac.run("xcodebuild -scheme App archive", image=img)`}</Code>
+mac.run("xcodebuild -scheme App archive", image=img)
+
+# Provision a browser toolchain once, cached thereafter:
+herds.Image.macos().run_commands("pip install playwright", "playwright install chromium")`}</Code>
+    <P>
+      <Co>run_commands</Co> genuinely executes on the Mac before your command, and is keyed by a content hash: the first run installs,
+      identical repeats are a no-op. It is no longer a best-effort stub.
+    </P>
 
     <Params
       rows={[
         { name: ".env_vars(**vars)", type: "→ Image", desc: "Add or override environment variables." },
-        { name: ".run_commands(*cmds)", type: "→ Image", desc: "Setup commands run once before your command (best-effort)." },
+        { name: ".run_commands(*cmds)", type: "→ Image", desc: "Setup commands that actually run on the Mac before your command. Cached by content hash — first run installs, repeats are a no-op." },
       ]}
     />
+
+    <H2>Snapshots</H2>
+    <P>
+      For heavier setup, provision a sandbox once and snapshot it into a reusable base — new sandboxes from that Image start
+      pre-populated.
+    </P>
+    <Code lang="python">{`with herds.Sandbox.create() as sbx:
+    sbx.exec("pip install playwright && playwright install chromium", check=True)
+    base = sbx.snapshot_filesystem(name="pw-base")   # → an Image
+
+img = herds.Image.from_id(base.image_id)             # reference it later
+herds.Sandbox.create(image=img)                       # starts pre-populated`}</Code>
+
     <Callout type="note">
       Selecting an Xcode never clobbers other concurrent jobs on the same Mac — each job gets its own <Co>DEVELOPER_DIR</Co>.
     </Callout>
@@ -679,17 +850,19 @@ const RestApi = () => (
       ]}
     />
 
-    <H2>Execution</H2>
+    <H2>Execution &amp; sessions</H2>
     <Endpoints
       rows={[
         { method: "POST", path: "/v1/machines/{id}/exec", desc: "Queue a command → request_id" },
         { method: "GET", path: "/v1/jobs", desc: "Recent jobs" },
         { method: "GET", path: "/v1/jobs/{request_id}/output", desc: "Job output (even mid-run)" },
         { method: "WS", path: "/v1/jobs/{request_id}/logs", desc: "Stream job frames live" },
+        { method: "POST", path: "/v1/machines/{id}/sessions", desc: "Start a resident session → request_id" },
+        { method: "POST", path: "/v1/sessions/{request_id}/stdin", desc: "Feed a stdin chunk to a running session" },
       ]}
     />
 
-    <H2>Sandboxes</H2>
+    <H2>Sandboxes &amp; tunnels</H2>
     <Endpoints
       rows={[
         { method: "GET", path: "/v1/sandboxes", desc: "List sandboxes" },
@@ -698,6 +871,9 @@ const RestApi = () => (
         { method: "DELETE", path: "/v1/sandboxes/{id}", desc: "Terminate + wipe workspace" },
         { method: "POST", path: "/v1/sandboxes/{id}/ports", desc: "Expose a port → URL" },
         { method: "PUT", path: "/v1/sandboxes/{id}/put", desc: "Push a file/dir (tar)" },
+        { method: "POST", path: "/v1/sandboxes/{id}/snapshot", desc: "Snapshot filesystem → image_id" },
+        { method: "WS", path: "/v1/machines/{machine_id}/tunnel/{port}", desc: "Raw bidirectional byte tunnel to a port" },
+        { method: "WS", path: "/v1/sandboxes/{sandbox_id}/tunnel/{port}", desc: "Raw bidirectional byte tunnel to a sandbox port" },
       ]}
     />
 
@@ -706,6 +882,9 @@ const RestApi = () => (
       rows={[
         { method: "GET", path: "/v1/volumes", desc: "List volumes" },
         { method: "PUT", path: "/v1/volumes/{name}/put", desc: "Push a file/dir" },
+        { method: "GET", path: "/v1/volumes/{name}/get", desc: "Read a file out" },
+        { method: "GET", path: "/v1/volumes/{name}/files", desc: "List a directory" },
+        { method: "DELETE", path: "/v1/volumes/{name}/file", desc: "Delete a file/dir" },
         { method: "GET", path: "/v1/secrets", desc: "List secrets (masked)" },
         { method: "POST", path: "/v1/secrets", desc: "Create a secret" },
         { method: "GET", path: "/v1/keys", desc: "List API keys (masked)" },
@@ -747,6 +926,10 @@ const EnvVars = () => (
         { name: "HERDS_DEVICE_TOKEN", type: "str", desc: "Daemon → control plane auth token." },
         { name: "HERDS_DATABASE_URL", type: "dsn", desc: "Postgres for the relay account store (relay only)." },
         { name: "HERDS_REQUIRE_AUTH", type: "0 | 1", default: "0", desc: "Enforce auth in the control plane." },
+        { name: "HERDS_MAX_LIVE_SANDBOXES", type: "int", default: "8", desc: "Max concurrent sandboxes/sessions before new ones queue." },
+        { name: "HERDS_ADMISSION_QUEUE_MAX", type: "int", default: "32", desc: "Queue depth once the cap is hit; past it, requests are rejected." },
+        { name: "HERDS_SESSION_IDLE_TIMEOUT_MS", type: "ms", default: "1800000", desc: "Idle resident session → reaped (30 min)." },
+        { name: "HERDS_SANDBOX_TTL_MS", type: "ms", default: "86400000", desc: "Untouched sandbox tree → garbage-collected (24 h)." },
       ]}
     />
     <Code lang="bash">{`export HERDS_CONTROL_PLANE="https://you.relay.herds.run"
@@ -767,6 +950,7 @@ export const PAGES: DocPage[] = [
 
   { id: "commands", group: "Python SDK", title: "Running commands", description: "run, stream, and map.", Body: Commands },
   { id: "sandboxes", group: "Python SDK", title: "Sandboxes", description: "Isolated, persistent workspaces.", Body: Sandboxes },
+  { id: "sessions", group: "Python SDK", title: "Sessions", description: "Long-lived processes you drive turn by turn.", Body: Sessions },
   { id: "agents", group: "Python SDK", title: "Agents (keyless)", description: "Run Claude Code / Codex on a Mac — no key on the machine.", Body: Agents },
   { id: "volumes", group: "Python SDK", title: "Volumes", description: "Durable named directories.", Body: Volumes },
   { id: "images", group: "Python SDK", title: "Images", description: "Select toolchains on the Mac.", Body: Images },
