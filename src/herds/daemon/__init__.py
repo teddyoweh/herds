@@ -23,6 +23,9 @@ from ..protocol import (
     exit_frame,
     stderr_frame,
     stdout_frame,
+    tunnel_close_frame,
+    tunnel_data_frame,
+    tunnel_ready_frame,
 )
 from . import machine
 from .executor import Executor
@@ -52,6 +55,8 @@ class Daemon:
         self._seqs: dict[str, itertools.count] = {}
         self._send_lock = asyncio.Lock()
         self._ws = None  # the live websocket connection, set per session
+        # Live raw TCP tunnels keyed by stream_id -> the local socket's writer.
+        self._tunnels: dict[str, asyncio.StreamWriter] = {}
 
     # -- connection --------------------------------------------------------- #
 
@@ -187,6 +192,12 @@ class Daemon:
                 await self._handle_fs(frame)
             elif frame.type == FrameType.HTTP_REQUEST:
                 await self._handle_http(frame)
+            elif frame.type == FrameType.TUNNEL_OPEN:
+                await self._handle_tunnel_open(frame)
+            elif frame.type == FrameType.TUNNEL_DATA:
+                await self._handle_tunnel_data(frame)
+            elif frame.type == FrameType.TUNNEL_CLOSE:
+                await self._handle_tunnel_close(frame)
             elif frame.type == FrameType.PING:
                 await self._send(Frame(type=FrameType.PONG, request_id=frame.request_id))
         except Exception as exc:  # never let one bad frame kill the socket
@@ -220,6 +231,77 @@ class Daemon:
             result = {"status": 502, "error": str(exc),
                       "body_b64": base64.b64encode(f"sandbox port {port} unreachable: {exc}".encode()).decode()}
         await self._send(Frame(type=FrameType.HTTP_RESPONSE, request_id=frame.request_id, data=result))
+
+    # -- raw TCP tunnels ---------------------------------------------------- #
+
+    async def _handle_tunnel_open(self, frame: Frame) -> None:
+        """Dial a sandbox-local TCP port and pump bytes both directions.
+
+        Unlike :meth:`_handle_http` (one buffered request/response), this opens a
+        persistent bidirectional pipe: everything the local port emits is shipped
+        up as :class:`TUNNEL_DATA` frames, and every :class:`TUNNEL_DATA` from the
+        control plane is written straight into the socket. This is what lets
+        long-lived protocols (CDP, websockets, a screencast) survive."""
+        d = frame.data
+        sid = d.get("stream_id")
+        port = int(d.get("port", 0))
+        host = d.get("host", "127.0.0.1")
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port), timeout=10
+            )
+        except Exception as exc:  # noqa: BLE001 — nothing listening / refused / timeout
+            await self._send(tunnel_close_frame(sid, error=str(exc)))
+            return
+        self._tunnels[sid] = writer
+        await self._send(tunnel_ready_frame(sid))
+        asyncio.create_task(self._pump_tunnel(sid, reader))
+
+    async def _pump_tunnel(self, sid: str, reader: asyncio.StreamReader) -> None:
+        """Drain the local socket into TUNNEL_DATA frames until it closes."""
+        try:
+            while True:
+                chunk = await reader.read(65536)
+                if not chunk:
+                    break
+                await self._send(tunnel_data_frame(sid, chunk))
+        except Exception:  # noqa: BLE001 — socket reset/closed mid-read
+            pass
+        finally:
+            writer = self._tunnels.pop(sid, None)
+            if writer is not None:
+                try:
+                    writer.close()
+                except Exception:  # noqa: BLE001
+                    pass
+            await self._send(tunnel_close_frame(sid))
+
+    async def _handle_tunnel_data(self, frame: Frame) -> None:
+        import base64
+
+        sid = frame.data.get("stream_id")
+        writer = self._tunnels.get(sid)
+        if writer is None:
+            return
+        try:
+            writer.write(base64.b64decode(frame.data.get("data_b64", "")))
+            await writer.drain()
+        except Exception:  # noqa: BLE001 — local side went away; tear the tunnel down
+            self._tunnels.pop(sid, None)
+            try:
+                writer.close()
+            except Exception:  # noqa: BLE001
+                pass
+            await self._send(tunnel_close_frame(sid))
+
+    async def _handle_tunnel_close(self, frame: Frame) -> None:
+        sid = frame.data.get("stream_id")
+        writer = self._tunnels.pop(sid, None)
+        if writer is not None:
+            try:
+                writer.close()
+            except Exception:  # noqa: BLE001
+                pass
 
     async def _handle_fs(self, frame: Frame) -> None:
         from . import files

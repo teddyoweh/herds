@@ -54,6 +54,58 @@ class HerdsError(RuntimeError):
     pass
 
 
+class TcpTunnel:
+    """A raw, bidirectional byte pipe to a sandbox-local TCP port.
+
+        with sbx.tunnel(9222) as t:      # e.g. a Chrome DevTools port
+            t.send(b"GET /json HTTP/1.0\\r\\n\\r\\n")
+            print(t.recv())
+
+    Backed by a WebSocket to the control plane, which relays the bytes to the Mac
+    where the daemon holds the real TCP connection. Unlike ``expose()`` (buffered
+    HTTP request/response) this survives long-lived, framed protocols such as
+    CDP, websockets, or a screencast. ``send`` writes bytes; ``recv`` reads the
+    next chunk (optionally with a timeout); ``close`` tears the tunnel down."""
+
+    def __init__(self, ws, *, url: str = ""):
+        self._ws = ws
+        self.url = url
+        self._closed = False
+
+    def send(self, data: bytes | str) -> None:
+        payload = data.encode() if isinstance(data, str) else bytes(data)
+        self._ws.send(payload)
+
+    def recv(self, timeout: Optional[float] = None) -> bytes:
+        """Return the next chunk of bytes from the remote port. Raises on close.
+
+        ``timeout`` (seconds) bounds the wait; ``None`` blocks until data or EOF."""
+        msg = self._ws.recv(timeout) if timeout is not None else self._ws.recv()
+        return msg if isinstance(msg, (bytes, bytearray)) else str(msg).encode()
+
+    def __iter__(self) -> Iterator[bytes]:
+        try:
+            for msg in self._ws:
+                yield msg if isinstance(msg, (bytes, bytearray)) else str(msg).encode()
+        except Exception:  # noqa: BLE001 — remote closed the tunnel
+            return
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self._ws.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def __enter__(self) -> "TcpTunnel":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
+
 def _raise_http(r) -> None:
     """Raise a clear HerdsError from a failed response — never crash on a
     non-JSON body (e.g. the relay's plain-text 502 when no Mac is connected)."""
@@ -131,6 +183,32 @@ class HerdsClient:
                 yield frame
                 if frame.type == FrameType.EXIT:
                     return
+
+    def tunnel_url(self, port: int, *, machine_id: Optional[str] = None,
+                   sandbox_id: Optional[str] = None) -> str:
+        """The ``ws://`` / ``wss://`` URL for a raw tunnel to ``port`` (with the
+        auth token attached when set). Address by ``sandbox_id`` or ``machine_id``
+        (defaulting to the idlest owned Mac)."""
+        ws_url = self.control_plane.replace("http://", "ws://").replace("https://", "wss://")
+        if sandbox_id:
+            path = f"/v1/sandboxes/{sandbox_id}/tunnel/{port}"
+        else:
+            path = f"/v1/machines/{machine_id or 'default'}/tunnel/{port}"
+        q = f"?token={self.api_key}" if self.api_key else ""
+        return f"{ws_url}{path}{q}"
+
+    def open_tunnel(self, port: int, *, machine_id: Optional[str] = None,
+                    sandbox_id: Optional[str] = None, timeout: float = 20.0) -> TcpTunnel:
+        """Open a raw bidirectional byte tunnel to a sandbox-local TCP port."""
+        from ..relay import _wss_ssl_context
+
+        url = self.tunnel_url(port, machine_id=machine_id, sandbox_id=sandbox_id)
+        try:
+            ws = ws_connect(url, max_size=None, open_timeout=timeout,
+                            ssl=_wss_ssl_context(url))
+        except Exception as exc:  # noqa: BLE001 — refused port / offline machine
+            raise HerdsError(f"could not open tunnel to port {port}: {exc}") from exc
+        return TcpTunnel(ws, url=url)
 
     def stop_sandbox(self, sandbox_id: str) -> dict:
         r = self._http.post(f"/v1/sandboxes/{sandbox_id}/stop")

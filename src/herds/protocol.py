@@ -41,10 +41,18 @@ class FrameType(str, Enum):
     WS_OPEN = "ws_open"                # relay -> host: open a local WS at {path, query}
     WS_DATA = "ws_data"                # both ways: a text message on {stream_id}
     WS_CLOSE = "ws_close"              # both ways: close {stream_id}
+    # RAW bidirectional TCP tunnel (multiplexed by stream_id). Unlike WS_* these
+    # carry opaque bytes (base64 in ``data_b64``), so CDP / websockets / a
+    # screencast — anything that can't survive buffered HTTP request/response —
+    # flows unmodified to a sandbox-local TCP port.
+    TUNNEL_OPEN = "tunnel_open"        # control -> agent: dial 127.0.0.1:{port} for {stream_id}
+    TUNNEL_DATA = "tunnel_data"        # both ways: a chunk of raw bytes on {stream_id}
+    TUNNEL_CLOSE = "tunnel_close"      # both ways: close {stream_id} (carries {error} on dial fail)
     PING = "ping"
 
     # agent -> control-plane (results streamed back up the socket)
     REGISTERED = "registered"          # handshake ack with machine facts
+    TUNNEL_READY = "tunnel_ready"      # agent -> control: raw tunnel {stream_id} dialed OK
     VOLUMES_REPORT = "volumes_report"  # periodic snapshot of on-disk volumes
     METRICS_REPORT = "metrics_report"  # periodic CPU/memory sample
     STDOUT = "stdout"
@@ -247,6 +255,41 @@ def sandbox_exec_frame(
             "timeout": timeout,
         },
     )
+
+
+def tunnel_open_frame(stream_id: str, port: int, *, host: str = "127.0.0.1") -> Frame:
+    """control -> agent: open a raw TCP tunnel to ``host:port`` on the Mac,
+    identified by ``stream_id``. The agent dials the port and pumps bytes both
+    ways as :func:`tunnel_data_frame`, replying :func:`tunnel_ready_frame` once
+    connected or :func:`tunnel_close_frame` (with ``error``) if the dial fails."""
+    return Frame(
+        type=FrameType.TUNNEL_OPEN,
+        data={"stream_id": stream_id, "port": int(port), "host": host},
+    )
+
+
+def tunnel_ready_frame(stream_id: str) -> Frame:
+    """agent -> control: the raw tunnel ``stream_id`` connected successfully."""
+    return Frame(type=FrameType.TUNNEL_READY, data={"stream_id": stream_id})
+
+
+def tunnel_data_frame(stream_id: str, payload: bytes) -> Frame:
+    """Both ways: a chunk of raw bytes on ``stream_id`` (base64 on the wire)."""
+    import base64
+
+    return Frame(
+        type=FrameType.TUNNEL_DATA,
+        data={"stream_id": stream_id, "data_b64": base64.b64encode(bytes(payload)).decode()},
+    )
+
+
+def tunnel_close_frame(stream_id: str, *, error: Optional[str] = None) -> Frame:
+    """Both ways: close ``stream_id``. ``error`` is set only when the agent could
+    not dial the port (so the initiating side can surface a clear failure)."""
+    data: dict[str, Any] = {"stream_id": stream_id}
+    if error:
+        data["error"] = error
+    return Frame(type=FrameType.TUNNEL_CLOSE, data=data)
 
 
 def stdout_frame(request_id: str, seq: int, text: str) -> Frame:

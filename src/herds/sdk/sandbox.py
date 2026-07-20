@@ -214,6 +214,29 @@ class Sandbox:
         ``localhost:port``) as a public URL routed through the control plane."""
         return self._client.expose_port(self.id, port, name).get("url") or f"/p/{self.id}/{port}/"
 
+    def tunnel(self, port: int, *, timeout: float = 20.0):
+        """Open a RAW bidirectional byte tunnel to ``localhost:port`` in this
+        sandbox — the connection ``expose()`` can't give you.
+
+            with sbx.tunnel(9222) as t:     # a Chrome DevTools / websocket port
+                t.send(b"...")
+                data = t.recv()
+
+        Where ``expose()`` is buffered HTTP request/response, this is a persistent
+        pipe: bytes flow both ways untouched, so CDP, websockets, and screencasts
+        survive. Returns a :class:`herds.TcpTunnel` (also a context manager)."""
+        if self._terminated:
+            raise RuntimeError(f"sandbox {self.id} has been terminated")
+        return self._client.open_tunnel(port, sandbox_id=self.id, timeout=timeout)
+
+    # Modal-flavoured alias.
+    connect_port = tunnel
+
+    def tunnel_url(self, port: int) -> str:
+        """The ``ws://``/``wss://`` URL for a raw tunnel to ``port`` in this
+        sandbox (handy for handing a raw port to a non-Python CDP client)."""
+        return self._client.tunnel_url(port, sandbox_id=self.id)
+
     def agent(
         self,
         goal: str,

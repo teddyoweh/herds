@@ -16,6 +16,7 @@ here are drawn so that change is local.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import os
 import sys
@@ -40,6 +41,9 @@ from ..protocol import (
     exec_frame,
     session_start_frame,
     stdin_frame,
+    tunnel_close_frame,
+    tunnel_data_frame,
+    tunnel_open_frame,
 )
 from .store import Store
 
@@ -69,9 +73,15 @@ class AgentConn:
         self.ws = ws
         self.info: dict = {}
         self.inflight: set[str] = set()   # request_ids dispatched here, awaiting EXIT
+        self.tunnels: set[str] = set()    # raw-tunnel stream_ids open on this agent
+        # One socket, many concurrent senders (exec dispatch, fs RPC, port proxy,
+        # and now high-throughput raw tunnels): serialize sends so frames never
+        # interleave on the wire.
+        self._send_lock = asyncio.Lock()
 
     async def send(self, frame: Frame) -> None:
-        await self.ws.send_text(frame.dump())
+        async with self._send_lock:
+            await self.ws.send_text(frame.dump())
 
 
 class Hub:
@@ -94,6 +104,10 @@ class Hub:
         self.metrics: dict[str, deque] = {}
         # In-flight request→response RPCs to agents (filesystem ops), by id.
         self.pending: dict[str, asyncio.Future] = {}
+        # Raw TCP tunnels: stream_id -> the client WebSocket bound to that tunnel,
+        # plus a future resolved when the agent confirms the dial (TUNNEL_READY).
+        self.tunnels: dict[str, WebSocket] = {}
+        self.tunnel_ready: dict[str, asyncio.Future] = {}
 
     def resolve_rpc(self, request_id: str, payload: dict) -> None:
         fut = self.pending.pop(request_id, None)
@@ -300,6 +314,30 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
                     store.record_metric_sample(machine_id, _t, _cpu, _mem)
                 elif frame.type in (FrameType.FS_RESULT, FrameType.HTTP_RESPONSE):
                     hub.resolve_rpc(frame.request_id, frame.data)
+                elif frame.type == FrameType.TUNNEL_READY:
+                    fut = hub.tunnel_ready.get(frame.data.get("stream_id"))
+                    if fut is not None and not fut.done():
+                        fut.set_result(True)
+                elif frame.type == FrameType.TUNNEL_DATA:
+                    cws = hub.tunnels.get(frame.data.get("stream_id"))
+                    if cws is not None:
+                        try:
+                            await cws.send_bytes(base64.b64decode(frame.data.get("data_b64", "")))
+                        except Exception:  # noqa: BLE001 — client vanished
+                            pass
+                elif frame.type == FrameType.TUNNEL_CLOSE:
+                    sid = frame.data.get("stream_id")
+                    conn.tunnels.discard(sid)
+                    fut = hub.tunnel_ready.get(sid)
+                    if fut is not None and not fut.done():
+                        # Dial failed before it was ever ready.
+                        fut.set_exception(RuntimeError(frame.data.get("error") or "tunnel closed"))
+                    cws = hub.tunnels.pop(sid, None)
+                    if cws is not None:
+                        try:
+                            await cws.close()
+                        except Exception:  # noqa: BLE001
+                            pass
                 elif frame.type == FrameType.EXIT:
                     hub.started.discard(frame.request_id)
                     conn.inflight.discard(frame.request_id)
@@ -321,6 +359,19 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
             pass
         finally:
             hub.remove_agent(machine_id)
+            # Tear down any raw tunnels this Mac was carrying so their client
+            # WebSockets don't dangle forever after the daemon drops.
+            for sid in list(conn.tunnels):
+                fut = hub.tunnel_ready.pop(sid, None)
+                if fut is not None and not fut.done():
+                    fut.set_exception(RuntimeError("machine disconnected"))
+                cws = hub.tunnels.pop(sid, None)
+                if cws is not None:
+                    try:
+                        await cws.close()
+                    except Exception:  # noqa: BLE001
+                        pass
+            conn.tunnels.clear()
             # Unblock any SDK call waiting on a job this Mac was running. Without a
             # synthetic EXIT the log stream — and `mac.run()` — would hang forever.
             for rid in list(conn.inflight):
@@ -684,6 +735,106 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
         finally:
             hub.unsubscribe(request_id, q)
             hub.cleanup(request_id)
+
+    # -- raw TCP tunnels: a bidirectional pipe to a sandbox-local port ------- #
+
+    async def _serve_tunnel(ws: WebSocket, machine_id: str, port: int, owner: str) -> None:
+        """Bridge a client WebSocket to ``127.0.0.1:port`` on the Mac, byte-for-byte.
+
+        The client sends/receives binary WS messages; each is relayed as a
+        ``TUNNEL_DATA`` frame over the agent socket, where the daemon pumps it in
+        and out of a real TCP connection. This is the raw counterpart to the
+        buffered ``_proxy_port`` HTTP path — it survives CDP, websockets, etc."""
+        if machine_id in ("default", "mac", "_"):
+            try:
+                machine_id = _resolve_default_machine(store, hub, owner)
+            except HTTPException:
+                await ws.close(code=4404)
+                return
+        agent = hub.agent(machine_id)
+        if agent is None:
+            await ws.close(code=4409)
+            return
+        if REQUIRE_AUTH and agent.owner != owner:
+            await ws.close(code=4403)
+            return
+
+        await ws.accept()
+        sid = "tun_" + uuid.uuid4().hex[:12]
+        hub.tunnels[sid] = ws
+        agent.tunnels.add(sid)
+        fut = asyncio.get_running_loop().create_future()
+        hub.tunnel_ready[sid] = fut
+        try:
+            await agent.send(tunnel_open_frame(sid, port))
+        except Exception:  # noqa: BLE001 — socket died mid-open
+            hub.tunnels.pop(sid, None)
+            hub.tunnel_ready.pop(sid, None)
+            agent.tunnels.discard(sid)
+            await ws.close(code=4409)
+            return
+        # Wait for the daemon to confirm the local dial before pumping bytes, so a
+        # refused port fails fast and cleanly instead of silently dropping data.
+        try:
+            await asyncio.wait_for(fut, timeout=15)
+        except (asyncio.TimeoutError, Exception):  # noqa: BLE001 — dial failed/timeout
+            hub.tunnels.pop(sid, None)
+            hub.tunnel_ready.pop(sid, None)
+            agent.tunnels.discard(sid)
+            try:
+                await agent.send(tunnel_close_frame(sid))
+            except Exception:  # noqa: BLE001
+                pass
+            await ws.close(code=4502)
+            return
+        hub.tunnel_ready.pop(sid, None)
+        try:
+            while True:
+                msg = await ws.receive()
+                if msg.get("type") == "websocket.disconnect":
+                    break
+                data = msg.get("bytes")
+                if data is None:
+                    text = msg.get("text")
+                    data = text.encode() if text is not None else b""
+                if data:
+                    await agent.send(tunnel_data_frame(sid, data))
+        except WebSocketDisconnect:
+            pass
+        except Exception:  # noqa: BLE001
+            pass
+        finally:
+            hub.tunnels.pop(sid, None)
+            hub.tunnel_ready.pop(sid, None)
+            agent.tunnels.discard(sid)
+            try:
+                await agent.send(tunnel_close_frame(sid))
+            except Exception:  # noqa: BLE001
+                pass
+
+    @app.websocket("/v1/machines/{machine_id}/tunnel/{port}")
+    async def machine_tunnel(ws: WebSocket, machine_id: str, port: int):
+        owner = DEFAULT_OWNER
+        if REQUIRE_AUTH:
+            owner = store.owner_for_api_key(ws.query_params.get("token", "") or "")
+            if owner is None:
+                await ws.close(code=4401)
+                return
+        await _serve_tunnel(ws, machine_id, port, owner)
+
+    @app.websocket("/v1/sandboxes/{sandbox_id}/tunnel/{port}")
+    async def sandbox_tunnel(ws: WebSocket, sandbox_id: str, port: int):
+        owner = DEFAULT_OWNER
+        if REQUIRE_AUTH:
+            owner = store.owner_for_api_key(ws.query_params.get("token", "") or "")
+            if owner is None:
+                await ws.close(code=4401)
+                return
+        sb = store.get_sandbox(sandbox_id)
+        if not sb:
+            await ws.close(code=4404)
+            return
+        await _serve_tunnel(ws, sb["machine_id"], port, owner)
 
     @app.get("/v1/jobs")
     def list_jobs(
