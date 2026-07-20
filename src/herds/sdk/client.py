@@ -180,7 +180,7 @@ class HerdsClient:
         from ..relay import _wss_ssl_context
 
         log_url = f"{ws_url}/v1/jobs/{request_id}/logs{q}"
-        with ws_connect(log_url, max_size=None, ssl=_wss_ssl_context(log_url)) as ws:
+        with ws_connect(log_url, max_size=None, close_timeout=5, ssl=_wss_ssl_context(log_url)) as ws:
             for raw in ws:
                 frame = Frame.load(raw)
                 yield frame
@@ -246,7 +246,7 @@ class HerdsClient:
         from ..relay import _wss_ssl_context
 
         log_url = f"{ws_url}/v1/jobs/{request_id}/logs{q}"
-        with ws_connect(log_url, max_size=None, ssl=_wss_ssl_context(log_url)) as ws:
+        with ws_connect(log_url, max_size=None, close_timeout=5, ssl=_wss_ssl_context(log_url)) as ws:
             for raw in ws:
                 frame = Frame.load(raw)
                 if on_output and frame.type in (FrameType.STDOUT, FrameType.STDERR):

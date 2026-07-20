@@ -239,3 +239,34 @@ async def test_daemon_emits_session_ready_before_exit(herds_home):
         f"SESSION_READY must precede EXIT: {types}"
     ready = next(f for f in sent if f.type == FrameType.SESSION_READY)
     assert ready.request_id == "sready"
+
+
+def test_session_close_tears_down_stream():
+    """Breaking out of stream() then close() must EOF stdin AND close the log
+    stream generator (which owns the WebSocket + its reader thread) — otherwise
+    the socket leaks and blocks interpreter exit."""
+    from herds.sdk.sandbox import Session
+
+    class FakeClient:
+        def __init__(self):
+            self.eof = False
+            self.stream_closed = False
+
+        def send_stdin(self, rid, data="", *, eof=False):
+            if eof:
+                self.eof = True
+
+        def stream_logs(self, rid):
+            try:
+                while True:  # an endless live stream, like a resident session
+                    yield Frame(type=FrameType.STDOUT, request_id=rid, data={"text": "tick\n"})
+            finally:
+                self.stream_closed = True  # what the real `with ws:` __exit__ does
+
+    fc = FakeClient()
+    s = Session("rid1", "m1", client=fc)
+    it = s.stream()
+    assert next(it) == ("stdout", "tick\n")   # consume one chunk, then abandon
+    s.close()
+    assert fc.eof is True, "close() must EOF the session stdin"
+    assert fc.stream_closed is True, "close() must close the log stream (no leaked WS)"

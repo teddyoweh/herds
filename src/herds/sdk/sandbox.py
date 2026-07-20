@@ -321,22 +321,53 @@ class Session:
         self.id = request_id
         self.machine_id = machine_id
         self._client = client or default_client()
+        self._log_gen = None   # the live stream_logs generator (holds the log WS)
 
     def send(self, data: str) -> None:
         """Write a chunk to the session's stdin."""
         self._client.send_stdin(self.id, data)
 
     def stream(self) -> Iterator[tuple[str, str]]:
-        """Yield ``(stream, text)`` output chunks live until the session exits."""
-        for frame in self._client.stream_logs(self.id):
-            if frame.type == FrameType.STDOUT:
-                yield "stdout", frame.data.get("text", "")
-            elif frame.type == FrameType.STDERR:
-                yield "stderr", frame.data.get("text", "")
+        """Yield ``(stream, text)`` output chunks live until the session exits.
+
+        The underlying log WebSocket is tracked so :meth:`close` can tear it down
+        even if you ``break`` out early — otherwise the socket (and its reader
+        thread) would leak and block interpreter exit."""
+        gen = self._client.stream_logs(self.id)
+        self._log_gen = gen
+        try:
+            for frame in gen:
+                if frame.type == FrameType.STDOUT:
+                    yield "stdout", frame.data.get("text", "")
+                elif frame.type == FrameType.STDERR:
+                    yield "stderr", frame.data.get("text", "")
+        finally:
+            try:
+                gen.close()   # GeneratorExit -> stream_logs' `with ws` closes the socket
+            except Exception:
+                pass
+            if self._log_gen is gen:
+                self._log_gen = None
 
     def close(self) -> None:
-        """Send EOF on stdin so the resident process can finish and exit."""
-        self._client.send_stdin(self.id, "", eof=True)
+        """End the session: EOF its stdin (so a reader loop finishes) AND close
+        the log stream if one is open, so nothing dangles."""
+        try:
+            self._client.send_stdin(self.id, "", eof=True)
+        except Exception:
+            pass
+        gen, self._log_gen = self._log_gen, None
+        if gen is not None:
+            try:
+                gen.close()   # closes the log WS + its reader thread
+            except Exception:
+                pass
+
+    def __enter__(self) -> "Session":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
 
     def __repr__(self) -> str:
         return f"Session({self.id!r} on {self.machine_id!r})"
