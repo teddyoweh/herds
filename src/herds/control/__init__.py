@@ -1223,6 +1223,26 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
             raise HTTPException(404, "no such key")
         return {"revoked": prefix}
 
+    @app.post("/v1/admin/keys")
+    def create_key_for_owner(body: "AdminKeyBody", authorization: Optional[str] = Header(None)):
+        """Admin-only: mint a key on behalf of ANOTHER owner. Lets a central
+        operator (e.g. Spawn) issue per-user device tokens whose owner is that
+        user's id, so each user only sees/drives their own connected Macs."""
+        require_scope(authorization, "admin")
+        scope = body.scope if body.scope in ("read", "run", "admin") else "run"
+        if not body.owner:
+            raise HTTPException(400, "owner is required")
+        key = store.create_api_key(body.owner, body.label or "device", scope)
+        return {"key": key, "owner": body.owner, "scope": scope}
+
+    @app.delete("/v1/admin/keys/{prefix}")
+    def revoke_key_for_owner(prefix: str, owner: str, authorization: Optional[str] = Header(None)):
+        """Admin-only: revoke a key belonging to another owner (by masked prefix)."""
+        require_scope(authorization, "admin")
+        if not store.delete_api_key_by_masked(owner, prefix):
+            raise HTTPException(404, "no such key")
+        return {"revoked": prefix}
+
     # -- exposed ports: expose a sandbox server as a URL ------------------- #
 
     def _port_url(sandbox_id: str, port: int, name: str) -> str:
@@ -1402,6 +1422,12 @@ class SnapshotBody(BaseModel):
 class KeyBody(BaseModel):
     label: str = ""
     scope: str = "run"   # read | run | admin (default: run — execute, but can't mint keys)
+
+
+class AdminKeyBody(BaseModel):
+    owner: str           # the owner id the minted key belongs to (e.g. a Spawn user id)
+    label: str = "device"
+    scope: str = "run"
 
 
 class PortBody(BaseModel):
