@@ -21,6 +21,7 @@ from ..protocol import (
     FrameType,
     error_frame,
     exit_frame,
+    session_ready_frame,
     stderr_frame,
     stdout_frame,
     tunnel_close_frame,
@@ -425,6 +426,10 @@ class Daemon:
             self._seqs.pop(request_id, None)
             await self._send(exit_frame(request_id, 127, 0))
             return
+
+        # The process is live now — tell the control plane so its start_session
+        # POST can return a handle that's immediately usable (no stdin race).
+        await self._send(session_ready_frame(request_id))
 
         code, ms = await self.executor.session_wait(request_id)
         self._seqs.pop(request_id, None)

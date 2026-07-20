@@ -90,6 +90,11 @@ SANDBOX_TTL_MS = _int_env("HERDS_SANDBOX_TTL_MS", 24 * 60 * 60 * 1000)
 # How often the background reaper wakes to run idle-reap + GC. Default 60 s.
 REAP_INTERVAL_MS = _int_env("HERDS_REAP_INTERVAL_MS", 60 * 1000)
 
+# How long start_session blocks waiting for the agent to confirm the resident
+# process is live (SESSION_READY) before returning best-effort. Generous, because
+# a session may provision a toolchain (setup_commands) before it comes up.
+SESSION_START_TIMEOUT_S = _float_env("HERDS_SESSION_START_TIMEOUT_S", 120.0)
+
 
 # --------------------------------------------------------------------------- #
 # Config (control-plane URL, active machine, profile)

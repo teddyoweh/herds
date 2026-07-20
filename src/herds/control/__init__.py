@@ -109,6 +109,9 @@ class Hub:
         # plus a future resolved when the agent confirms the dial (TUNNEL_READY).
         self.tunnels: dict[str, WebSocket] = {}
         self.tunnel_ready: dict[str, asyncio.Future] = {}
+        # Resident sessions: request_id -> future resolved when the agent confirms
+        # the process is live (SESSION_READY), so start_session can block until then.
+        self.session_ready: dict[str, asyncio.Future] = {}
 
     def resolve_rpc(self, request_id: str, payload: dict) -> None:
         fut = self.pending.pop(request_id, None)
@@ -320,6 +323,10 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
                     fut = hub.tunnel_ready.get(frame.data.get("stream_id"))
                     if fut is not None and not fut.done():
                         fut.set_result(True)
+                elif frame.type == FrameType.SESSION_READY:
+                    fut = hub.session_ready.get(frame.request_id)
+                    if fut is not None and not fut.done():
+                        fut.set_result(True)
                 elif frame.type == FrameType.TUNNEL_DATA:
                     cws = hub.tunnels.get(frame.data.get("stream_id"))
                     if cws is not None:
@@ -379,6 +386,10 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
             for rid in list(conn.inflight):
                 if rid not in hub.finished:
                     hub.started.discard(rid)
+                    # Unblock a start_session still waiting on SESSION_READY.
+                    sfut = hub.session_ready.pop(rid, None)
+                    if sfut is not None and not sfut.done():
+                        sfut.set_exception(RuntimeError("machine disconnected"))
                     hub.publish(Frame(type=FrameType.EXIT, request_id=rid,
                                       data={"exit_code": -1, "error": "machine disconnected"}))
                     store.update_job(rid, JobState.FAILED, -1, None)
@@ -491,13 +502,34 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
                 inherit_home=req.inherit_home, keep_alive=req.keep_alive,
                 setup_commands=req.setup_commands, base=req.base,
             )
+        # For a resident session, wait until the agent confirms the process is
+        # live (SESSION_READY) before returning — so the handle the caller gets
+        # back is immediately usable and an early stdin write can't race the
+        # launch. Mirrors Modal's create contract. Set up the future BEFORE send.
+        session_fut = None
+        if kind == "session":
+            session_fut = asyncio.get_running_loop().create_future()
+            hub.session_ready[request_id] = session_fut
         try:
             await agent.send(frame)
         except Exception:  # the socket died mid-send — don't strand the job
             agent.inflight.discard(request_id)
+            if session_fut is not None:
+                hub.session_ready.pop(request_id, None)
             store.update_job(request_id, JobState.FAILED, -1, None)
             raise HTTPException(409, f"machine {machine_id} disconnected during dispatch")
         store.update_job(request_id, JobState.DISPATCHED)
+        if session_fut is not None:
+            try:
+                # Generous: a session may provision a toolchain before it's live.
+                await asyncio.wait_for(session_fut, timeout=config.SESSION_START_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                pass  # best-effort — return anyway; the process may still be coming up
+            except Exception:  # agent disconnected mid-launch — don't strand the caller
+                hub.session_ready.pop(request_id, None)
+                raise HTTPException(409, f"machine {machine_id} disconnected during session start")
+            finally:
+                hub.session_ready.pop(request_id, None)
         return request_id
 
     @app.post("/v1/machines/{machine_id}/exec", response_model=ExecAccepted)

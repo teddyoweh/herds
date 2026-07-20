@@ -56,6 +56,7 @@ class FrameType(str, Enum):
     # agent -> control-plane (results streamed back up the socket)
     REGISTERED = "registered"          # handshake ack with machine facts
     TUNNEL_READY = "tunnel_ready"      # agent -> control: raw tunnel {stream_id} dialed OK
+    SESSION_READY = "session_ready"    # agent -> control: a resident session's process is live
     VOLUMES_REPORT = "volumes_report"  # periodic snapshot of on-disk volumes
     METRICS_REPORT = "metrics_report"  # periodic CPU/memory sample
     STDOUT = "stdout"
@@ -302,6 +303,16 @@ def tunnel_open_frame(stream_id: str, port: int, *, host: str = "127.0.0.1") -> 
 def tunnel_ready_frame(stream_id: str) -> Frame:
     """agent -> control: the raw tunnel ``stream_id`` connected successfully."""
     return Frame(type=FrameType.TUNNEL_READY, data={"stream_id": stream_id})
+
+
+def session_ready_frame(request_id: str) -> Frame:
+    """agent -> control: a resident session's process is launched and live.
+
+    Lets the control plane block ``POST /v1/machines/{id}/sessions`` until the
+    process actually exists — so the returned handle is immediately usable and an
+    early ``stdin`` write can't race ahead of the process (Modal's ``create``
+    contract: the sandbox is running by the time you hold its handle)."""
+    return Frame(type=FrameType.SESSION_READY, request_id=request_id, data={})
 
 
 def tunnel_data_frame(stream_id: str, payload: bytes) -> Frame:

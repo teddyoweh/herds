@@ -15,6 +15,7 @@ from herds.control import create_app
 from herds.protocol import (
     Frame,
     FrameType,
+    session_ready_frame,
     session_start_frame,
     stdin_frame,
 )
@@ -165,3 +166,76 @@ def test_start_session_no_machine_409():
     c = TestClient(app)
     r = c.post("/v1/machines/default/sessions", json={"command": "cat"})
     assert r.status_code == 409
+
+
+def test_session_ready_frame_roundtrip():
+    f = session_ready_frame("sess_x")
+    back = Frame.load(f.dump())
+    assert back.type == FrameType.SESSION_READY
+    assert back.request_id == "sess_x"
+
+
+@pytest.mark.asyncio
+async def test_session_streams_incrementally(herds_home):
+    """Output must arrive turn-by-turn as it's produced — NOT batched at exit.
+    A process prints A, sleeps, prints B; the two chunks must land ~the sleep
+    apart. If streaming were buffered until exit, the gap would be ~0."""
+    import time as _t
+    from herds.daemon.executor import Executor
+
+    ex = Executor()
+    stamps: list[tuple[float, str]] = []
+
+    async def sink(stream, text):
+        if stream == "stdout":
+            stamps.append((_t.monotonic(), text))
+
+    prog = (
+        "import sys, time\n"
+        "sys.stdout.write('AAA\\n'); sys.stdout.flush()\n"
+        "time.sleep(0.5)\n"
+        "sys.stdout.write('BBB\\n'); sys.stdout.flush()\n"
+    )
+    await ex.start_session("strm", ["python3", "-u", "-c", prog], sink=sink)
+
+    async def when(needle, timeout=8.0):
+        loop = asyncio.get_event_loop()
+        dl = loop.time() + timeout
+        while loop.time() < dl:
+            for ts, t in stamps:
+                if needle in t:
+                    return ts
+            await asyncio.sleep(0.02)
+        raise AssertionError(f"never saw {needle!r}; got {stamps!r}")
+
+    t_a = await when("AAA")
+    t_b = await when("BBB")
+    assert t_b - t_a >= 0.3, f"chunks arrived batched, not streamed (gap {t_b - t_a:.3f}s)"
+    await asyncio.wait_for(ex.session_wait("strm"), timeout=10)
+
+
+@pytest.mark.asyncio
+async def test_daemon_emits_session_ready_before_exit(herds_home):
+    """The daemon must emit SESSION_READY once the process is live (and before
+    EXIT). That ack is what lets the control plane block start_session until the
+    handle is usable — killing the stdin-before-launch race."""
+    from herds.daemon import Daemon
+
+    d = Daemon("http://x", "m1", None)
+    sent: list = []
+
+    class FakeWS:
+        async def send(self, text):
+            sent.append(Frame.load(text))
+
+    d._ws = FakeWS()
+    frame = session_start_frame("sready", ["python3", "-c", "import sys; sys.stdout.write('hi\\n')"])
+    await asyncio.wait_for(d._handle_session_start(frame), timeout=15)
+
+    types = [f.type for f in sent]
+    assert FrameType.SESSION_READY in types, f"no SESSION_READY in {types}"
+    assert FrameType.EXIT in types, f"no EXIT in {types}"
+    assert types.index(FrameType.SESSION_READY) < types.index(FrameType.EXIT), \
+        f"SESSION_READY must precede EXIT: {types}"
+    ready = next(f for f in sent if f.type == FrameType.SESSION_READY)
+    assert ready.request_id == "sready"

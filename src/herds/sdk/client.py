@@ -158,8 +158,11 @@ class HerdsClient:
         return r.json()["request_id"]
 
     def _start_session(self, machine_id: str, req: ExecRequest) -> str:
-        """Start a resident stdin-fed session; return its request_id (session id)."""
-        r = self._http.post(f"/v1/machines/{machine_id}/sessions", json=req.model_dump())
+        """Start a resident stdin-fed session; return its request_id (session id).
+
+        Blocks server-side until the process is live (so the handle is usable
+        immediately); allow more than the control plane's start timeout."""
+        r = self._http.post(f"/v1/machines/{machine_id}/sessions", json=req.model_dump(), timeout=150)
         if r.status_code >= 400:
             _raise_http(r)
         return r.json()["request_id"]
