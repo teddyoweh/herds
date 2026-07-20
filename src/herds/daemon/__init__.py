@@ -167,6 +167,15 @@ class Daemon:
         try:
             if frame.type in (FrameType.EXEC, FrameType.SANDBOX_EXEC):
                 await self._handle_exec(frame)
+            elif frame.type == FrameType.SESSION_START:
+                await self._handle_session_start(frame)
+            elif frame.type == FrameType.STDIN:
+                if frame.request_id:
+                    await self.executor.session_send(
+                        frame.request_id,
+                        frame.data.get("data", ""),
+                        eof=bool(frame.data.get("eof")),
+                    )
             elif frame.type == FrameType.SANDBOX_CREATE:
                 await self._handle_sandbox_create(frame)
             elif frame.type == FrameType.SANDBOX_TERMINATE:
@@ -267,6 +276,44 @@ class Daemon:
             inherit_home=d.get("inherit_home", False),
             keep_alive=d.get("keep_alive", False),
         )
+
+    async def _handle_session_start(self, frame: Frame) -> None:
+        """Start a resident, stdin-fed session and stream it until it exits.
+
+        This handler task lives for the whole session: it launches the process,
+        then blocks on ``session_wait``. Meanwhile STDIN frames arrive as their
+        own tasks and are routed to the live process by request_id — so input can
+        flow in from any worker via the control plane while output streams back."""
+        request_id = frame.request_id
+        d = frame.data
+
+        async def sink(stream: str, text: str) -> None:
+            seq = self._next_seq(request_id)
+            f = (stdout_frame if stream == "stdout" else stderr_frame)(request_id, seq, text)
+            await self._send(f)
+
+        try:
+            await self.executor.start_session(
+                request_id,
+                d["command"],
+                sink=sink,
+                sandbox_id=d.get("sandbox_id"),
+                image=d.get("image"),
+                volumes=d.get("volumes"),
+                workdir=d.get("workdir"),
+                env=d.get("env"),
+                network=d.get("network", True),
+                inherit_home=d.get("inherit_home", False),
+            )
+        except Exception as exc:  # launch failed — report a terminal EXIT
+            await self._send(error_frame(request_id, str(exc)))
+            self._seqs.pop(request_id, None)
+            await self._send(exit_frame(request_id, 127, 0))
+            return
+
+        code, ms = await self.executor.session_wait(request_id)
+        self._seqs.pop(request_id, None)
+        await self._send(exit_frame(request_id, code, ms))
 
     async def _run_and_stream(self, request_id, command, **kwargs) -> None:
         async def sink(stream: str, text: str) -> None:

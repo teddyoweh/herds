@@ -105,6 +105,33 @@ class HerdsClient:
             _raise_http(r)
         return r.json()["request_id"]
 
+    def _start_session(self, machine_id: str, req: ExecRequest) -> str:
+        """Start a resident stdin-fed session; return its request_id (session id)."""
+        r = self._http.post(f"/v1/machines/{machine_id}/sessions", json=req.model_dump())
+        if r.status_code >= 400:
+            _raise_http(r)
+        return r.json()["request_id"]
+
+    def send_stdin(self, request_id: str, data: str = "", *, eof: bool = False) -> None:
+        """Feed a chunk (and/or EOF) to a running session's stdin."""
+        r = self._http.post(f"/v1/sessions/{request_id}/stdin", json={"data": data, "eof": eof})
+        if r.status_code >= 400:
+            _raise_http(r)
+
+    def stream_logs(self, request_id: str) -> Iterator[Frame]:
+        """Yield every frame for an already-started request_id, until EXIT."""
+        ws_url = self.control_plane.replace("http://", "ws://").replace("https://", "wss://")
+        q = f"?token={self.api_key}" if self.api_key else ""
+        from ..relay import _wss_ssl_context
+
+        log_url = f"{ws_url}/v1/jobs/{request_id}/logs{q}"
+        with ws_connect(log_url, max_size=None, ssl=_wss_ssl_context(log_url)) as ws:
+            for raw in ws:
+                frame = Frame.load(raw)
+                yield frame
+                if frame.type == FrameType.EXIT:
+                    return
+
     def stop_sandbox(self, sandbox_id: str) -> dict:
         r = self._http.post(f"/v1/sandboxes/{sandbox_id}/stop")
         if r.status_code >= 400:

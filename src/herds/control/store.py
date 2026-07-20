@@ -103,6 +103,29 @@ CREATE TABLE IF NOT EXISTS schedules (
     last_run_ms  INTEGER,
     created_ms   INTEGER
 );
+CREATE TABLE IF NOT EXISTS apps (
+    name           TEXT NOT NULL,
+    owner          TEXT NOT NULL,
+    description    TEXT,
+    created_ms     INTEGER,
+    last_active_ms INTEGER,
+    deployed_ms    INTEGER,
+    PRIMARY KEY (name, owner)
+);
+CREATE TABLE IF NOT EXISTS app_functions (
+    app        TEXT NOT NULL,
+    owner      TEXT NOT NULL,
+    name       TEXT NOT NULL,
+    source     TEXT NOT NULL,
+    image      TEXT,
+    schedule   TEXT,
+    kind       TEXT NOT NULL DEFAULT 'function',
+    port       INTEGER,
+    url        TEXT,
+    sandbox_id TEXT,
+    created_ms INTEGER,
+    PRIMARY KEY (app, owner, name)
+);
 """
 
 
@@ -169,6 +192,7 @@ class Store:
         self.db.executescript(_SCHEMA)
         self.db.commit()
         self._ensure_scope_column()
+        self._ensure_app_columns()
 
     # -- machines ----------------------------------------------------------- #
 
@@ -263,6 +287,22 @@ class Store:
         except Exception:  # noqa: BLE001 — column already exists
             pass
 
+    def _ensure_app_columns(self) -> None:
+        # Group jobs/sandboxes under a named app — added to pre-app databases.
+        for table in ("jobs", "sandboxes"):
+            try:
+                self.db.execute(f"ALTER TABLE {table} ADD COLUMN app TEXT")
+                self.db.commit()
+            except Exception:  # noqa: BLE001 — column already exists
+                pass
+        # Web-endpoint columns on app_functions (added after the table shipped).
+        for col in ("port INTEGER", "url TEXT", "sandbox_id TEXT"):
+            try:
+                self.db.execute(f"ALTER TABLE app_functions ADD COLUMN {col}")
+                self.db.commit()
+            except Exception:  # noqa: BLE001 — column already exists
+                pass
+
     def create_api_key(self, owner: str, label: str = "", scope: str = "admin") -> str:
         key = "herds_sk_" + secrets.token_urlsafe(24)
         self.db.execute(
@@ -333,12 +373,13 @@ class Store:
         command: str,
         created_ms: int,
         sandbox_id: Optional[str] = None,
+        app: Optional[str] = None,
     ) -> None:
         self.db.execute(
             """INSERT OR REPLACE INTO jobs
-               (request_id, machine_id, sandbox_id, command, state, created_ms)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (request_id, machine_id, sandbox_id, command, JobState.QUEUED.value, created_ms),
+               (request_id, machine_id, sandbox_id, command, state, created_ms, app)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (request_id, machine_id, sandbox_id, command, JobState.QUEUED.value, created_ms, app),
         )
         self.db.commit()
 
@@ -375,6 +416,7 @@ class Store:
         machine_id: Optional[str] = None,
         sandbox_id: Optional[str] = None,
         limit: int = 50,
+        app: Optional[str] = None,
     ) -> list[dict]:
         clauses, params = [], []
         if machine_id:
@@ -383,11 +425,14 @@ class Store:
         if sandbox_id:
             clauses.append("sandbox_id=?")
             params.append(sandbox_id)
+        if app:
+            clauses.append("app=?")
+            params.append(app)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         params.append(limit)
         rows = self.db.execute(
             f"""SELECT request_id, machine_id, sandbox_id, command, state,
-                       exit_code, duration_ms, created_ms
+                       exit_code, duration_ms, created_ms, app
                 FROM jobs {where} ORDER BY created_ms DESC LIMIT ?""",
             params,
         ).fetchall()
@@ -396,31 +441,34 @@ class Store:
     # -- sandboxes ---------------------------------------------------------- #
 
     def touch_sandbox(
-        self, sandbox_id: str, machine_id: str, image: Optional[str], when_ms: int
+        self, sandbox_id: str, machine_id: str, image: Optional[str], when_ms: int,
+        app: Optional[str] = None,
     ) -> None:
         """Register a sandbox on first use; bump its activity on every exec."""
         self.db.execute(
             """INSERT INTO sandboxes
-                 (sandbox_id, machine_id, image, status, created_ms, last_used_ms, exec_count)
-               VALUES (?, ?, ?, 'active', ?, ?, 1)
+                 (sandbox_id, machine_id, image, status, created_ms, last_used_ms, exec_count, app)
+               VALUES (?, ?, ?, 'active', ?, ?, 1, ?)
                ON CONFLICT(sandbox_id) DO UPDATE SET
                  last_used_ms=excluded.last_used_ms,
                  exec_count=sandboxes.exec_count + 1,
                  status='active',
-                 image=COALESCE(sandboxes.image, excluded.image)""",
-            (sandbox_id, machine_id, image, when_ms, when_ms),
+                 image=COALESCE(sandboxes.image, excluded.image),
+                 app=COALESCE(sandboxes.app, excluded.app)""",
+            (sandbox_id, machine_id, image, when_ms, when_ms, app),
         )
         self.db.commit()
 
     def register_sandbox(
-        self, sandbox_id: str, machine_id: str, image: Optional[str], when_ms: int
+        self, sandbox_id: str, machine_id: str, image: Optional[str], when_ms: int,
+        app: Optional[str] = None,
     ) -> None:
         """Create an empty sandbox (exec_count 0) — used by UI-driven creation."""
         self.db.execute(
             """INSERT OR IGNORE INTO sandboxes
-                 (sandbox_id, machine_id, image, status, created_ms, last_used_ms, exec_count)
-               VALUES (?, ?, ?, 'active', ?, ?, 0)""",
-            (sandbox_id, machine_id, image, when_ms, when_ms),
+                 (sandbox_id, machine_id, image, status, created_ms, last_used_ms, exec_count, app)
+               VALUES (?, ?, ?, 'active', ?, ?, 0, ?)""",
+            (sandbox_id, machine_id, image, when_ms, when_ms, app),
         )
         self.db.commit()
 
@@ -493,16 +541,19 @@ class Store:
         ).fetchone()
         return dict(r) if r else None
 
-    def list_sandboxes(self, machine_id: Optional[str] = None) -> list[dict]:
+    def list_sandboxes(self, machine_id: Optional[str] = None,
+                       app: Optional[str] = None) -> list[dict]:
+        clauses, params = [], []
         if machine_id:
-            rows = self.db.execute(
-                "SELECT * FROM sandboxes WHERE machine_id=? ORDER BY last_used_ms DESC",
-                (machine_id,),
-            ).fetchall()
-        else:
-            rows = self.db.execute(
-                "SELECT * FROM sandboxes ORDER BY last_used_ms DESC"
-            ).fetchall()
+            clauses.append("machine_id=?")
+            params.append(machine_id)
+        if app:
+            clauses.append("app=?")
+            params.append(app)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = self.db.execute(
+            f"SELECT * FROM sandboxes {where} ORDER BY last_used_ms DESC", params,
+        ).fetchall()
         return [dict(r) for r in rows]
 
     # A sandbox is "live" while it has a process still running.
@@ -598,6 +649,106 @@ class Store:
             (run_key, run_ms, sid),
         )
         self.db.commit()
+
+    # -- apps (named projects that group runs/sandboxes/functions) ----------- #
+
+    def upsert_app(self, name: str, owner: str, when_ms: int,
+                   description: Optional[str] = None) -> None:
+        """Register an app on first mention; refresh description if given.
+        Zero-config: any run/sandbox naming an app calls this."""
+        self.db.execute(
+            """INSERT INTO apps (name, owner, description, created_ms, last_active_ms)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(name, owner) DO UPDATE SET
+                 description=COALESCE(excluded.description, apps.description)""",
+            (name, owner, description, when_ms, when_ms),
+        )
+        self.db.commit()
+
+    def touch_app(self, name: str, owner: str, when_ms: int) -> None:
+        self.db.execute(
+            "UPDATE apps SET last_active_ms=? WHERE name=? AND owner=?",
+            (when_ms, name, owner),
+        )
+        self.db.commit()
+
+    def mark_app_deployed(self, name: str, owner: str, when_ms: int) -> None:
+        self.db.execute(
+            "UPDATE apps SET deployed_ms=? WHERE name=? AND owner=?",
+            (when_ms, name, owner),
+        )
+        self.db.commit()
+
+    def list_apps(self, owner: Optional[str] = None) -> list[dict]:
+        """Apps with rollup counts. Owner ``None`` (local/admin) sees all."""
+        where, params = ("WHERE owner=?", [owner]) if owner else ("", [])
+        rows = self.db.execute(f"SELECT * FROM apps {where} ORDER BY last_active_ms DESC",
+                               params).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["job_count"] = self.db.execute(
+                "SELECT COUNT(*) AS c FROM jobs WHERE app=?", (d["name"],)
+            ).fetchone()["c"]
+            d["sandbox_count"] = self.db.execute(
+                "SELECT COUNT(*) AS c FROM sandboxes WHERE app=?", (d["name"],)
+            ).fetchone()["c"]
+            d["function_count"] = self.db.execute(
+                "SELECT COUNT(*) AS c FROM app_functions WHERE app=? AND owner=?",
+                (d["name"], d["owner"]),
+            ).fetchone()["c"]
+            out.append(d)
+        return out
+
+    def get_app(self, name: str, owner: Optional[str] = None) -> Optional[dict]:
+        where, params = ("name=? AND owner=?", [name, owner]) if owner else ("name=?", [name])
+        r = self.db.execute(f"SELECT * FROM apps WHERE {where}", params).fetchone()
+        return dict(r) if r else None
+
+    def delete_app(self, name: str, owner: str) -> bool:
+        cur = self.db.execute("DELETE FROM apps WHERE name=? AND owner=?", (name, owner))
+        self.db.execute("DELETE FROM app_functions WHERE app=? AND owner=?", (name, owner))
+        self.db.commit()
+        return cur.rowcount > 0
+
+    # -- app functions (deployed source that runs without the client) ------- #
+
+    def put_app_function(self, app: str, owner: str, name: str, source: str,
+                         image: Optional[str], schedule: Optional[str],
+                         kind: str, when_ms: int, port: Optional[int] = None) -> None:
+        self.db.execute(
+            """INSERT INTO app_functions
+                 (app, owner, name, source, image, schedule, kind, port, created_ms)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(app, owner, name) DO UPDATE SET
+                 source=excluded.source, image=excluded.image,
+                 schedule=excluded.schedule, kind=excluded.kind, port=excluded.port""",
+            (app, owner, name, source, image, schedule, kind, port, when_ms),
+        )
+        self.db.commit()
+
+    def set_app_function_url(self, app: str, owner: str, name: str,
+                            url: str, sandbox_id: str) -> None:
+        self.db.execute(
+            "UPDATE app_functions SET url=?, sandbox_id=? WHERE app=? AND owner=? AND name=?",
+            (url, sandbox_id, app, owner, name),
+        )
+        self.db.commit()
+
+    def list_app_functions(self, app: str, owner: Optional[str] = None) -> list[dict]:
+        where, params = ("app=? AND owner=?", [app, owner]) if owner else ("app=?", [app])
+        rows = self.db.execute(
+            f"SELECT app, owner, name, image, schedule, kind, port, url, sandbox_id, created_ms "
+            f"FROM app_functions WHERE {where} ORDER BY name", params,
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_app_function(self, app: str, name: str,
+                         owner: Optional[str] = None) -> Optional[dict]:
+        where, params = (("app=? AND name=? AND owner=?", [app, name, owner])
+                         if owner else ("app=? AND name=?", [app, name]))
+        r = self.db.execute(f"SELECT * FROM app_functions WHERE {where}", params).fetchone()
+        return dict(r) if r else None
 
     # -- volumes (reported by the daemon) ----------------------------------- #
 

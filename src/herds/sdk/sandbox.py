@@ -38,6 +38,7 @@ class Sandbox:
         secrets=None,
         inherit_home: bool = False,
         client: Optional[HerdsClient] = None,
+        app: Optional[str] = None,
     ):
         self.id = sandbox_id
         self.machine_id = machine_id
@@ -46,6 +47,7 @@ class Sandbox:
         self._volumes = volumes
         self._secrets = secrets
         self._inherit_home = inherit_home
+        self._app = app
         self._terminated = False
 
     @staticmethod
@@ -58,12 +60,13 @@ class Sandbox:
         mac: Optional["Mac"] = None,
         machine_id: str = "default",
         client: Optional[HerdsClient] = None,
+        app: Optional[str] = None,
     ) -> "Sandbox":
         sid = "sbx_" + uuid.uuid4().hex[:10]
         mid = mac.machine_id if mac is not None else machine_id
         return Sandbox(
             sid, mid, image=image, volumes=volumes, secrets=secrets, inherit_home=inherit_home,
-            client=client or (mac._client if mac else default_client()),
+            client=client or (mac._client if mac else default_client()), app=app,
         )
 
     def put(self, local: str, remote: str = "", *, clean: bool = False, ignore=None) -> dict:
@@ -103,6 +106,7 @@ class Sandbox:
         return _build_request(
             command, self._image, self._volumes, workdir, env, timeout, network,
             sandbox_id=self.id, secrets=self._secrets, inherit_home=self._inherit_home,
+            app=self._app,
         )
 
     def exec(
@@ -139,6 +143,40 @@ class Sandbox:
             elif frame.type == FrameType.STDERR:
                 yield "stderr", frame.data.get("text", "")
 
+    def session(
+        self,
+        command: Union[str, list[str]],
+        *,
+        workdir: Optional[str] = None,
+        env: Optional[dict[str, str]] = None,
+        network: bool = True,
+    ) -> "Session":
+        """Start a RESIDENT process you feed many stdin turns into.
+
+            with mac.sandbox() as sbx:
+                s = sbx.session("cat")           # a line reader kept alive
+                s.send("hello\\n")
+                for stream, text in s.stream():  # echoes stream back live
+                    print(text, end="")
+                    s.send("world\\n"); s.close()
+
+        Unlike ``exec`` (one-shot) the process stays live; ``send`` writes to its
+        stdin from anywhere, ``stream`` yields its output until it exits, and
+        ``close`` sends EOF. Because it's driven through the control plane, any
+        worker that knows the session id can feed it — cross-worker input is free.
+        """
+        if self._terminated:
+            raise RuntimeError(f"sandbox {self.id} has been terminated")
+        from .mac import _build_request
+
+        req = _build_request(
+            command, self._image, self._volumes, workdir, env, None, network,
+            sandbox_id=self.id, secrets=self._secrets, inherit_home=self._inherit_home,
+            app=self._app,
+        )
+        request_id = self._client._start_session(self.machine_id, req)
+        return Session(request_id, self.machine_id, client=self._client)
+
     def spawn(
         self,
         command: Union[str, list[str]],
@@ -163,7 +201,7 @@ class Sandbox:
         req = _build_request(
             command, self._image, self._volumes, workdir, env, timeout, network,
             sandbox_id=self.id, secrets=self._secrets, inherit_home=self._inherit_home,
-            keep_alive=keep_alive,
+            keep_alive=keep_alive, app=self._app,
         )
         return self._client._start(self.machine_id, req)
 
@@ -222,3 +260,38 @@ class Sandbox:
 
     def __repr__(self) -> str:
         return f"Sandbox({self.id!r} on {self.machine_id!r})"
+
+
+class Session:
+    """A handle to a resident, stdin-fed process on a Mac.
+
+    Created by :meth:`Sandbox.session` / :meth:`herds.Mac.session`. ``send``
+    writes a chunk to the process's stdin; ``stream`` yields ``(stream, text)``
+    output live until the process exits; ``close`` sends EOF (which typically
+    lets a line-reader loop finish). The process is addressed by ``id`` through
+    the control plane, so any worker holding that id can feed it stdin.
+    """
+
+    def __init__(self, request_id: str, machine_id: str, *, client: Optional[HerdsClient] = None):
+        self.id = request_id
+        self.machine_id = machine_id
+        self._client = client or default_client()
+
+    def send(self, data: str) -> None:
+        """Write a chunk to the session's stdin."""
+        self._client.send_stdin(self.id, data)
+
+    def stream(self) -> Iterator[tuple[str, str]]:
+        """Yield ``(stream, text)`` output chunks live until the session exits."""
+        for frame in self._client.stream_logs(self.id):
+            if frame.type == FrameType.STDOUT:
+                yield "stdout", frame.data.get("text", "")
+            elif frame.type == FrameType.STDERR:
+                yield "stderr", frame.data.get("text", "")
+
+    def close(self) -> None:
+        """Send EOF on stdin so the resident process can finish and exit."""
+        self._client.send_stdin(self.id, "", eof=True)
+
+    def __repr__(self) -> str:
+        return f"Session({self.id!r} on {self.machine_id!r})"

@@ -38,10 +38,12 @@ volume_app = typer.Typer(help="Manage volumes (persistent directories on the Mac
 image_app = typer.Typer(help="Inspect toolchain images available on this Mac.")
 token_app = typer.Typer(help="Mint scoped, revocable tokens (e.g. for agents/CI).")
 schedule_app = typer.Typer(help="Recurring scheduled jobs (cron) that run on your Mac.")
+app_app = typer.Typer(help="Named apps that group runs, sandboxes, and functions.")
 app.add_typer(volume_app, name="volume")
 app.add_typer(image_app, name="image")
 app.add_typer(token_app, name="token")
 app.add_typer(schedule_app, name="schedule")
+app.add_typer(app_app, name="app")
 
 
 def _control_http(url: Optional[str], tok: Optional[str]):
@@ -163,6 +165,78 @@ def schedule_rm(
     console.print(f"[green]✓[/green] removed [cyan]{schedule_id}[/cyan]")
 
 
+@app_app.command("ls")
+def app_ls(
+    url: Optional[str] = typer.Option(None, "--url"),
+    token: Optional[str] = typer.Option(None, "--token"),
+):
+    """List your apps."""
+    r = _control_http(url, token).get("/v1/apps")
+    if r.status_code >= 400:
+        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        raise typer.Exit(1)
+    rows = r.json().get("apps", [])
+    if not rows:
+        console.print("[dim]No apps yet.[/dim]")
+        return
+    table = Table(title="Apps")
+    table.add_column("Name", style="cyan")
+    table.add_column("Runs", justify="right")
+    table.add_column("Functions", justify="right")
+    table.add_column("Sandboxes", justify="right")
+    table.add_column("Deployed", style="dim")
+    for a in rows:
+        table.add_row(a["name"], str(a["job_count"]), str(a["function_count"]),
+                      str(a["sandbox_count"]), "yes" if a.get("deployed_ms") else "—")
+    console.print(table)
+
+
+@app_app.command("view")
+def app_view(
+    name: str,
+    url: Optional[str] = typer.Option(None, "--url"),
+    token: Optional[str] = typer.Option(None, "--token"),
+):
+    """Show an app: its functions and recent runs."""
+    r = _control_http(url, token).get(f"/v1/apps/{name}")
+    if r.status_code >= 400:
+        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        raise typer.Exit(1)
+    d = r.json()
+    a = d["app"]
+    console.print(f"[bold cyan]{a['name']}[/bold cyan]  [dim]{a.get('description') or ''}[/dim]")
+    fns, jobs = d.get("functions", []), d.get("jobs", [])
+    if fns:
+        table = Table(title="Functions")
+        table.add_column("Name", style="cyan")
+        table.add_column("Kind")
+        table.add_column("Schedule", style="dim")
+        for f in fns:
+            table.add_row(f["name"], f["kind"], f.get("schedule") or "—")
+        console.print(table)
+    table = Table(title=f"Runs ({len(jobs)})")
+    table.add_column("Request", style="cyan")
+    table.add_column("State")
+    table.add_column("Command")
+    for j in jobs[:20]:
+        table.add_row(j["request_id"], j["state"], (j["command"] or "")[:48])
+    console.print(table)
+
+
+@app_app.command("rm")
+def app_rm(
+    name: str,
+    url: Optional[str] = typer.Option(None, "--url"),
+    token: Optional[str] = typer.Option(None, "--token"),
+):
+    """Delete an app (its runs/sandboxes are unaffected, just ungrouped)."""
+    r = _control_http(url, token).delete(f"/v1/apps/{name}")
+    if r.status_code >= 400:
+        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        raise typer.Exit(1)
+    console.print(f"[green]✓[/green] deleted [cyan]{name}[/cyan]")
+
+
 @app.command("tag")
 def tag_add(
     machine_id: str,
@@ -239,6 +313,42 @@ def _client():
 def version():
     """Show the Herds version."""
     console.print(f"herds {__version__}")
+
+
+@app.command()
+def deploy(
+    file: str = typer.Argument(..., help="A .py file defining a herds.App with @app.function."),
+    url: Optional[str] = typer.Option(None, "--url"),
+    token: Optional[str] = typer.Option(None, "--token"),
+):
+    """Deploy an app's functions so they run without your laptop (Modal's `modal deploy`).
+
+    Scheduled functions (``@app.function(schedule=...)``) then fire on the Mac on
+    cron; any function can be triggered over the API without the client alive.
+    """
+    import runpy
+    import sys as _sys
+    from pathlib import Path
+    import herds
+
+    if url or token:
+        herds.configure(url=url, token=token)
+
+    path = Path(file).expanduser()
+    if not path.exists():
+        err.print(f"[red]✗[/red] no such file: {path}")
+        raise typer.Exit(1)
+    _sys.path.insert(0, str(path.parent))  # so sibling imports resolve
+    ns = runpy.run_path(str(path))         # run_name != __main__, so no entrypoint fires
+    apps = [v for v in ns.values() if isinstance(v, herds.App)]
+    if not apps:
+        err.print(f"[red]✗[/red] no herds.App found in {path.name}")
+        raise typer.Exit(1)
+    for a in apps:
+        a.deploy()
+        fns = a.function_names()
+        console.print(f"[green]✓[/green] deployed [cyan]{a.name}[/cyan] "
+                      f"[dim]({len(fns)} function{'s' if len(fns) != 1 else ''}: {', '.join(fns) or '—'})[/dim]")
 
 
 @app.command()

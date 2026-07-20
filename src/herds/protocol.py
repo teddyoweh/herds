@@ -27,6 +27,8 @@ class FrameType(str, Enum):
 
     # control-plane -> agent (commands pushed down the socket)
     EXEC = "exec"                      # run a one-shot command
+    SESSION_START = "session_start"    # start a RESIDENT process fed many stdin turns
+    STDIN = "stdin"                    # write a chunk to a resident process's stdin
     SANDBOX_CREATE = "sandbox_create"  # materialize a sandbox
     SANDBOX_EXEC = "sandbox_exec"      # run a command inside a sandbox
     SANDBOX_TERMINATE = "sandbox_terminate"
@@ -150,6 +152,55 @@ def exec_frame(
     )
 
 
+def session_start_frame(
+    request_id: str,
+    command: list[str] | str,
+    *,
+    image: Optional[str] = None,
+    volumes: Optional[dict[str, str]] = None,
+    workdir: Optional[str] = None,
+    env: Optional[dict[str, str]] = None,
+    network: bool = True,
+    sandbox_id: Optional[str] = None,
+    inherit_home: bool = False,
+) -> Frame:
+    """Start a resident process the backend feeds many stdin turns into.
+
+    Mirrors :func:`exec_frame` but marks the process as a long-lived session:
+    the daemon launches it with ``stdin=PIPE``, keeps it alive, and streams its
+    stdout/stderr under ``request_id`` (which doubles as the session id) until it
+    exits or is cancelled. Feed it with :func:`stdin_frame`.
+    """
+    return Frame(
+        type=FrameType.SESSION_START,
+        request_id=request_id,
+        data={
+            "command": command,
+            "image": image,
+            "volumes": volumes or {},
+            "workdir": workdir,
+            "env": env or {},
+            "network": network,
+            "sandbox_id": sandbox_id,
+            "inherit_home": inherit_home,
+        },
+    )
+
+
+def stdin_frame(request_id: str, data: str = "", *, eof: bool = False) -> Frame:
+    """Deliver a chunk of stdin to a resident session (by ``request_id``).
+
+    ``eof=True`` closes the session's stdin (EOF), which typically lets the
+    resident process finish and exit. An empty ``data`` with ``eof=True`` is a
+    pure close.
+    """
+    return Frame(
+        type=FrameType.STDIN,
+        request_id=request_id,
+        data={"data": data, "eof": eof},
+    )
+
+
 def sandbox_create_frame(
     request_id: str,
     sandbox_id: str,
@@ -235,6 +286,7 @@ class ExecRequest(BaseModel):
     secrets: list[str] = Field(default_factory=list)  # secret names to inject as env
     inherit_home: bool = False         # run with the user's real HOME (tools, logins)
     keep_alive: bool = False           # supervise: respawn the process if it exits
+    app: Optional[str] = None          # group this run under a named App
 
 
 class ExecAccepted(BaseModel):

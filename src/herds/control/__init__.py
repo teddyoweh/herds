@@ -16,6 +16,7 @@ here are drawn so that change is local.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import uuid
@@ -37,6 +38,8 @@ from ..protocol import (
     JobState,
     MachineStatus,
     exec_frame,
+    session_start_frame,
+    stdin_frame,
 )
 from .store import Store
 
@@ -380,14 +383,23 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
             raise HTTPException(403, "machine not owned by caller")
         return machine_id
 
-    async def _dispatch(machine_id: str, req: ExecRequest, owner: str) -> str:
-        """Create a job, resolve secrets, and push the exec frame. Returns request_id."""
+    async def _dispatch(machine_id: str, req: ExecRequest, owner: str, *, kind: str = "exec") -> str:
+        """Create a job, resolve secrets, and push the exec (or session) frame.
+
+        ``kind="session"`` starts a RESIDENT stdin-fed process instead of a
+        one-shot command; everything else (job row, secret resolution, sandbox
+        bookkeeping, inflight tracking) is identical. Returns the request_id."""
         agent = hub.agent(machine_id)
         if agent is None:  # raced: the Mac went offline between resolve and dispatch
             raise HTTPException(409, f"machine {machine_id} went offline")
         request_id = "req_" + uuid.uuid4().hex[:12]
         cmd_str = req.command if isinstance(req.command, str) else " ".join(req.command)
-        store.create_job(request_id, machine_id, cmd_str, config.now_ms(), sandbox_id=req.sandbox_id)
+        # Zero-config apps: the first run naming an app registers it here.
+        if req.app:
+            store.upsert_app(req.app, owner, config.now_ms())
+            store.touch_app(req.app, owner, config.now_ms())
+        store.create_job(request_id, machine_id, cmd_str, config.now_ms(),
+                         sandbox_id=req.sandbox_id, app=req.app)
 
         merged_env = dict(req.env)
         for sname in req.secrets:
@@ -397,16 +409,24 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
             merged_env.update(values)
 
         if req.sandbox_id:
-            store.touch_sandbox(req.sandbox_id, machine_id, req.image, config.now_ms())
+            store.touch_sandbox(req.sandbox_id, machine_id, req.image, config.now_ms(), app=req.app)
 
         agent.inflight.add(request_id)
-        try:
-            await agent.send(exec_frame(
+        if kind == "session":
+            frame = session_start_frame(
+                request_id, req.command,
+                image=req.image, volumes=req.volumes, workdir=req.workdir, env=merged_env,
+                network=req.network, sandbox_id=req.sandbox_id, inherit_home=req.inherit_home,
+            )
+        else:
+            frame = exec_frame(
                 request_id, req.command,
                 image=req.image, volumes=req.volumes, workdir=req.workdir, env=merged_env,
                 timeout=req.timeout, network=req.network, sandbox_id=req.sandbox_id,
                 inherit_home=req.inherit_home, keep_alive=req.keep_alive,
-            ))
+            )
+        try:
+            await agent.send(frame)
         except Exception:  # the socket died mid-send — don't strand the job
             agent.inflight.discard(request_id)
             store.update_job(request_id, JobState.FAILED, -1, None)
@@ -422,6 +442,40 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
         machine_id = _resolve_machine(machine_id, owner)
         request_id = await _dispatch(machine_id, req, owner)
         return ExecAccepted(request_id=request_id, machine_id=machine_id)
+
+    # -- resident stdin-fed sessions ---------------------------------------- #
+
+    @app.post("/v1/machines/{machine_id}/sessions", response_model=ExecAccepted)
+    async def start_session_ep(
+        machine_id: str, req: ExecRequest, authorization: Optional[str] = Header(None)
+    ):
+        """Start a RESIDENT process on the Mac that many stdin turns feed into.
+
+        Returns a request_id (== session id): stream its output over
+        ``/v1/jobs/{request_id}/logs`` and feed it via ``/v1/sessions/{id}/stdin``.
+        Cross-worker input is free — any client that knows the id can POST stdin."""
+        owner = require_scope(authorization, "run")  # read-only tokens can't execute
+        machine_id = _resolve_machine(machine_id, owner)
+        request_id = await _dispatch(machine_id, req, owner, kind="session")
+        return ExecAccepted(request_id=request_id, machine_id=machine_id)
+
+    @app.post("/v1/sessions/{request_id}/stdin")
+    async def session_stdin_ep(
+        request_id: str, body: "StdinBody", authorization: Optional[str] = Header(None)
+    ):
+        """Deliver a stdin chunk (and/or EOF) to a running session by id."""
+        require_scope(authorization, "run")
+        job = store.get_job(request_id)
+        if job is None:
+            raise HTTPException(404, "no such session")
+        agent = hub.agent(job["machine_id"])
+        if agent is None:
+            raise HTTPException(409, "machine offline")
+        try:
+            await agent.send(stdin_frame(request_id, body.data, eof=body.eof))
+        except Exception:
+            raise HTTPException(409, "machine disconnected")
+        return {"ok": True, "request_id": request_id}
 
     # -- schedules (recurring jobs) ----------------------------------------- #
 
@@ -453,6 +507,113 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
         store.delete_schedule(sid, target["owner"])
         return {"ok": True}
 
+    # -- apps (named projects grouping runs/sandboxes/functions) ------------- #
+
+    @app.get("/v1/apps")
+    def list_apps_ep(authorization: Optional[str] = Header(None)):
+        owner = owner_from_key(authorization)
+        return {"apps": store.list_apps(None if owner == DEFAULT_OWNER else owner)}
+
+    @app.get("/v1/apps/{name}")
+    def get_app_ep(name: str, authorization: Optional[str] = Header(None)):
+        owner = owner_from_key(authorization)
+        scope = None if owner == DEFAULT_OWNER else owner
+        a = store.get_app(name, scope)
+        if not a:
+            raise HTTPException(404, "no such app")
+        return {
+            "app": a,
+            "functions": store.list_app_functions(name, a["owner"]),
+            "jobs": store.list_jobs(app=name, limit=200),
+            "sandboxes": store.list_sandboxes(app=name),
+        }
+
+    @app.post("/v1/apps")
+    def create_app_ep(body: "AppBody", authorization: Optional[str] = Header(None)):
+        owner = require_scope(authorization, "run")
+        store.upsert_app(body.name, owner, config.now_ms(), description=body.description)
+        return store.get_app(body.name, owner)
+
+    @app.delete("/v1/apps/{name}")
+    def delete_app_ep(name: str, authorization: Optional[str] = Header(None)):
+        owner = require_scope(authorization, "run")
+        scope = None if owner == DEFAULT_OWNER else owner
+        a = store.get_app(name, scope)
+        if a is None:
+            raise HTTPException(404, "no such app")
+        store.delete_app(name, a["owner"])
+        return {"deleted": name}
+
+    @app.post("/v1/apps/{name}/functions")
+    async def put_app_function_ep(name: str, body: "FunctionBody",
+                                  authorization: Optional[str] = Header(None)):
+        owner = require_scope(authorization, "run")
+        now = config.now_ms()
+        store.upsert_app(name, owner, now)          # ensure the app exists
+        store.put_app_function(name, owner, body.name, body.source, body.image,
+                               body.schedule, body.kind, now, port=body.port)
+        store.mark_app_deployed(name, owner, now)
+        # A scheduled function becomes a cron row the scheduler fires (Phase 3).
+        if body.schedule:
+            sid = "sch_" + uuid.uuid4().hex[:10]
+            trigger = json.dumps({"__herds_app__": name, "__herds_fn__": body.name})
+            store.create_schedule(sid, owner, "default", trigger, body.schedule, now)
+        # A web endpoint boots as a keep-alive sandbox and gets a public URL.
+        url = None
+        if body.kind == "web" and body.port:
+            try:
+                url = await _serve_web_endpoint(name, owner, body)
+            except Exception as exc:  # noqa: BLE001 — no machine online yet, etc.
+                print(f"herds: web endpoint {name}.{body.name} not started ({exc})", file=sys.stderr)
+        return {"ok": True, "function": body.name, "url": url}
+
+    async def _serve_web_endpoint(name: str, owner: str, body: "FunctionBody") -> str:
+        """Start a web-endpoint function as a supervised server in a sandbox and
+        expose its port as a URL. Reuses the sandbox + port-proxy machinery."""
+        machine_id = _resolve_machine("default", owner)
+        sandbox_id = "sbx_" + uuid.uuid4().hex[:10]
+        payload = json.dumps({"args": [], "kwargs": {}})
+        req = ExecRequest(command=["python3", "-c", body.source, payload],
+                          image=body.image, app=name, sandbox_id=sandbox_id,
+                          keep_alive=True)
+        await _dispatch(machine_id, req, owner)
+        slug = _slugify(f"{name}-{body.name}") or f"s{body.port}"
+        pname = store.unique_port_name(slug, sandbox_id, body.port)
+        store.expose_port(sandbox_id, body.port, pname, config.now_ms())
+        url = _port_url(sandbox_id, body.port, pname)
+        store.set_app_function_url(name, owner, body.name, url, sandbox_id)
+        return url
+
+    @app.post("/v1/apps/{name}/functions/{fn}")
+    async def trigger_app_function_ep(name: str, fn: str, body: "TriggerBody",
+                                      authorization: Optional[str] = Header(None)):
+        owner = require_scope(authorization, "run")
+        scope = None if owner == DEFAULT_OWNER else owner
+        f = store.get_app_function(name, fn, scope)
+        if f is None:
+            raise HTTPException(404, "no such function")
+        payload = json.dumps({"args": body.args, "kwargs": body.kwargs})
+        machine_id = _resolve_machine(body.machine_id or "default", owner)
+        req = ExecRequest(command=["python3", "-c", f["source"], payload],
+                          image=f["image"], app=name)
+        request_id = await _dispatch(machine_id, req, owner)
+        return {"request_id": request_id, "machine_id": machine_id}
+
+    def _schedule_request(sch: dict) -> ExecRequest:
+        """Build the ExecRequest a due schedule dispatches. A plain command runs
+        as-is; an app-function trigger (JSON blob) ships that function's stored
+        driver and groups the run under its app."""
+        cmd = sch["command"] or ""
+        if cmd.startswith("{") and "__herds_app__" in cmd:
+            spec = json.loads(cmd)
+            app_name, fn = spec["__herds_app__"], spec["__herds_fn__"]
+            f = store.get_app_function(app_name, fn, sch["owner"])
+            if f is not None:
+                payload = json.dumps({"args": [], "kwargs": {}})
+                return ExecRequest(command=["python3", "-c", f["source"], payload],
+                                   image=f["image"], app=app_name)
+        return ExecRequest(command=cmd)
+
     async def _run_scheduler() -> None:
         """Fire due schedules once per minute. Persists in SQLite, so it resumes
         after a control-plane restart; offline machines are skipped (retried next
@@ -472,7 +633,7 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
                         continue
                     try:
                         mid = _resolve_machine(sch["machine_id"] or "default", sch["owner"])
-                        await _dispatch(mid, ExecRequest(command=sch["command"]), sch["owner"])
+                        await _dispatch(mid, _schedule_request(sch), sch["owner"])
                         store.mark_schedule_run(sch["id"], key, config.now_ms())
                     except Exception as exc:  # noqa: BLE001 — offline machine, etc.
                         print(f"herds scheduler: {sch['id']} skipped ({exc})", file=sys.stderr)
@@ -962,6 +1123,11 @@ class FsWriteBody(BaseModel):
     clean: bool = False                 # wipe the destination dir first
 
 
+class StdinBody(BaseModel):
+    data: str = ""
+    eof: bool = False
+
+
 class CreateSandboxBody(BaseModel):
     image: Optional[str] = None
     command: Optional[str] = None
@@ -988,6 +1154,26 @@ class ScheduleBody(BaseModel):
 
 class TagBody(BaseModel):
     tags: list[str]
+
+
+class AppBody(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+class FunctionBody(BaseModel):
+    name: str
+    source: str
+    image: Optional[str] = None
+    schedule: Optional[str] = None
+    kind: str = "function"
+    port: Optional[int] = None
+
+
+class TriggerBody(BaseModel):
+    args: list = []
+    kwargs: dict = {}
+    machine_id: Optional[str] = None
 
 
 def _resolve_default_machine(store: Store, hub: Hub, owner: str) -> str:

@@ -52,6 +52,7 @@ def _build_request(
     secrets: SecretsLike = None,
     inherit_home: bool = False,
     keep_alive: bool = False,
+    app: Optional[str] = None,
 ) -> ExecRequest:
     image_name, image_env = _normalize_image(image)
     merged_env = {**image_env, **(env or {})}
@@ -67,6 +68,7 @@ def _build_request(
         secrets=_normalize_secrets(secrets),
         inherit_home=inherit_home,
         keep_alive=keep_alive,
+        app=app,
     )
 
 
@@ -115,6 +117,7 @@ class Mac:
         inherit_home: bool = False,
         stream: bool = False,
         check: bool = False,
+        app: Optional[str] = None,
     ) -> Result:
         """Run a command on this Mac and return the :class:`Result`.
 
@@ -122,9 +125,10 @@ class Mac:
         ``check=True`` raises :class:`CommandError` on a non-zero exit.
         ``inherit_home=True`` runs with your real HOME and tools/logins (e.g. so
         ``claude``, ``git``, ``gh`` use your credentials) — your Mac, as you.
+        ``app="name"`` groups this run under a named App in the dashboard.
         """
         req = _build_request(command, image, volumes, workdir, env, timeout, network,
-                             secrets=secrets, inherit_home=inherit_home)
+                             secrets=secrets, inherit_home=inherit_home, app=app)
         result = self._client.run(self.machine_id, req, stream_to_stdout=stream)
         if check:
             result.raise_for_status()
@@ -174,6 +178,30 @@ class Mac:
         from .sandbox import Sandbox
 
         return Sandbox.create(image=image, volumes=volumes, mac=self)
+
+    def session(
+        self,
+        command: Union[str, list[str]],
+        *,
+        image: ImageLike = None,
+        volumes: VolumesLike = None,
+        workdir: Optional[str] = None,
+        env: Optional[dict[str, str]] = None,
+        network: bool = True,
+        inherit_home: bool = False,
+    ) -> "Session":
+        """Start a RESIDENT process on this Mac you feed many stdin turns into::
+
+            s = mac.session("cat")
+            s.send("hi\\n")
+            for stream, text in s.stream(): ...   # echoes stream back live
+            s.close()
+
+        Runs in a fresh sandbox workspace. See :meth:`herds.Sandbox.session`."""
+        from .sandbox import Sandbox
+
+        sbx = Sandbox.create(image=image, volumes=volumes, inherit_home=inherit_home, mac=self)
+        return sbx.session(command, workdir=workdir, env=env, network=network)
 
     def push(self, local: str, volume: str, remote: str = "", *, clean: bool = False, ignore=None) -> dict:
         """Push a local file/dir to a named volume on this Mac (sugar over Volume.put)::
@@ -314,6 +342,7 @@ class Mac:
         timeout: Optional[int] = None,
         stream: bool = True,
         inherit_home: bool = True,
+        app: Optional[str] = None,
     ) -> Result:
         """Run an agent — Claude Code, Codex, or a custom CLI — on this Mac, keyless.
 
@@ -337,7 +366,7 @@ class Mac:
             env={**_agent_env(proxy, token), **(env or {})},
             secrets=[secret] if secret else None,
             workdir=workdir, volumes=volumes, timeout=timeout,
-            stream=stream, inherit_home=inherit_home,
+            stream=stream, inherit_home=inherit_home, app=app,
         )
 
     def __repr__(self) -> str:

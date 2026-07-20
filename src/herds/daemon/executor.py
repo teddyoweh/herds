@@ -172,6 +172,85 @@ def _kill_tree(proc: asyncio.subprocess.Process) -> None:
             pass
 
 
+async def _pump(stream: asyncio.StreamReader, name: str, sink: OutputSink) -> None:
+    """Drain a subprocess pipe into ``sink`` chunk by chunk.
+
+    Read fixed-size chunks, not readline(): a single line longer than the
+    StreamReader limit (e.g. base64 of a screenshot — one ~1.3MB line) makes
+    readline() raise LimitOverrunError, which would crash the pump and hang the
+    SDK waiting for output that never arrives. An incremental UTF-8 decoder keeps
+    multibyte chars intact across chunk boundaries.
+    """
+    dec = codecs.getincrementaldecoder("utf-8")("replace")
+    while True:
+        chunk = await stream.read(65536)
+        if not chunk:
+            tail = dec.decode(b"", final=True)
+            if tail:
+                await sink(name, tail)
+            break
+        text = dec.decode(chunk)
+        if text:
+            await sink(name, text)
+
+
+class ResidentSession:
+    """A long-lived process the backend feeds many stdin turns into.
+
+    Unlike :meth:`Executor.run` (one-shot: launch, drain, exit), a session stays
+    resident: its stdin is an open pipe, stdout/stderr pump continuously into the
+    sink for the whole lifetime, and it only ends when its stdin is closed (EOF),
+    the process exits on its own, or it is cancelled.
+    """
+
+    def __init__(
+        self,
+        request_id: str,
+        proc: asyncio.subprocess.Process,
+        sandbox: "Sandbox",
+        started: float,
+    ) -> None:
+        self.request_id = request_id
+        self.proc = proc
+        self.sandbox = sandbox
+        self.started = started
+        self._pumps: Optional[asyncio.Future] = None
+        self._stdin_closed = False
+
+    async def send(self, data: str) -> None:
+        """Write a chunk to the process's stdin and flush it."""
+        stdin = self.proc.stdin
+        if stdin is None or self._stdin_closed:
+            return
+        try:
+            stdin.write(data.encode() if isinstance(data, str) else bytes(data))
+            await stdin.drain()
+        except (BrokenPipeError, ConnectionResetError, RuntimeError, OSError):
+            # The child closed its stdin or died — nothing more to feed.
+            pass
+
+    async def close_stdin(self) -> None:
+        """Send EOF on stdin so a line-reader loop can finish cleanly."""
+        stdin = self.proc.stdin
+        if stdin is None or self._stdin_closed:
+            return
+        self._stdin_closed = True
+        try:
+            stdin.write_eof()
+        except (OSError, RuntimeError):
+            pass
+
+    def kill(self) -> None:
+        _kill_tree(self.proc)
+
+    async def wait(self) -> int:
+        """Block until the resident process exits; return its exit code."""
+        await self.proc.wait()
+        if self._pumps is not None:
+            await self._pumps
+        return self.proc.returncode if self.proc.returncode is not None else -1
+
+
 class Executor:
     """Owns the set of live sandboxes and runs commands inside them."""
 
@@ -182,6 +261,8 @@ class Executor:
         self._ephemeral_counter = 0
         # request_ids explicitly stopped — keep-alive must not respawn them.
         self._canceled: set[str] = set()
+        # Resident stdin-fed sessions, keyed by request_id (== session id).
+        self._sessions: dict[str, ResidentSession] = {}
 
     # -- sandbox lifecycle -------------------------------------------------- #
 
@@ -206,29 +287,23 @@ class Executor:
 
     # -- execution ---------------------------------------------------------- #
 
-    async def run(
+    async def _prepare_launch(
         self,
         request_id: str,
         command: list[str] | str,
         *,
         sink: OutputSink,
-        image: Optional[str] = None,
-        sandbox_id: Optional[str] = None,
-        volumes: Optional[dict[str, str]] = None,
-        workdir: Optional[str] = None,
-        env: Optional[dict[str, str]] = None,
-        timeout: Optional[int] = None,
-        network: bool = True,
-        inherit_home: bool = False,
-        keep_alive: bool = False,
-    ) -> tuple[int, int]:
-        """Run a command, streaming output via ``sink``. Returns (exit_code, ms).
-
-        ``keep_alive`` turns the command into a supervised service: when it exits
-        (crash or clean), it is respawned (capped backoff) until explicitly
-        stopped via :meth:`cancel`. The sandbox stays "live" across restarts.
-        """
-        started = time.monotonic()
+        image: Optional[str],
+        sandbox_id: Optional[str],
+        volumes: Optional[dict[str, str]],
+        workdir: Optional[str],
+        env: Optional[dict[str, str]],
+        network: bool,
+        inherit_home: bool,
+    ) -> tuple[Sandbox, list[str], str, dict[str, str]]:
+        """Resolve the sandbox, image, volumes and environment for a launch and
+        return ``(sandbox, argv, cwd, full_env)``. Shared by one-shot ``run`` and
+        resident ``start_session`` so both isolate identically."""
         sandbox = self.get_or_create(sandbox_id, image)
         resolution = images.resolve(image or sandbox.image)
 
@@ -267,24 +342,112 @@ class Executor:
             argv = ["/bin/zsh", "-lc", command] if isinstance(command, str) else list(command)
         else:
             argv = _wrap_command(command, sandbox, volume_paths, network)
+        return sandbox, argv, cwd, full_env
 
-        async def pump(stream: asyncio.StreamReader, name: str) -> None:
-            # Read fixed-size chunks, not readline(): a single line longer than the
-            # StreamReader limit (e.g. base64 of a screenshot — one ~1.3MB line)
-            # makes readline() raise LimitOverrunError, which would crash the pump
-            # and hang the SDK waiting for output that never arrives. An incremental
-            # UTF-8 decoder keeps multibyte chars intact across chunk boundaries.
-            dec = codecs.getincrementaldecoder("utf-8")("replace")
-            while True:
-                chunk = await stream.read(65536)
-                if not chunk:
-                    tail = dec.decode(b"", final=True)
-                    if tail:
-                        await sink(name, tail)
-                    break
-                text = dec.decode(chunk)
-                if text:
-                    await sink(name, text)
+    async def start_session(
+        self,
+        request_id: str,
+        command: list[str] | str,
+        *,
+        sink: OutputSink,
+        image: Optional[str] = None,
+        sandbox_id: Optional[str] = None,
+        volumes: Optional[dict[str, str]] = None,
+        workdir: Optional[str] = None,
+        env: Optional[dict[str, str]] = None,
+        network: bool = True,
+        inherit_home: bool = False,
+    ) -> ResidentSession:
+        """Launch a RESIDENT process with an open stdin pipe and return a handle.
+
+        The process keeps running after its first output (unlike :meth:`run`);
+        stdout/stderr pump into ``sink`` for its whole lifetime. Feed it via
+        :meth:`session_send` and end it via :meth:`session_send` with ``eof=True``
+        or :meth:`cancel`. Await completion with :meth:`session_wait`.
+        """
+        started = time.monotonic()
+        sandbox, argv, cwd, full_env = await self._prepare_launch(
+            request_id, command, sink=sink, image=image, sandbox_id=sandbox_id,
+            volumes=volumes, workdir=workdir, env=env, network=network,
+            inherit_home=inherit_home,
+        )
+        self._canceled.discard(request_id)
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *argv,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd,
+                env=full_env,
+                start_new_session=True,  # own process group -> killable tree
+                limit=4 * 1024 * 1024,
+            )
+        except (OSError, ValueError) as exc:
+            await sink("stderr", f"herds: failed to launch session: {exc}\n")
+            raise
+        sandbox._procs[request_id] = proc
+        session = ResidentSession(request_id, proc, sandbox, started)
+        session._pumps = asyncio.gather(
+            _pump(proc.stdout, "stdout", sink), _pump(proc.stderr, "stderr", sink)
+        )
+        self._sessions[request_id] = session
+        return session
+
+    async def session_send(self, request_id: str, data: str = "", *, eof: bool = False) -> bool:
+        """Deliver a stdin chunk (and/or EOF) to a resident session. Returns
+        False if no such live session exists on this machine."""
+        session = self._sessions.get(request_id)
+        if session is None:
+            return False
+        if data:
+            await session.send(data)
+        if eof:
+            await session.close_stdin()
+        return True
+
+    async def session_wait(self, request_id: str) -> tuple[int, int]:
+        """Block until the resident session exits; return ``(exit_code, ms)`` and
+        drop it from the live set. Safe to call once per session."""
+        session = self._sessions.get(request_id)
+        if session is None:
+            return -1, 0
+        try:
+            code = await session.wait()
+        finally:
+            self._sessions.pop(request_id, None)
+            session.sandbox._procs.pop(request_id, None)
+            self._canceled.discard(request_id)
+        return code, int((time.monotonic() - session.started) * 1000)
+
+    async def run(
+        self,
+        request_id: str,
+        command: list[str] | str,
+        *,
+        sink: OutputSink,
+        image: Optional[str] = None,
+        sandbox_id: Optional[str] = None,
+        volumes: Optional[dict[str, str]] = None,
+        workdir: Optional[str] = None,
+        env: Optional[dict[str, str]] = None,
+        timeout: Optional[int] = None,
+        network: bool = True,
+        inherit_home: bool = False,
+        keep_alive: bool = False,
+    ) -> tuple[int, int]:
+        """Run a command, streaming output via ``sink``. Returns (exit_code, ms).
+
+        ``keep_alive`` turns the command into a supervised service: when it exits
+        (crash or clean), it is respawned (capped backoff) until explicitly
+        stopped via :meth:`cancel`. The sandbox stays "live" across restarts.
+        """
+        started = time.monotonic()
+        sandbox, argv, cwd, full_env = await self._prepare_launch(
+            request_id, command, sink=sink, image=image, sandbox_id=sandbox_id,
+            volumes=volumes, workdir=workdir, env=env, network=network,
+            inherit_home=inherit_home,
+        )
 
         code = -1
         attempt = 0
@@ -306,7 +469,9 @@ class Executor:
                 return 127, int((time.monotonic() - started) * 1000)
 
             sandbox._procs[request_id] = proc
-            pumps = asyncio.gather(pump(proc.stdout, "stdout"), pump(proc.stderr, "stderr"))
+            pumps = asyncio.gather(
+                _pump(proc.stdout, "stdout", sink), _pump(proc.stderr, "stderr", sink)
+            )
             try:
                 if timeout:
                     await asyncio.wait_for(proc.wait(), timeout=timeout)
