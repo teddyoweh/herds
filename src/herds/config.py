@@ -47,6 +47,51 @@ def now_ms() -> int:
 
 
 # --------------------------------------------------------------------------- #
+# Fleet hardening (admission control, idle reap, sandbox GC)
+# --------------------------------------------------------------------------- #
+# A Mac has no cpu/mem partition — a Sandbox's cpu/mem args are advisory only.
+# So instead of partitioning a machine we *bound* it: cap how many sandboxes run
+# at once (with a small waiting queue), reap resident sessions that have gone
+# idle (Modal's warm-idle analog), and garbage-collect stale sandbox trees so a
+# long-lived daemon doesn't slowly fill the disk. All knobs are env-overridable.
+
+
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _float_env(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+# Admission: max sandboxes/sessions running concurrently on this Mac, plus the
+# depth of the queue that holds callers when the cap is hit. Past the queue,
+# new work is rejected (EX_TEMPFAIL) rather than piling up unbounded.
+MAX_LIVE_SANDBOXES = _int_env("HERDS_MAX_LIVE_SANDBOXES", 8)
+ADMISSION_QUEUE_MAX = _int_env("HERDS_ADMISSION_QUEUE_MAX", 32)
+# Optional cpu backpressure: if >0 and the machine's live cpu% is at/above this,
+# treat the Mac as full (queue new work) even below the count cap. 0 disables it.
+ADMISSION_CPU_HIGH_WATER = _float_env("HERDS_ADMISSION_CPU_HIGH_WATER", 0.0)
+
+# Idle-session reap: a resident (stdin-fed) session with no input for this long
+# is terminated. Default 30 min.
+SESSION_IDLE_TIMEOUT_MS = _int_env("HERDS_SESSION_IDLE_TIMEOUT_MS", 30 * 60 * 1000)
+
+# Sandbox-dir GC: a sandbox tree on disk untouched for this long (and with no
+# live process) is removed. Default 24 h.
+SANDBOX_TTL_MS = _int_env("HERDS_SANDBOX_TTL_MS", 24 * 60 * 60 * 1000)
+
+# How often the background reaper wakes to run idle-reap + GC. Default 60 s.
+REAP_INTERVAL_MS = _int_env("HERDS_REAP_INTERVAL_MS", 60 * 1000)
+
+
+# --------------------------------------------------------------------------- #
 # Config (control-plane URL, active machine, profile)
 # --------------------------------------------------------------------------- #
 

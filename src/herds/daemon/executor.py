@@ -23,6 +23,7 @@ import signal
 import tarfile
 import time
 import uuid
+from collections import deque
 from pathlib import Path
 from typing import Awaitable, Callable, Optional
 
@@ -32,6 +33,117 @@ from . import images
 # A callback the daemon supplies to ship a chunk of output upstream.
 # Signature: (stream, text) where stream is "stdout" | "stderr".
 OutputSink = Callable[[str, str], Awaitable[None]]
+
+# Exit code returned when work is turned away at the admission gate. 75 is
+# EX_TEMPFAIL — "try again later", which is exactly what a full Mac is saying.
+EX_ADMISSION_REJECTED = 75
+
+
+class AdmissionRejected(Exception):
+    """The per-Mac concurrency cap *and* its waiting queue are both full."""
+
+
+class _Admission:
+    """A counting gate with a bounded FIFO queue.
+
+    Up to ``capacity`` slots run concurrently. When full, callers wait in a queue
+    of at most ``queue_max`` — beyond that, :meth:`acquire` raises
+    :class:`AdmissionRejected` rather than letting work pile up without bound. An
+    optional cpu high-water adds backpressure: when the machine is already hot we
+    treat it as full even below the count cap. This is the daemon-side analog of
+    Modal's scheduler refusing to overcommit a worker.
+    """
+
+    def __init__(
+        self,
+        capacity: int,
+        queue_max: int,
+        cpu_high_water: float = 0.0,
+        cpu_sampler: Optional[Callable[[], float]] = None,
+    ) -> None:
+        self.capacity = max(1, int(capacity))
+        self.queue_max = max(0, int(queue_max))
+        self.cpu_high_water = float(cpu_high_water)
+        self._cpu_sampler = cpu_sampler
+        self.active = 0
+        self._waiters: "deque[asyncio.Future]" = deque()
+
+    def _hot(self) -> bool:
+        if self.cpu_high_water <= 0 or self._cpu_sampler is None:
+            return False
+        try:
+            return self._cpu_sampler() >= self.cpu_high_water
+        except Exception:  # noqa: BLE001 — a broken sampler must never block work
+            return False
+
+    async def acquire(self) -> None:
+        # A free slot only counts if the machine isn't already over its cpu line.
+        if self.active < self.capacity and not self._hot():
+            self.active += 1
+            return
+        if len(self._waiters) >= self.queue_max:
+            raise AdmissionRejected(
+                f"at capacity ({self.active}/{self.capacity} live, "
+                f"{len(self._waiters)}/{self.queue_max} queued)"
+            )
+        fut: asyncio.Future = asyncio.get_event_loop().create_future()
+        self._waiters.append(fut)
+        try:
+            await fut  # released() hands its slot straight to us; active unchanged
+        except asyncio.CancelledError:
+            # We were cancelled while queued — leave the queue cleanly. If we had
+            # already been handed a slot, pass it on so it isn't leaked.
+            try:
+                self._waiters.remove(fut)
+            except ValueError:
+                if fut.done() and not fut.cancelled():
+                    self.release()
+            raise
+
+    def release(self) -> None:
+        # Hand the freed slot to the next waiter (active stays the same) or, if
+        # nobody is waiting, actually give it back to the pool.
+        while self._waiters:
+            fut = self._waiters.popleft()
+            if not fut.done():
+                fut.set_result(None)
+                return
+        self.active = max(0, self.active - 1)
+
+    def stats(self) -> dict:
+        return {
+            "active": self.active,
+            "capacity": self.capacity,
+            "queued": len(self._waiters),
+            "queue_max": self.queue_max,
+        }
+
+
+def _live_cpu_sample() -> float:
+    """This Mac's current cpu%, the same signal the control plane uses to pick the
+    idlest machine. Best-effort: any failure reads as 0 (never adds backpressure)."""
+    try:
+        from . import metrics
+        return float(metrics.sample().get("cpu", 0.0))
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
+def _newest_mtime(path: Path) -> float:
+    """The most recent mtime anywhere in a tree — our 'last touched' signal for
+    GC. Cheap for a sandbox (small trees); errors on individual files are
+    ignored so a transient stat failure never wedges the reaper."""
+    newest = 0.0
+    try:
+        newest = path.stat().st_mtime
+    except OSError:
+        return newest
+    for p in path.rglob("*"):
+        try:
+            newest = max(newest, p.stat().st_mtime)
+        except OSError:
+            pass
+    return newest
 
 
 # Environment variables we always pass through from the daemon's own env.
@@ -270,6 +382,8 @@ class ResidentSession:
         self.proc = proc
         self.sandbox = sandbox
         self.started = started
+        # Monotonic clock of the last input turn — drives idle-session reaping.
+        self.last_active = started
         self._pumps: Optional[asyncio.Future] = None
         self._stdin_closed = False
 
@@ -278,6 +392,7 @@ class ResidentSession:
         stdin = self.proc.stdin
         if stdin is None or self._stdin_closed:
             return
+        self.last_active = time.monotonic()
         try:
             stdin.write(data.encode() if isinstance(data, str) else bytes(data))
             await stdin.drain()
@@ -310,7 +425,14 @@ class ResidentSession:
 class Executor:
     """Owns the set of live sandboxes and runs commands inside them."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        max_live: Optional[int] = None,
+        queue_max: Optional[int] = None,
+        cpu_high_water: Optional[float] = None,
+        cpu_sampler: Optional[Callable[[], float]] = None,
+    ) -> None:
         config.ensure_dirs()
         self.sandboxes: dict[str, Sandbox] = {}
         # An implicit, shared sandbox for one-shot `mac.run()` calls.
@@ -319,6 +441,28 @@ class Executor:
         self._canceled: set[str] = set()
         # Resident stdin-fed sessions, keyed by request_id (== session id).
         self._sessions: dict[str, ResidentSession] = {}
+        # Fleet admission gate: bound concurrent live work on this Mac.
+        self._admission = _Admission(
+            capacity=config.MAX_LIVE_SANDBOXES if max_live is None else max_live,
+            queue_max=config.ADMISSION_QUEUE_MAX if queue_max is None else queue_max,
+            cpu_high_water=(
+                config.ADMISSION_CPU_HIGH_WATER if cpu_high_water is None else cpu_high_water
+            ),
+            cpu_sampler=cpu_sampler if cpu_sampler is not None else _live_cpu_sample,
+        )
+        self._reaper: Optional[asyncio.Task] = None
+        # request_ids currently holding an admission slot — so each is freed once.
+        self._admitted: set[str] = set()
+
+    def admission_stats(self) -> dict:
+        """Live view of the admission gate (active/capacity/queued)."""
+        return self._admission.stats()
+
+    def _release_admission(self, request_id: str) -> None:
+        """Return this request's admission slot exactly once (idempotent)."""
+        if request_id in self._admitted:
+            self._admitted.discard(request_id)
+            self._admission.release()
 
     # -- sandbox lifecycle -------------------------------------------------- #
 
@@ -526,13 +670,20 @@ class Executor:
         or :meth:`cancel`. Await completion with :meth:`session_wait`.
         """
         started = time.monotonic()
-        sandbox, argv, cwd, full_env = await self._prepare_launch(
-            request_id, command, sink=sink, image=image, sandbox_id=sandbox_id,
-            volumes=volumes, workdir=workdir, env=env, network=network,
-            inherit_home=inherit_home, setup_commands=setup_commands, base=base,
-        )
-        self._canceled.discard(request_id)
+        # Admission first: a resident session holds a live slot for its lifetime.
         try:
+            await self._admission.acquire()
+        except AdmissionRejected as exc:
+            await sink("stderr", f"herds: admission cap reached ({exc}); session rejected\n")
+            raise
+        self._admitted.add(request_id)
+        try:
+            sandbox, argv, cwd, full_env = await self._prepare_launch(
+                request_id, command, sink=sink, image=image, sandbox_id=sandbox_id,
+                volumes=volumes, workdir=workdir, env=env, network=network,
+                inherit_home=inherit_home, setup_commands=setup_commands, base=base,
+            )
+            self._canceled.discard(request_id)
             proc = await asyncio.create_subprocess_exec(
                 *argv,
                 stdin=asyncio.subprocess.PIPE,
@@ -543,8 +694,10 @@ class Executor:
                 start_new_session=True,  # own process group -> killable tree
                 limit=4 * 1024 * 1024,
             )
-        except (OSError, ValueError) as exc:
-            await sink("stderr", f"herds: failed to launch session: {exc}\n")
+        except BaseException as exc:  # launch/prepare failed — free the slot we took
+            self._release_admission(request_id)
+            if isinstance(exc, (OSError, ValueError)):
+                await sink("stderr", f"herds: failed to launch session: {exc}\n")
             raise
         sandbox._procs[request_id] = proc
         session = ResidentSession(request_id, proc, sandbox, started)
@@ -578,6 +731,7 @@ class Executor:
             self._sessions.pop(request_id, None)
             session.sandbox._procs.pop(request_id, None)
             self._canceled.discard(request_id)
+            self._release_admission(request_id)
         return code, int((time.monotonic() - session.started) * 1000)
 
     async def run(
@@ -605,11 +759,24 @@ class Executor:
         stopped via :meth:`cancel`. The sandbox stays "live" across restarts.
         """
         started = time.monotonic()
-        sandbox, argv, cwd, full_env = await self._prepare_launch(
-            request_id, command, sink=sink, image=image, sandbox_id=sandbox_id,
-            volumes=volumes, workdir=workdir, env=env, network=network,
-            inherit_home=inherit_home, setup_commands=setup_commands, base=base,
-        )
+        # Admission first: hold a live slot for the whole run (incl. keep-alive
+        # restarts). If the Mac is full past its queue, turn the work away cleanly
+        # with EX_TEMPFAIL rather than raising into the hot path.
+        try:
+            await self._admission.acquire()
+        except AdmissionRejected as exc:
+            await sink("stderr", f"herds: admission cap reached ({exc}); rejected\n")
+            return EX_ADMISSION_REJECTED, int((time.monotonic() - started) * 1000)
+        self._admitted.add(request_id)
+        try:
+            sandbox, argv, cwd, full_env = await self._prepare_launch(
+                request_id, command, sink=sink, image=image, sandbox_id=sandbox_id,
+                volumes=volumes, workdir=workdir, env=env, network=network,
+                inherit_home=inherit_home, setup_commands=setup_commands, base=base,
+            )
+        except BaseException:
+            self._release_admission(request_id)
+            raise
 
         code = -1
         attempt = 0
@@ -657,6 +824,7 @@ class Executor:
                 break
 
         self._canceled.discard(request_id)
+        self._release_admission(request_id)
         return code, int((time.monotonic() - started) * 1000)
 
     def cancel(self, request_id: str) -> bool:
@@ -668,3 +836,73 @@ class Executor:
                 _kill_tree(proc)
                 return True
         return False
+
+    # -- fleet reaping: idle sessions + stale sandbox trees ----------------- #
+
+    def reap_idle_sessions(self, idle_timeout_ms: Optional[int] = None) -> list[str]:
+        """Kill resident sessions with no input for longer than the idle timeout.
+
+        This is Modal's warm-idle analog: a session that's been sitting doing
+        nothing is torn down to give its admission slot back. Killing the process
+        lets the awaiting :meth:`session_wait` finish normally, which cleans up
+        state and releases admission. Returns the reaped request_ids."""
+        timeout = (
+            config.SESSION_IDLE_TIMEOUT_MS if idle_timeout_ms is None else idle_timeout_ms
+        ) / 1000.0
+        now = time.monotonic()
+        reaped: list[str] = []
+        for request_id, session in list(self._sessions.items()):
+            if now - session.last_active >= timeout:
+                session.kill()
+                reaped.append(request_id)
+        return reaped
+
+    def gc_sandbox_dirs(self, ttl_ms: Optional[int] = None) -> list[str]:
+        """Remove sandbox trees on disk untouched for longer than the TTL.
+
+        Nothing else cleans these up, so a long-lived daemon would slowly fill the
+        disk with dead ephemeral sandboxes. A tree is GC-able only when it has no
+        live process running in it (an in-memory sandbox mid-run is always kept),
+        and its newest mtime is older than the TTL. Returns the removed ids."""
+        ttl = (config.SANDBOX_TTL_MS if ttl_ms is None else ttl_ms) / 1000.0
+        now = time.time()
+        removed: list[str] = []
+        base = config.SANDBOXES_DIR
+        if not base.exists():
+            return removed
+        for d in base.iterdir():
+            if not d.is_dir():
+                continue
+            sid = d.name
+            sb = self.sandboxes.get(sid)
+            if sb is not None and sb._procs:
+                continue  # live work running here — never GC out from under it
+            if now - _newest_mtime(d) < ttl:
+                continue  # recently touched — leave it
+            shutil.rmtree(d, ignore_errors=True)
+            self.sandboxes.pop(sid, None)
+            removed.append(sid)
+        return removed
+
+    def start_reapers(self) -> asyncio.Task:
+        """Launch the background loop that periodically reaps idle sessions and
+        GCs stale sandbox dirs. Idempotent: returns the existing task if already
+        running. The daemon starts this once it has an event loop."""
+        if self._reaper is not None and not self._reaper.done():
+            return self._reaper
+
+        async def _loop() -> None:
+            interval = max(1.0, config.REAP_INTERVAL_MS / 1000.0)
+            while True:
+                await asyncio.sleep(interval)
+                try:
+                    self.reap_idle_sessions()
+                except Exception:  # noqa: BLE001 — a reap error must not kill the loop
+                    pass
+                try:
+                    self.gc_sandbox_dirs()
+                except Exception:  # noqa: BLE001
+                    pass
+
+        self._reaper = asyncio.create_task(_loop())
+        return self._reaper

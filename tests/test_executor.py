@@ -189,3 +189,105 @@ async def test_restore_missing_base_is_noop(herds_home):
         timeout=30,
     )
     assert code == 0
+
+
+# -- fleet: admission control, idle reap, sandbox GC ------------------------ #
+
+
+async def _wait_active(ex, target, timeout=5.0):
+    """Spin until the admission gate reports ``target`` live slots (or give up)."""
+    deadline = asyncio.get_event_loop().time() + timeout
+    while asyncio.get_event_loop().time() < deadline:
+        if ex.admission_stats()["active"] >= target:
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError(f"admission never reached {target}: {ex.admission_stats()}")
+
+
+@pytest.mark.asyncio
+async def test_admission_cap_rejects_when_full(herds_home):
+    from herds.daemon.executor import EX_ADMISSION_REJECTED, Executor
+
+    # Cap of 1 with no queue: the second concurrent run must be turned away.
+    ex = Executor(max_live=1, queue_max=0)
+    task1 = asyncio.create_task(_collect(ex, "a1", "sleep 5"))
+    await _wait_active(ex, 1)
+
+    code, out, err = await asyncio.wait_for(_collect(ex, "a2", "echo nope"), timeout=10)
+    assert code == EX_ADMISSION_REJECTED
+    assert "admission cap reached" in err
+    assert "nope" not in out  # it never launched
+
+    # Free the slot and let the long run wind down.
+    ex.cancel("a1")
+    await asyncio.wait_for(task1, timeout=10)
+    assert ex.admission_stats()["active"] == 0
+
+
+@pytest.mark.asyncio
+async def test_admission_queue_runs_after_slot_frees(herds_home):
+    from herds.daemon.executor import Executor
+
+    # Cap of 1 but a real queue: the second run waits, then runs — never rejected.
+    ex = Executor(max_live=1, queue_max=5)
+    task1 = asyncio.create_task(_collect(ex, "q1", "sleep 0.3"))
+    await _wait_active(ex, 1)
+
+    # Queued while q1 holds the only slot; completes once q1 exits.
+    task2 = asyncio.create_task(_collect(ex, "q2", "echo queued-hi"))
+    code1, _, _ = await asyncio.wait_for(task1, timeout=10)
+    code2, out2, _ = await asyncio.wait_for(task2, timeout=10)
+    assert code1 == 0
+    assert code2 == 0
+    assert "queued-hi" in out2
+    assert ex.admission_stats()["active"] == 0
+
+
+@pytest.mark.asyncio
+async def test_reap_idle_session_kills_it_and_frees_slot(herds_home):
+    from herds.daemon.executor import Executor
+
+    ex = Executor()
+    chunks: list[tuple[str, str]] = []
+
+    async def sink(stream, text):
+        chunks.append((stream, text))
+
+    # `cat` stays resident reading stdin — a perfectly idle session.
+    await ex.start_session("sess1", "cat", sink=sink)
+    assert ex.admission_stats()["active"] == 1
+
+    # Zero idle budget → reaped immediately.
+    reaped = ex.reap_idle_sessions(idle_timeout_ms=0)
+    assert "sess1" in reaped
+
+    code, ms = await asyncio.wait_for(ex.session_wait("sess1"), timeout=10)
+    assert code != 0  # terminated, not a clean exit
+    assert ex.admission_stats()["active"] == 0  # slot handed back
+
+
+@pytest.mark.asyncio
+async def test_gc_removes_stale_sandbox_dir_but_keeps_fresh(herds_home):
+    from herds.daemon.executor import Executor
+
+    ex = Executor()
+    ex.create_sandbox("sbx_old")
+    old = herds_home / "sandboxes" / "sbx_old"
+    assert old.exists()
+
+    # Backdate the whole tree so it looks untouched for ~100s.
+    import time as _time
+    past = _time.time() - 100
+    for p in [old, *old.rglob("*")]:
+        os.utime(p, (past, past))
+
+    # A brand-new sandbox is fresh and must survive the same GC pass.
+    ex.create_sandbox("sbx_new")
+
+    removed = ex.gc_sandbox_dirs(ttl_ms=5000)  # 5s TTL
+    assert "sbx_old" in removed
+    assert not old.exists()
+    assert "sbx_new" not in removed
+    assert (herds_home / "sandboxes" / "sbx_new").exists()
+    # In-memory tracking for the GC'd sandbox is dropped too.
+    assert "sbx_old" not in ex.sandboxes

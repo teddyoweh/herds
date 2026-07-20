@@ -111,6 +111,9 @@ class Daemon:
                   f"({self.info.name}) -> {self.control_plane}", file=sys.stderr)
             await self._report_volumes()
             await self._report_metrics()
+            # Fleet reapers (idle-session + sandbox-dir GC) are machine-level, not
+            # connection-level; start_reapers() is idempotent across reconnects.
+            self.executor.start_reapers()
             heartbeat = asyncio.create_task(self._volume_heartbeat())
             metricbeat = asyncio.create_task(self._metrics_heartbeat())
             try:
