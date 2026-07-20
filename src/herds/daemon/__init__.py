@@ -190,7 +190,8 @@ class Daemon:
             elif frame.type == FrameType.CANCEL:
                 if frame.request_id:
                     self.executor.cancel(frame.request_id)
-            elif frame.type in (FrameType.FS_LIST, FrameType.FS_READ, FrameType.FS_WRITE):
+            elif frame.type in (FrameType.FS_LIST, FrameType.FS_READ, FrameType.FS_GET,
+                                 FrameType.FS_WRITE, FrameType.FS_REMOVE):
                 await self._handle_fs(frame)
             elif frame.type == FrameType.HTTP_REQUEST:
                 await self._handle_http(frame)
@@ -312,6 +313,11 @@ class Daemon:
         try:
             if frame.type == FrameType.FS_LIST:
                 result = files.list_dir(d["kind"], d["id"], d.get("path", ""))
+            elif frame.type == FrameType.FS_GET:
+                result = files.get_file(d["kind"], d["id"], d.get("path", ""))
+            elif frame.type == FrameType.FS_REMOVE:
+                result = files.remove(d["kind"], d["id"], d.get("path", ""),
+                                      recursive=bool(d.get("recursive", True)))
             elif frame.type == FrameType.FS_WRITE:
                 if d.get("tar_b64") is not None:
                     result = files.extract_tar(d["kind"], d["id"], d.get("path", ""),

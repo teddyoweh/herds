@@ -103,6 +103,89 @@ class Volume:
             raise HerdsError(r.json().get("detail", r.text) if r.headers.get("content-type", "").startswith("application/json") else r.text)
         return r.json()
 
+    def get(
+        self,
+        remote: str,
+        local: Optional[str] = None,
+        *,
+        machine: str = "default",
+        url: Optional[str] = None,
+        token: Optional[str] = None,
+        client=None,
+    ) -> bytes:
+        """Read a single file back *out* of this volume on the Mac.
+
+        Returns the raw bytes. If ``local`` is given, the bytes are also written
+        to that local path (parents created)::
+
+            data = herds.Volume.from_name("data").get("weights/model.bin")
+            herds.Volume.from_name("repo").get("out/report.pdf", "./report.pdf")
+        """
+        from .client import HerdsClient, HerdsError, default_client
+
+        c = client or (HerdsClient(control_plane=url, api_key=token) if (url or token) else default_client())
+        mid = _resolve_machine(c, machine)
+        r = c._http.get(f"/v1/volumes/{self.name}/get",
+                        params={"machine_id": mid, "path": remote}, timeout=300)
+        if r.status_code >= 400:
+            raise HerdsError(r.json().get("detail", r.text) if r.headers.get("content-type", "").startswith("application/json") else r.text)
+        payload = r.json()
+        if payload.get("error"):
+            raise HerdsError(payload["error"])
+        data = base64.b64decode(payload.get("content_b64", ""))
+        if local:
+            dest = Path(local).expanduser()
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(data)
+        return data
+
+    def listdir(
+        self,
+        path: str = "",
+        *,
+        machine: str = "default",
+        url: Optional[str] = None,
+        token: Optional[str] = None,
+        client=None,
+    ) -> list:
+        """List a directory in this volume; returns the entry dicts
+        (``name``/``dir``/``size``/``mtime_ms``)."""
+        from .client import HerdsClient, HerdsError, default_client
+
+        c = client or (HerdsClient(control_plane=url, api_key=token) if (url or token) else default_client())
+        mid = _resolve_machine(c, machine)
+        r = c._http.get(f"/v1/volumes/{self.name}/files",
+                        params={"machine_id": mid, "path": path}, timeout=60)
+        if r.status_code >= 400:
+            raise HerdsError(r.json().get("detail", r.text) if r.headers.get("content-type", "").startswith("application/json") else r.text)
+        payload = r.json()
+        if payload.get("error"):
+            raise HerdsError(payload["error"])
+        return payload.get("entries", [])
+
+    def remove(
+        self,
+        path: str,
+        *,
+        machine: str = "default",
+        url: Optional[str] = None,
+        token: Optional[str] = None,
+        client=None,
+    ) -> dict:
+        """Delete a file or directory (recursively) from this volume on the Mac."""
+        from .client import HerdsClient, HerdsError, default_client
+
+        c = client or (HerdsClient(control_plane=url, api_key=token) if (url or token) else default_client())
+        mid = _resolve_machine(c, machine)
+        r = c._http.request("DELETE", f"/v1/volumes/{self.name}/file",
+                            params={"machine_id": mid, "path": path}, timeout=60)
+        if r.status_code >= 400:
+            raise HerdsError(r.json().get("detail", r.text) if r.headers.get("content-type", "").startswith("application/json") else r.text)
+        payload = r.json()
+        if payload.get("error"):
+            raise HerdsError(payload["error"])
+        return payload
+
     # Kept for Modal API compatibility; local dirs are always consistent.
     def commit(self) -> None:  # noqa: D401
         """No-op: a local volume is durable the moment you write to it."""

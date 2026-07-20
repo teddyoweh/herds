@@ -35,8 +35,10 @@ class FrameType(str, Enum):
     SNAPSHOT = "snapshot"              # tar a sandbox's fs into a named base image
     CANCEL = "cancel"                  # cancel an in-flight request
     FS_LIST = "fs_list"                # list a directory (request → single result)
-    FS_READ = "fs_read"                # read a file (request → single result)
+    FS_READ = "fs_read"                # read a file preview (request → single result)
+    FS_GET = "fs_get"                  # read a whole file out as base64 (request → single result)
     FS_WRITE = "fs_write"              # write a file / extract a tar into a volume or sandbox
+    FS_REMOVE = "fs_remove"            # delete a file or directory from a volume or sandbox
     HTTP_REQUEST = "http_request"      # proxy an HTTP request to a sandbox port
     # WebSocket tunnelling over the relay control channel (multiplexed by stream_id):
     WS_OPEN = "ws_open"                # relay -> host: open a local WS at {path, query}

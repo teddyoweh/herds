@@ -16,7 +16,8 @@ from pathlib import Path
 
 from .. import config
 
-_READ_CAP = 256 * 1024  # 256 KB
+_READ_CAP = 256 * 1024  # 256 KB (preview reads)
+_GET_CAP = 64 * 1024 * 1024  # 64 MB (full file read-out)
 _WRITE_CAP = 512 * 1024 * 1024  # 512 MB per upload
 
 
@@ -82,6 +83,48 @@ def read_file(kind: str, ident: str, rel: str) -> dict:
         "content": raw.decode("utf-8", errors="replace"),
         "mtime_ms": int(st.st_mtime * 1000),
     }
+
+
+def get_file(kind: str, ident: str, rel: str) -> dict:
+    """Read a whole file *out* of a volume/sandbox as base64 (the read-out path).
+
+    Unlike :func:`read_file` (a capped, text-friendly preview for the browser),
+    this returns the complete bytes so the SDK can reconstruct the file locally.
+    Refuses anything larger than ``_GET_CAP`` so one frame stays bounded. Path
+    traversal is rejected by :func:`_resolve`, same as the write side."""
+    _root, target = _resolve(kind, ident, rel)
+    if not target.exists() or not target.is_file():
+        return {"error": "not a file", "path": rel}
+    st = target.stat()
+    if st.st_size > _GET_CAP:
+        return {"error": f"file exceeds {_GET_CAP} byte read-out limit", "path": rel, "size": st.st_size}
+    return {
+        "path": rel,
+        "size": st.st_size,
+        "content_b64": base64.b64encode(target.read_bytes()).decode(),
+        "mtime_ms": int(st.st_mtime * 1000),
+        "ok": True,
+    }
+
+
+def remove(kind: str, ident: str, rel: str, recursive: bool = True) -> dict:
+    """Delete a file or directory from a volume/sandbox.
+
+    Refuses to delete the root itself and refuses any path that escapes the
+    root (traversal / symlink escape), exactly like :func:`extract_tar`. A
+    directory is removed recursively when ``recursive`` (the default)."""
+    root, target = _resolve(kind, ident, rel)
+    if target == root:
+        raise PermissionError("cannot remove the root itself")
+    if not target.exists():
+        return {"error": "not found", "path": rel}
+    if target.is_dir() and not target.is_symlink():
+        if not recursive and any(target.iterdir()):
+            raise ValueError("directory not empty")
+        shutil.rmtree(target)
+    else:
+        target.unlink()
+    return {"path": rel, "removed": True, "ok": True}
 
 
 def write_file(kind: str, ident: str, rel: str, content_b64: str) -> dict:

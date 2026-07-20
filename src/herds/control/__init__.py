@@ -436,6 +436,17 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
             raise HTTPException(403, "machine not owned by caller")
         return machine_id
 
+    def _owns_job(owner: str, request_id: str) -> bool:
+        """True if ``owner`` owns the machine the job ran on (same ACL as
+        ``_resolve_machine``). The admin/local owner owns everything."""
+        if owner == DEFAULT_OWNER:
+            return True
+        job = store.get_job(request_id)
+        if not job:
+            return False
+        machine = store.get_machine(job["machine_id"])
+        return bool(machine and machine.get("owner") == owner)
+
     async def _dispatch(machine_id: str, req: ExecRequest, owner: str, *, kind: str = "exec") -> str:
         """Create a job, resolve secrets, and push the exec (or session) frame.
 
@@ -753,8 +764,14 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
     async def job_logs(ws: WebSocket, request_id: str):
         if REQUIRE_AUTH:
             token = ws.query_params.get("token", "")
-            if store.owner_for_api_key(token) is None:
+            owner = store.owner_for_api_key(token)
+            if owner is None:
                 await ws.close(code=4401)
+                return
+            # Ownership ACL: a valid token is not enough — it must own the job's
+            # machine, or any user could tail any other user's job logs.
+            if not _owns_job(owner, request_id):
+                await ws.close(code=4403)
                 return
         await ws.accept()
         q = hub.subscribe(request_id)
@@ -995,6 +1012,19 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
     async def volume_file(name: str, machine_id: str, path: str, authorization: Optional[str] = Header(None)):
         owner_from_key(authorization)
         return await _fs_rpc(machine_id, FrameType.FS_READ, {"kind": "volume", "id": name, "path": path})
+
+    @app.get("/v1/volumes/{name}/get")
+    async def volume_get(name: str, machine_id: str, path: str, authorization: Optional[str] = Header(None)):
+        """Read a whole file *out* of a volume as base64 (SDK ``Volume.get``)."""
+        owner_from_key(authorization)
+        return await _fs_rpc(machine_id, FrameType.FS_GET, {"kind": "volume", "id": name, "path": path},
+                             timeout=240)
+
+    @app.delete("/v1/volumes/{name}/file")
+    async def volume_remove(name: str, machine_id: str, path: str, authorization: Optional[str] = Header(None)):
+        """Delete a file or directory from a volume (SDK ``Volume.remove``)."""
+        require_scope(authorization, "run")  # read-only tokens can't mutate
+        return await _fs_rpc(machine_id, FrameType.FS_REMOVE, {"kind": "volume", "id": name, "path": path})
 
     @app.put("/v1/volumes/{name}/put")
     async def volume_put(name: str, body: FsWriteBody, authorization: Optional[str] = Header(None)):
