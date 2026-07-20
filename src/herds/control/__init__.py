@@ -40,6 +40,7 @@ from ..protocol import (
     MachineStatus,
     exec_frame,
     session_start_frame,
+    snapshot_frame,
     stdin_frame,
     tunnel_close_frame,
     tunnel_data_frame,
@@ -312,7 +313,8 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
                     _t, _cpu, _mem = config.now_ms(), frame.data.get("cpu", 0.0), frame.data.get("mem", 0.0)
                     hub.record_metric(machine_id, _t, _cpu, _mem)
                     store.record_metric_sample(machine_id, _t, _cpu, _mem)
-                elif frame.type in (FrameType.FS_RESULT, FrameType.HTTP_RESPONSE):
+                elif frame.type in (FrameType.FS_RESULT, FrameType.HTTP_RESPONSE,
+                                    FrameType.SNAPSHOT_RESULT):
                     hub.resolve_rpc(frame.request_id, frame.data)
                 elif frame.type == FrameType.TUNNEL_READY:
                     fut = hub.tunnel_ready.get(frame.data.get("stream_id"))
@@ -468,6 +470,7 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
                 request_id, req.command,
                 image=req.image, volumes=req.volumes, workdir=req.workdir, env=merged_env,
                 network=req.network, sandbox_id=req.sandbox_id, inherit_home=req.inherit_home,
+                setup_commands=req.setup_commands, base=req.base,
             )
         else:
             frame = exec_frame(
@@ -475,6 +478,7 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
                 image=req.image, volumes=req.volumes, workdir=req.workdir, env=merged_env,
                 timeout=req.timeout, network=req.network, sandbox_id=req.sandbox_id,
                 inherit_home=req.inherit_home, keep_alive=req.keep_alive,
+                setup_commands=req.setup_commands, base=req.base,
             )
         try:
             await agent.send(frame)
@@ -711,9 +715,39 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
             req = ExecRequest(
                 command=body.command, image=body.image, sandbox_id=sandbox_id,
                 secrets=body.secrets, inherit_home=body.inherit_home, keep_alive=body.keep_alive,
+                setup_commands=body.setup_commands, base=body.base,
             )
             request_id = await _dispatch(machine_id, req, owner)
         return {"sandbox_id": sandbox_id, "machine_id": machine_id, "request_id": request_id}
+
+    @app.post("/v1/sandboxes/{sandbox_id}/snapshot")
+    async def snapshot_sandbox(sandbox_id: str, body: "SnapshotBody",
+                               authorization: Optional[str] = Header(None)):
+        """Tar a sandbox's fs into a named base image on the Mac (Modal
+        ``snapshot_filesystem``). Returns the base's ``image_id`` — feed it back
+        as ``base=`` / ``Image.from_id(image_id)`` to seed a fresh sandbox."""
+        require_scope(authorization, "run")
+        sb = store.get_sandbox(sandbox_id)
+        mid = sb["machine_id"] if sb else _resolve_machine("default", owner_from_key(authorization))
+        base = body.base or (sandbox_id + "_snap")
+        return await _snapshot_rpc(mid, sandbox_id, base)
+
+    async def _snapshot_rpc(machine_id: str, sandbox_id: str, base: str, timeout: float = 240) -> dict:
+        agent = hub.agent(machine_id)
+        if agent is None:
+            raise HTTPException(409, "machine offline")
+        request_id = "snap_" + uuid.uuid4().hex[:12]
+        fut = asyncio.get_running_loop().create_future()
+        hub.pending[request_id] = fut
+        await agent.send(snapshot_frame(request_id, sandbox_id, base))
+        try:
+            result = await asyncio.wait_for(fut, timeout=timeout)
+        except asyncio.TimeoutError:
+            hub.pending.pop(request_id, None)
+            raise HTTPException(504, "agent did not respond")
+        if result.get("error"):
+            raise HTTPException(400, result["error"])
+        return result
 
     @app.websocket("/v1/jobs/{request_id}/logs")
     async def job_logs(ws: WebSocket, request_id: str):
@@ -1285,6 +1319,12 @@ class CreateSandboxBody(BaseModel):
     secrets: list[str] = []
     inherit_home: bool = False
     keep_alive: bool = False
+    setup_commands: list[str] = []
+    base: Optional[str] = None
+
+
+class SnapshotBody(BaseModel):
+    base: Optional[str] = None   # name for the base image; defaults to <sandbox>_snap
 
 
 class KeyBody(BaseModel):

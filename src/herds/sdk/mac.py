@@ -25,12 +25,13 @@ def _normalize_secrets(secrets: SecretsLike) -> list[str]:
     return [s.name if isinstance(s, Secret) else str(s) for s in (secrets or [])]
 
 
-def _normalize_image(image: ImageLike) -> tuple[Optional[str], dict[str, str]]:
+def _normalize_image(image: ImageLike) -> tuple[Optional[str], dict[str, str], list[str], Optional[str]]:
+    """Return ``(name, env, setup_commands, base)`` for any image-like value."""
     if image is None:
-        return None, {}
+        return None, {}, [], None
     if isinstance(image, str):
-        return image, {}
-    return image.name, dict(image.env)
+        return image, {}, [], None
+    return image.name, dict(image.env), list(image.setup_commands), image.base
 
 
 def _normalize_volumes(volumes: VolumesLike) -> dict[str, str]:
@@ -54,7 +55,7 @@ def _build_request(
     keep_alive: bool = False,
     app: Optional[str] = None,
 ) -> ExecRequest:
-    image_name, image_env = _normalize_image(image)
+    image_name, image_env, setup_commands, base = _normalize_image(image)
     merged_env = {**image_env, **(env or {})}
     return ExecRequest(
         command=command,
@@ -69,6 +70,8 @@ def _build_request(
         inherit_home=inherit_home,
         keep_alive=keep_alive,
         app=app,
+        setup_commands=setup_commands,
+        base=base,
     )
 
 

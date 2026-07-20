@@ -32,6 +32,7 @@ class FrameType(str, Enum):
     SANDBOX_CREATE = "sandbox_create"  # materialize a sandbox
     SANDBOX_EXEC = "sandbox_exec"      # run a command inside a sandbox
     SANDBOX_TERMINATE = "sandbox_terminate"
+    SNAPSHOT = "snapshot"              # tar a sandbox's fs into a named base image
     CANCEL = "cancel"                  # cancel an in-flight request
     FS_LIST = "fs_list"                # list a directory (request → single result)
     FS_READ = "fs_read"                # read a file (request → single result)
@@ -59,6 +60,7 @@ class FrameType(str, Enum):
     STDERR = "stderr"
     EXIT = "exit"                      # terminal frame for a request
     SANDBOX_READY = "sandbox_ready"
+    SNAPSHOT_RESULT = "snapshot_result"  # response to SNAPSHOT
     FS_RESULT = "fs_result"            # response to FS_LIST / FS_READ
     HTTP_RESPONSE = "http_response"    # response to HTTP_REQUEST
     ERROR = "error"
@@ -141,6 +143,8 @@ def exec_frame(
     sandbox_id: Optional[str] = None,
     inherit_home: bool = False,
     keep_alive: bool = False,
+    setup_commands: Optional[list[str]] = None,
+    base: Optional[str] = None,
 ) -> Frame:
     return Frame(
         type=FrameType.EXEC,
@@ -156,6 +160,8 @@ def exec_frame(
             "sandbox_id": sandbox_id,
             "inherit_home": inherit_home,
             "keep_alive": keep_alive,
+            "setup_commands": list(setup_commands or []),
+            "base": base,
         },
     )
 
@@ -171,6 +177,8 @@ def session_start_frame(
     network: bool = True,
     sandbox_id: Optional[str] = None,
     inherit_home: bool = False,
+    setup_commands: Optional[list[str]] = None,
+    base: Optional[str] = None,
 ) -> Frame:
     """Start a resident process the backend feeds many stdin turns into.
 
@@ -191,6 +199,8 @@ def session_start_frame(
             "network": network,
             "sandbox_id": sandbox_id,
             "inherit_home": inherit_home,
+            "setup_commands": list(setup_commands or []),
+            "base": base,
         },
     )
 
@@ -219,6 +229,8 @@ def sandbox_create_frame(
     env: Optional[dict[str, str]] = None,
     timeout: Optional[int] = None,
     network: bool = True,
+    setup_commands: Optional[list[str]] = None,
+    base: Optional[str] = None,
 ) -> Frame:
     return Frame(
         type=FrameType.SANDBOX_CREATE,
@@ -231,7 +243,24 @@ def sandbox_create_frame(
             "env": env or {},
             "timeout": timeout,
             "network": network,
+            "setup_commands": list(setup_commands or []),
+            "base": base,
         },
+    )
+
+
+def snapshot_frame(request_id: str, sandbox_id: str, base: str) -> Frame:
+    """control -> agent: tar a sandbox's workspace+home into a named ``base``
+    image under the herds home. The agent replies with a ``SNAPSHOT_RESULT``
+    frame carrying ``{base, image_id, size_bytes, path}`` (or ``{error}``).
+
+    This is the Herds analog of Modal's ``Sandbox.snapshot_filesystem()``:
+    the produced ``image_id`` can seed a fresh sandbox via ``base=`` on exec
+    (``Image.from_id(image_id)`` on the SDK side)."""
+    return Frame(
+        type=FrameType.SNAPSHOT,
+        request_id=request_id,
+        data={"sandbox_id": sandbox_id, "base": base},
     )
 
 
@@ -330,6 +359,8 @@ class ExecRequest(BaseModel):
     inherit_home: bool = False         # run with the user's real HOME (tools, logins)
     keep_alive: bool = False           # supervise: respawn the process if it exits
     app: Optional[str] = None          # group this run under a named App
+    setup_commands: list[str] = Field(default_factory=list)  # image provisioning steps
+    base: Optional[str] = None         # restore a snapshot base image into a new sandbox
 
 
 class ExecAccepted(BaseModel):

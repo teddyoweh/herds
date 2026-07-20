@@ -19,6 +19,7 @@ class Image:
     name: Optional[str] = None          # e.g. "xcode:26", "node:22"
     env: dict[str, str] = field(default_factory=dict)
     setup_commands: tuple[str, ...] = ()
+    base: Optional[str] = None          # a snapshot base image id to restore from
 
     # -- factories (start a chain) ----------------------------------------- #
 
@@ -43,6 +44,15 @@ class Image:
     def from_name(name: str) -> "Image":
         return Image(name=name)
 
+    @staticmethod
+    def from_id(image_id: str) -> "Image":
+        """Seed a sandbox from a snapshot base image (Modal ``Image.from_id``).
+
+        The ``image_id`` is what :meth:`herds.Sandbox.snapshot_filesystem`
+        returns; a sandbox created with this image restores that snapshot's
+        workspace+home before running anything."""
+        return Image(base=image_id)
+
     # -- builder steps (return new Images; frozen + immutable) -------------- #
 
     def env_vars(self, **vars: str) -> "Image":
@@ -56,7 +66,12 @@ class Image:
     # -- serialization ----------------------------------------------------- #
 
     def to_request_fields(self) -> dict:
-        return {"image": self.name, "env": dict(self.env)}
+        return {
+            "image": self.name,
+            "env": dict(self.env),
+            "setup_commands": list(self.setup_commands),
+            "base": self.base,
+        }
 
     def __repr__(self) -> str:
         return f"Image({self.name or 'host'})"

@@ -12,9 +12,20 @@ Image names follow ``"<kind>:<version>"`` (e.g. ``"xcode:26"``, ``"node:22"``,
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 from pathlib import Path
 from typing import Optional
+
+
+def provision_hash(setup_commands: list[str]) -> str:
+    """A stable content hash of a provisioning command list.
+
+    Identical command lists collapse to the same hash so a second run against an
+    already-provisioned sandbox is a cheap no-op. Whitespace is preserved (the
+    exact command matters); order matters too, since steps run sequentially."""
+    joined = "\n".join(setup_commands)
+    return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:16]
 
 
 class ImageResolution:

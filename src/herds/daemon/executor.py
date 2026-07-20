@@ -20,6 +20,7 @@ import codecs
 import os
 import shutil
 import signal
+import tarfile
 import time
 import uuid
 from pathlib import Path
@@ -69,6 +70,61 @@ def _volume_path(name: str) -> Path:
     p = config.VOLUMES_DIR / name
     p.mkdir(parents=True, exist_ok=True)
     return p
+
+
+# --------------------------------------------------------------------------- #
+# Snapshot -> base images (Modal snapshot_filesystem / Image.from_id analog)
+# --------------------------------------------------------------------------- #
+
+# A base image is just a local tarball of a sandbox's workspace+home, stored
+# under the herds home. Cheap to make, cheap to restore -- no VM, no registry.
+_SNAPSHOT_DIRS = ("workspace", "home")
+
+
+def _base_tar_path(base: str) -> Path:
+    """Where a named base image lives on disk. The name is sanitized so it can't
+    escape IMAGES_DIR; a plain ``"myenv"`` maps to ``.../images/myenv.tar``."""
+    safe = "".join(c if (c.isalnum() or c in "-_.") else "_" for c in base).strip("._") or "base"
+    return (config.IMAGES_DIR / f"{safe}.tar").resolve()
+
+
+def snapshot_to_base(sandbox_root: Path, base: str) -> dict:
+    """Tar a sandbox's ``workspace/`` and ``home/`` into the named base image.
+
+    Returns ``{base, image_id, size_bytes, path}``. Idempotent by name: writing
+    the same base again just overwrites it (a fresh snapshot of current state)."""
+    config.ensure_dirs()
+    tar_path = _base_tar_path(base)
+    tmp = tar_path.with_suffix(".tar.tmp")
+    with tarfile.open(tmp, "w") as tf:
+        for sub in _SNAPSHOT_DIRS:
+            d = sandbox_root / sub
+            if d.is_dir():
+                tf.add(d, arcname=sub)
+    tmp.replace(tar_path)  # atomic swap so a reader never sees a half tar
+    size = tar_path.stat().st_size
+    return {"base": base, "image_id": tar_path.stem, "size_bytes": size, "path": str(tar_path)}
+
+
+def restore_from_base(sandbox_root: Path, base: str) -> bool:
+    """Extract a named base image into a sandbox root, recreating workspace+home.
+
+    Returns True if the base existed and was restored, False if there is no such
+    base (the sandbox is then just a fresh empty tree). Path traversal in the tar
+    is refused member by member."""
+    tar_path = _base_tar_path(base)
+    if not tar_path.exists():
+        return False
+    root = sandbox_root.resolve()
+    with tarfile.open(tar_path, "r:*") as tf:
+        for m in tf.getmembers():
+            if not (m.isfile() or m.isdir()):
+                continue  # skip symlinks/devices/hardlinks
+            mp = (root / m.name).resolve()
+            if root != mp and root not in mp.parents:
+                continue  # refuse traversal outside the sandbox root
+            tf.extract(m, path=root)
+    return True
 
 
 def _build_env(
@@ -266,17 +322,26 @@ class Executor:
 
     # -- sandbox lifecycle -------------------------------------------------- #
 
-    def create_sandbox(self, sandbox_id: str, image: Optional[str] = None) -> Sandbox:
+    def create_sandbox(
+        self, sandbox_id: str, image: Optional[str] = None, base: Optional[str] = None
+    ) -> Sandbox:
         sb = Sandbox(sandbox_id, image=image)
         sb.materialize()
+        # A fresh sandbox seeded from a snapshot base restores that base's
+        # workspace+home on top of the empty tree (best-effort: a missing base is
+        # a no-op, so the sandbox is simply empty).
+        if base:
+            restore_from_base(sb.root, base)
         self.sandboxes[sandbox_id] = sb
         return sb
 
-    def get_or_create(self, sandbox_id: Optional[str], image: Optional[str]) -> Sandbox:
+    def get_or_create(
+        self, sandbox_id: Optional[str], image: Optional[str], base: Optional[str] = None
+    ) -> Sandbox:
         if sandbox_id and sandbox_id in self.sandboxes:
             return self.sandboxes[sandbox_id]
         sid = sandbox_id or f"sbx_eph_{uuid.uuid4().hex[:8]}"
-        return self.create_sandbox(sid, image=image)
+        return self.create_sandbox(sid, image=image, base=base)
 
     def terminate_sandbox(self, sandbox_id: str) -> bool:
         sb = self.sandboxes.pop(sandbox_id, None)
@@ -284,6 +349,16 @@ class Executor:
             return False
         sb.destroy()
         return True
+
+    def snapshot(self, sandbox_id: str, base: str) -> dict:
+        """Tar a sandbox's workspace+home into a named base image and return its
+        facts (``base``/``image_id``/``size_bytes``/``path``). Works whether or
+        not the sandbox is tracked in-memory, as long as its dir tree exists."""
+        sb = self.sandboxes.get(sandbox_id)
+        root = sb.root if sb is not None else (config.SANDBOXES_DIR / sandbox_id)
+        if not root.exists():
+            raise FileNotFoundError(f"no such sandbox on disk: {sandbox_id}")
+        return snapshot_to_base(root, base)
 
     # -- execution ---------------------------------------------------------- #
 
@@ -300,11 +375,17 @@ class Executor:
         env: Optional[dict[str, str]],
         network: bool,
         inherit_home: bool,
+        setup_commands: Optional[list[str]] = None,
+        base: Optional[str] = None,
     ) -> tuple[Sandbox, list[str], str, dict[str, str]]:
         """Resolve the sandbox, image, volumes and environment for a launch and
         return ``(sandbox, argv, cwd, full_env)``. Shared by one-shot ``run`` and
-        resident ``start_session`` so both isolate identically."""
-        sandbox = self.get_or_create(sandbox_id, image)
+        resident ``start_session`` so both isolate identically.
+
+        A new sandbox named with ``base`` first restores that snapshot image; any
+        ``setup_commands`` (image provisioning) then run once, cached by content
+        hash so a repeat is a cheap no-op."""
+        sandbox = self.get_or_create(sandbox_id, image, base=base)
         resolution = images.resolve(image or sandbox.image)
 
         # Surface image resolution notes as stderr so users see what got pinned.
@@ -337,12 +418,89 @@ class Executor:
 
         full_env = _build_env(sandbox, resolution, {**volume_env, **(env or {})}, inherit_home)
         cwd = workdir or str(sandbox.workspace)
+        # Run image provisioning (node/claude-code/python deps/chromium…) once,
+        # before the user's command, cached by content hash.
+        if setup_commands:
+            await self._provision(
+                sandbox, list(setup_commands), sink=sink, full_env=full_env,
+                volume_paths=volume_paths, network=network, inherit_home=inherit_home,
+            )
         # inherit_home means "run as me" — no Seatbelt write-fence (full host access).
         if inherit_home:
             argv = ["/bin/zsh", "-lc", command] if isinstance(command, str) else list(command)
         else:
             argv = _wrap_command(command, sandbox, volume_paths, network)
         return sandbox, argv, cwd, full_env
+
+    async def _provision(
+        self,
+        sandbox: Sandbox,
+        setup_commands: list[str],
+        *,
+        sink: OutputSink,
+        full_env: dict[str, str],
+        volume_paths: list[Path],
+        network: bool,
+        inherit_home: bool,
+    ) -> bool:
+        """Run a sandbox's image ``setup_commands`` once, idempotently.
+
+        A content hash of the command list keys a marker on disk under the
+        sandbox; if the marker exists the whole step is skipped (cheap no-op). The
+        marker is written only when *every* command succeeds, so a failed
+        provisioning re-runs next time instead of silently caching a broken env.
+        Progress and a clear note for a missing tool (exit 127) stream via
+        ``sink``. Returns True if the environment is provisioned (cached or fresh).
+        """
+        h = images.provision_hash(setup_commands)
+        marker_dir = sandbox.root / ".herds_provision"
+        marker = marker_dir / f"{h}.done"
+        if marker.exists():
+            await sink("stderr", f"herds: provisioning cached ({h}); "
+                                 f"skipping {len(setup_commands)} step(s)\n")
+            return True
+
+        cwd = str(sandbox.workspace)
+        n = len(setup_commands)
+        for i, cmd in enumerate(setup_commands, 1):
+            await sink("stderr", f"herds: provisioning ({i}/{n}): {cmd}\n")
+            if inherit_home:
+                argv = ["/bin/zsh", "-lc", cmd]
+            else:
+                argv = _wrap_command(cmd, sandbox, volume_paths, network)
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *argv,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=cwd,
+                    env=full_env,
+                    start_new_session=True,
+                    limit=4 * 1024 * 1024,
+                )
+            except (OSError, ValueError) as exc:
+                await sink("stderr", f"herds: provisioning could not launch step {i}: {exc}\n")
+                return False
+            pumps = asyncio.gather(
+                _pump(proc.stdout, "stdout", sink), _pump(proc.stderr, "stderr", sink)
+            )
+            await proc.wait()
+            await pumps
+            code = proc.returncode if proc.returncode is not None else -1
+            if code != 0:
+                if code == 127:
+                    await sink("stderr", f"herds: provisioning step {i} needs a tool that "
+                                         f"isn't installed (exit 127): {cmd!r} — install it or "
+                                         f"add it to the image; not caching\n")
+                else:
+                    await sink("stderr", f"herds: provisioning step {i} failed (exit {code}); "
+                                         f"not caching so it retries next run\n")
+                return False
+
+        marker_dir.mkdir(parents=True, exist_ok=True)
+        marker.write_text(f"provisioned {n} step(s)\n")
+        await sink("stderr", f"herds: provisioning complete ({h}); cached\n")
+        return True
 
     async def start_session(
         self,
@@ -357,6 +515,8 @@ class Executor:
         env: Optional[dict[str, str]] = None,
         network: bool = True,
         inherit_home: bool = False,
+        setup_commands: Optional[list[str]] = None,
+        base: Optional[str] = None,
     ) -> ResidentSession:
         """Launch a RESIDENT process with an open stdin pipe and return a handle.
 
@@ -369,7 +529,7 @@ class Executor:
         sandbox, argv, cwd, full_env = await self._prepare_launch(
             request_id, command, sink=sink, image=image, sandbox_id=sandbox_id,
             volumes=volumes, workdir=workdir, env=env, network=network,
-            inherit_home=inherit_home,
+            inherit_home=inherit_home, setup_commands=setup_commands, base=base,
         )
         self._canceled.discard(request_id)
         try:
@@ -435,6 +595,8 @@ class Executor:
         network: bool = True,
         inherit_home: bool = False,
         keep_alive: bool = False,
+        setup_commands: Optional[list[str]] = None,
+        base: Optional[str] = None,
     ) -> tuple[int, int]:
         """Run a command, streaming output via ``sink``. Returns (exit_code, ms).
 
@@ -446,7 +608,7 @@ class Executor:
         sandbox, argv, cwd, full_env = await self._prepare_launch(
             request_id, command, sink=sink, image=image, sandbox_id=sandbox_id,
             volumes=volumes, workdir=workdir, env=env, network=network,
-            inherit_home=inherit_home,
+            inherit_home=inherit_home, setup_commands=setup_commands, base=base,
         )
 
         code = -1

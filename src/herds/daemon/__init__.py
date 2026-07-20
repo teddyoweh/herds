@@ -185,6 +185,8 @@ class Daemon:
                 await self._handle_sandbox_create(frame)
             elif frame.type == FrameType.SANDBOX_TERMINATE:
                 self.executor.terminate_sandbox(frame.data.get("sandbox_id", ""))
+            elif frame.type == FrameType.SNAPSHOT:
+                await self._handle_snapshot(frame)
             elif frame.type == FrameType.CANCEL:
                 if frame.request_id:
                     self.executor.cancel(frame.request_id)
@@ -324,7 +326,10 @@ class Daemon:
 
     async def _handle_sandbox_create(self, frame: Frame) -> None:
         sid = frame.data["sandbox_id"]
-        self.executor.create_sandbox(sid, image=frame.data.get("image"))
+        # A base restores a snapshot image into the fresh sandbox tree.
+        self.executor.create_sandbox(
+            sid, image=frame.data.get("image"), base=frame.data.get("base")
+        )
         await self._send(Frame(
             type=FrameType.SANDBOX_READY,
             request_id=frame.request_id,
@@ -341,6 +346,7 @@ class Daemon:
                 env=frame.data.get("env"),
                 timeout=frame.data.get("timeout"),
                 network=frame.data.get("network", True),
+                setup_commands=frame.data.get("setup_commands"),
             )
 
     async def _handle_exec(self, frame: Frame) -> None:
@@ -357,7 +363,23 @@ class Daemon:
             network=d.get("network", True),
             inherit_home=d.get("inherit_home", False),
             keep_alive=d.get("keep_alive", False),
+            setup_commands=d.get("setup_commands"),
+            base=d.get("base"),
         )
+
+    async def _handle_snapshot(self, frame: Frame) -> None:
+        """Tar a sandbox's fs into a named base image and reply with its facts.
+
+        Replies as a SNAPSHOT_RESULT RPC (correlated by request_id) so the control
+        plane can resolve the awaiting SDK call, mirroring FS_RESULT."""
+        d = frame.data
+        try:
+            result = self.executor.snapshot(d["sandbox_id"], d["base"])
+        except Exception as exc:  # noqa: BLE001 — surface as an RPC error payload
+            result = {"error": str(exc)}
+        await self._send(Frame(
+            type=FrameType.SNAPSHOT_RESULT, request_id=frame.request_id, data=result
+        ))
 
     async def _handle_session_start(self, frame: Frame) -> None:
         """Start a resident, stdin-fed session and stream it until it exits.
@@ -386,6 +408,8 @@ class Daemon:
                 env=d.get("env"),
                 network=d.get("network", True),
                 inherit_home=d.get("inherit_home", False),
+                setup_commands=d.get("setup_commands"),
+                base=d.get("base"),
             )
         except Exception as exc:  # launch failed — report a terminal EXIT
             await self._send(error_frame(request_id, str(exc)))

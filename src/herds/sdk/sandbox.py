@@ -267,6 +267,28 @@ class Sandbox:
             workdir=workdir, timeout=timeout, stream=stream,
         )
 
+    def snapshot_filesystem(self, name: str = "") -> "Image":
+        """Snapshot this sandbox's filesystem into a reusable base image.
+
+            base = sbx.snapshot_filesystem("my-provisioned-env")
+            fresh = mac.sandbox(image=base)   # starts pre-populated
+
+        Mirrors Modal's ``Sandbox.snapshot_filesystem()``: the Mac tars the
+        sandbox's workspace+home into a named base under the herds home. Returns an
+        :class:`Image` bound to that base (``Image.from_id(image_id)``) — pass it
+        as a new sandbox's ``image`` to restore the snapshot before anything runs.
+        """
+        from .client import HerdsError
+
+        if self._terminated:
+            raise RuntimeError(f"sandbox {self.id} has been terminated")
+        body = {"base": name} if name else {}
+        r = self._client._http.post(f"/v1/sandboxes/{self.id}/snapshot", json=body, timeout=300)
+        if r.status_code >= 400:
+            raise HerdsError(r.json().get("detail", r.text)
+                             if r.headers.get("content-type", "").startswith("application/json") else r.text)
+        return Image.from_id(r.json()["image_id"])
+
     def terminate(self) -> None:
         """Destroy the sandbox: stop its processes and wipe its workspace."""
         try:
