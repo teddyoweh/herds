@@ -42,6 +42,7 @@ from ..protocol import (
     session_start_frame,
     snapshot_frame,
     stdin_frame,
+    keepalive_frame,
     tunnel_close_frame,
     tunnel_data_frame,
     tunnel_open_frame,
@@ -581,6 +582,26 @@ def create_app(db_path: str | Path = ":memory:") -> FastAPI:
             raise HTTPException(409, "machine offline")
         try:
             await agent.send(stdin_frame(request_id, body.data, eof=body.eof))
+        except Exception:
+            raise HTTPException(409, "machine disconnected")
+        return {"ok": True, "request_id": request_id}
+
+    @app.post("/v1/sessions/{request_id}/keepalive")
+    async def session_keepalive_ep(
+        request_id: str, authorization: Optional[str] = Header(None)
+    ):
+        """Mark a resident session active so the idle reaper spares it — the
+        backend calls this to hold a session alive during work with no
+        stdin/stdout (e.g. a driver parked awaiting a user's answer)."""
+        require_scope(authorization, "run")
+        job = store.get_job(request_id)
+        if job is None:
+            raise HTTPException(404, "no such session")
+        agent = hub.agent(job["machine_id"])
+        if agent is None:
+            raise HTTPException(409, "machine offline")
+        try:
+            await agent.send(keepalive_frame(request_id))
         except Exception:
             raise HTTPException(409, "machine disconnected")
         return {"ok": True, "request_id": request_id}

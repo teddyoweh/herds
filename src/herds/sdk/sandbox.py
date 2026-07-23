@@ -327,6 +327,12 @@ class Session:
         """Write a chunk to the session's stdin."""
         self._client.send_stdin(self.id, data)
 
+    def keepalive(self) -> None:
+        """Mark this session active so the idle reaper spares it — call while the
+        session is doing work with no stdin/stdout (e.g. parked awaiting a user's
+        AskUserQuestion answer) so a long wait doesn't get it reaped."""
+        self._client.session_keepalive(self.id)
+
     def stream(self) -> Iterator[tuple[str, str]]:
         """Yield ``(stream, text)`` output chunks live until the session exits.
 

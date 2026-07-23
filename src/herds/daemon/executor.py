@@ -340,7 +340,12 @@ def _kill_tree(proc: asyncio.subprocess.Process) -> None:
             pass
 
 
-async def _pump(stream: asyncio.StreamReader, name: str, sink: OutputSink) -> None:
+async def _pump(
+    stream: asyncio.StreamReader,
+    name: str,
+    sink: OutputSink,
+    on_activity: Optional[Callable[[], None]] = None,
+) -> None:
     """Drain a subprocess pipe into ``sink`` chunk by chunk.
 
     Read fixed-size chunks, not readline(): a single line longer than the
@@ -348,6 +353,11 @@ async def _pump(stream: asyncio.StreamReader, name: str, sink: OutputSink) -> No
     readline() raise LimitOverrunError, which would crash the pump and hang the
     SDK waiting for output that never arrives. An incremental UTF-8 decoder keeps
     multibyte chars intact across chunk boundaries.
+
+    ``on_activity`` (resident sessions) is called on every non-empty chunk so a
+    session that is actively PRODUCING output — including a driver heartbeating
+    while it waits for a user answer — counts as alive and the idle reaper won't
+    kill it mid-turn. The reaper still reclaims genuinely-silent sessions.
     """
     dec = codecs.getincrementaldecoder("utf-8")("replace")
     while True:
@@ -357,6 +367,11 @@ async def _pump(stream: asyncio.StreamReader, name: str, sink: OutputSink) -> No
             if tail:
                 await sink(name, tail)
             break
+        if on_activity is not None:
+            try:
+                on_activity()
+            except Exception:  # noqa: BLE001 — activity tracking must never break the pump
+                pass
         text = dec.decode(chunk)
         if text:
             await sink(name, text)
@@ -386,6 +401,15 @@ class ResidentSession:
         self.last_active = started
         self._pumps: Optional[asyncio.Future] = None
         self._stdin_closed = False
+
+    def touch(self) -> None:
+        """Mark the session active NOW so the idle reaper spares it.
+
+        Bumped by stdin ``send`` (a turn), by stdout activity (the process is
+        producing output), and by an explicit ``/v1/sessions/{id}/keepalive``
+        from the backend — e.g. while a driver is parked awaiting a user answer,
+        which is mid-turn work with no stdin/stdout to prove it's alive."""
+        self.last_active = time.monotonic()
 
     async def send(self, data: str) -> None:
         """Write a chunk to the process's stdin and flush it."""
@@ -701,8 +725,12 @@ class Executor:
             raise
         sandbox._procs[request_id] = proc
         session = ResidentSession(request_id, proc, sandbox, started)
+        # stdout activity keeps the session non-idle so the reaper never kills a
+        # session that's actively producing output (or heartbeating during an
+        # answer-wait) mid-turn. stderr is diagnostics — don't count it.
         session._pumps = asyncio.gather(
-            _pump(proc.stdout, "stdout", sink), _pump(proc.stderr, "stderr", sink)
+            _pump(proc.stdout, "stdout", sink, on_activity=session.touch),
+            _pump(proc.stderr, "stderr", sink),
         )
         self._sessions[request_id] = session
         return session
@@ -717,6 +745,17 @@ class Executor:
             await session.send(data)
         if eof:
             await session.close_stdin()
+        return True
+
+    def session_keepalive(self, request_id: str) -> bool:
+        """Mark a resident session active so the idle reaper spares it. Returns
+        False if no such live session exists on this machine. Used by the backend
+        to hold a session alive during work with no stdin/stdout — e.g. a driver
+        parked awaiting a user's AskUserQuestion answer."""
+        session = self._sessions.get(request_id)
+        if session is None:
+            return False
+        session.touch()
         return True
 
     async def session_wait(self, request_id: str) -> tuple[int, int]:

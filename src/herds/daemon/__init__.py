@@ -185,6 +185,9 @@ class Daemon:
                         frame.data.get("data", ""),
                         eof=bool(frame.data.get("eof")),
                     )
+            elif frame.type == FrameType.KEEPALIVE:
+                if frame.request_id:
+                    self.executor.session_keepalive(frame.request_id)
             elif frame.type == FrameType.SANDBOX_CREATE:
                 await self._handle_sandbox_create(frame)
             elif frame.type == FrameType.SANDBOX_TERMINATE:

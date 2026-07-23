@@ -29,6 +29,7 @@ class FrameType(str, Enum):
     EXEC = "exec"                      # run a one-shot command
     SESSION_START = "session_start"    # start a RESIDENT process fed many stdin turns
     STDIN = "stdin"                    # write a chunk to a resident process's stdin
+    KEEPALIVE = "keepalive"            # mark a resident session active (spare it from the idle reaper)
     SANDBOX_CREATE = "sandbox_create"  # materialize a sandbox
     SANDBOX_EXEC = "sandbox_exec"      # run a command inside a sandbox
     SANDBOX_TERMINATE = "sandbox_terminate"
@@ -221,6 +222,13 @@ def stdin_frame(request_id: str, data: str = "", *, eof: bool = False) -> Frame:
         request_id=request_id,
         data={"data": data, "eof": eof},
     )
+
+
+def keepalive_frame(request_id: str) -> Frame:
+    """Mark a resident session active so the idle reaper spares it — used to hold
+    a session alive during work with no stdin/stdout (e.g. a driver parked
+    awaiting a user's AskUserQuestion answer)."""
+    return Frame(type=FrameType.KEEPALIVE, request_id=request_id, data={})
 
 
 def sandbox_create_frame(

@@ -267,6 +267,48 @@ async def test_reap_idle_session_kills_it_and_frees_slot(herds_home):
 
 
 @pytest.mark.asyncio
+async def test_keepalive_spares_idle_session_from_reaper(herds_home):
+    """A session with no stdin would be reaped — but touch()/keepalive marks it
+    active so the reaper spares it. This is the AskUserQuestion-wait case."""
+    from herds.daemon.executor import Executor
+
+    ex = Executor()
+
+    async def sink(stream, text):
+        pass
+
+    await ex.start_session("sessk", "cat", sink=sink)
+    # Keepalive marks it active NOW; a tiny idle budget must not reap it.
+    assert ex.session_keepalive("sessk") is True
+    reaped = ex.reap_idle_sessions(idle_timeout_ms=50_000)
+    assert "sessk" not in reaped
+    # Unknown session → False (no crash).
+    assert ex.session_keepalive("nope") is False
+    ex.terminate_sandbox("sessk")
+
+
+@pytest.mark.asyncio
+async def test_stdout_activity_keeps_session_alive(herds_home):
+    """A session actively PRODUCING output (e.g. a driver heartbeating during an
+    answer-wait) bumps last_active via the stdout pump, so it isn't reaped."""
+    from herds.daemon.executor import Executor
+
+    ex = Executor()
+
+    async def sink(stream, text):
+        pass
+
+    # Emit a line every 50ms for a while, then sleep — proves stdout bumps activity.
+    prog = "import time,sys\nfor _ in range(6):\n print('tick',flush=True); time.sleep(0.05)\ntime.sleep(30)"
+    await ex.start_session("sesso", ["python3", "-u", "-c", prog], sink=sink)
+    await asyncio.sleep(0.25)  # let a few ticks pump through
+    # Despite a short idle budget, recent stdout keeps last_active fresh.
+    reaped = ex.reap_idle_sessions(idle_timeout_ms=1_000)
+    assert "sesso" not in reaped
+    ex.terminate_sandbox("sesso")
+
+
+@pytest.mark.asyncio
 async def test_gc_removes_stale_sandbox_dir_but_keeps_fresh(herds_home):
     from herds.daemon.executor import Executor
 

@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Herds — demo</title>
+<style>
+  /* ───────────────────────────────────────────────────────────────
+     Herds demo film. Calm, real, one green accent (#34d39e).
+     Press R to replay · F for fullscreen · ● REC exports a .webm.
+     ─────────────────────────────────────────────────────────────── */
+  :root{
+    --bg:#08080a; --panel:#0d0d10; --panel2:#0a0a0d;
+    --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.045);
+    --text:#e8e8ec; --dim:#7a7a83; --dim2:#55555d;
+    --green:#34d39e; --greenGlow:rgba(52,211,158,.35);
+    --violet:#b3a4e6; --blue:#8fb6d9; --str:#9aa6b2;
+    --font:"SF Mono",ui-monospace,"JetBrains Mono","Menlo","Monaco",monospace;
+    --ui:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#000;overflow:hidden;cursor:default}
+  body{display:grid;place-items:center;font-family:var(--font)}
+
+  /* 16:9 letterboxed stage; everything scales in container units */
+  .stage{
+    width:min(100vw,177.78vh); aspect-ratio:16/9; position:relative;
+    background:radial-gradient(120% 120% at 50% 0%, #101015 0%, #08080a 55%, #050506 100%);
+    container-type:size; overflow:hidden;
+  }
+  /* very subtle film grain + vignette, kept low so it never reads dramatic */
+  .stage::after{
+    content:""; position:absolute; inset:0; pointer-events:none; z-index:60;
+    background:
+      radial-gradient(130% 130% at 50% 42%, transparent 70%, rgba(0,0,0,.28) 100%);
+    mix-blend-mode:multiply;
+  }
+  .grain{position:absolute;inset:-50%;z-index:59;pointer-events:none;opacity:.035;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    animation:grain 1.6s steps(3) infinite;}
+  @keyframes grain{0%{transform:translate(0,0)}33%{transform:translate(-2%,1%)}66%{transform:translate(1%,-2%)}100%{transform:translate(0,0)}}
+
+  /* window card */
+  .win{
+    position:absolute; left:50%; top:47%; transform:translate(-50%,-50%);
+    width:64cqw; background:linear-gradient(180deg,#0f0f13,#0b0b0e);
+    border:1px solid var(--line); border-radius:1.25cqw;
+    box-shadow:0 2.6cqw 6cqw rgba(0,0,0,.55), 0 .2cqw .5cqw rgba(0,0,0,.4),
+               inset 0 1px 0 rgba(255,255,255,.05);
+    opacity:0; transition:opacity .5s ease, transform .5s cubic-bezier(.2,.7,.2,1);
+    overflow:hidden;
+  }
+  .win.show{opacity:1}
+  .titlebar{
+    height:2.7cqw; display:flex; align-items:center; gap:.55cqw; padding:0 1.1cqw;
+    border-bottom:1px solid var(--line2); background:rgba(255,255,255,.018);
+  }
+  .dot{width:.72cqw;height:.72cqw;border-radius:50%}
+  .r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+  .title{margin-left:.5cqw;color:var(--dim);font-size:.98cqw;letter-spacing:.02em}
+  .title .live{color:var(--green)}
+  .body{padding:1.5cqw 1.7cqw; min-height:24cqw; font-size:1.28cqw; line-height:1.98cqw;
+    color:var(--text); position:relative}
+
+  /* terminal bits */
+  .ln{white-space:pre-wrap;word-break:break-word}
+  .pmt{color:var(--green)}
+  .path{color:var(--dim)}
+  .cmd{color:#f2f2f5}
+  .out{color:var(--dim)}
+  .ok{color:var(--green)}
+  .muted{color:var(--dim2)}
+  .key{color:var(--violet)}.fn{color:#eaeaf0}.str{color:var(--blue)}.cm{color:var(--dim2)}
+  .kw{color:var(--violet)}
+  .cursor{display:inline-block;width:.8cqw;height:1.35cqw;margin-left:.15cqw;
+    background:var(--green);vertical-align:-.25cqw;animation:blink 1.05s steps(1) infinite;border-radius:1px}
+  @keyframes blink{0%,50%{opacity:1}50.01%,100%{opacity:0}}
+
+  /* dashboard link chip */
+  .linkline{color:var(--dim)}
+  .url{color:var(--green);text-decoration:none;border-bottom:1px solid var(--greenGlow)}
+
+  /* modal-vs-herds two columns */
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:1.3cqw;font-size:1.2cqw;line-height:1.9cqw}
+  .card{border:1px solid var(--line);border-radius:.9cqw;padding:1.1cqw 1.3cqw;background:rgba(255,255,255,.012);
+    opacity:0;transform:translateY(1.2cqw);transition:opacity .5s ease,transform .5s cubic-bezier(.2,.7,.2,1)}
+  .card.in{opacity:1;transform:none}
+  .card.herds{border-color:rgba(52,211,158,.28);box-shadow:0 0 0 1px rgba(52,211,158,.06),0 1.5cqw 4cqw rgba(52,211,158,.05)}
+  .card h4{font-family:var(--ui);font-weight:500;font-size:1.0cqw;letter-spacing:.03em;margin-bottom:.9cqw;color:var(--dim);text-transform:uppercase}
+  .card.herds h4{color:var(--green)}
+  .swap{background:rgba(52,211,158,.14);border-radius:.3cqw;padding:0 .25cqw;
+    box-shadow:0 0 0 0 var(--greenGlow);animation:swapGlow 2.2s ease-in-out infinite}
+  @keyframes swapGlow{0%,100%{box-shadow:0 0 0 0 rgba(52,211,158,0)}50%{box-shadow:0 0 1.4cqw .1cqw var(--greenGlow)}}
+
+  /* apps dashboard */
+  .dash{font-size:1.22cqw}
+  .dhead{font-family:var(--ui);font-size:1.0cqw;color:var(--dim);font-weight:500;letter-spacing:.06em;
+    text-transform:uppercase;margin:.1cqw 0 1cqw}
+  .drow{display:grid;grid-template-columns:1.6cqw 12cqw 6.5cqw 9cqw 1fr;align-items:center;gap:.9cqw;
+    padding:.78cqw 1.1cqw;border:1px solid var(--line2);border-radius:.7cqw;margin-bottom:.55cqw;
+    background:rgba(255,255,255,.015);opacity:0;transform:translateY(.7cqw);
+    transition:opacity .4s ease,transform .4s cubic-bezier(.2,.7,.2,1)}
+  .drow.in{opacity:1;transform:none}
+  .ddot{width:.7cqw;height:.7cqw;border-radius:50%;background:#3a3a42}
+  .ddot.on{background:var(--green);box-shadow:0 0 1cqw var(--greenGlow)}
+  .dname{color:var(--text)}
+  .dmeta{color:var(--dim);font-size:1.05cqw}
+  .dmeta.right{text-align:right}
+  .dep{color:var(--green)}
+  .fnm{color:#eaeaf0}.cron{color:var(--green)}
+  /* keyless agents */
+  .agents{margin-top:.3cqw}
+  .arow{display:grid;grid-template-columns:1.5cqw 11cqw 10cqw 1fr;align-items:center;gap:.9cqw;
+    padding:.72cqw 1.1cqw;border:1px solid var(--line2);border-radius:.7cqw;margin-bottom:.55cqw;
+    background:rgba(255,255,255,.015);opacity:.35;
+    transition:opacity .4s ease,border-color .4s ease,box-shadow .4s ease}
+  .arow.in{opacity:1;border-color:rgba(52,211,158,.28);box-shadow:0 0 1.2cqw rgba(52,211,158,.05)}
+  .hn{color:var(--dim2);font-size:1.0cqw}
+  .aright{text-align:right}
+
+  /* fleet tiles */
+  .fleet{display:grid;grid-template-columns:repeat(3,1fr);gap:1cqw;margin-top:1cqw}
+  .tile{border:1px solid var(--line);border-radius:1cqw;padding:1cqw 1.2cqw;background:rgba(255,255,255,.012);
+    display:flex;align-items:center;justify-content:space-between;font-size:1.2cqw;color:var(--dim);
+    opacity:.4;transition:opacity .4s ease,border-color .4s ease,box-shadow .4s ease}
+  .tile .name{color:var(--text)}
+  .tile.on{opacity:1;border-color:rgba(52,211,158,.3);box-shadow:0 0 1.6cqw rgba(52,211,158,.08)}
+  .tile .st{color:var(--green);display:flex;align-items:center;gap:.5cqw}
+  .pulse{width:.8cqw;height:.8cqw;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 var(--greenGlow);animation:beat 1.6s ease-out infinite}
+  @keyframes beat{0%{box-shadow:0 0 0 0 rgba(52,211,158,.4)}70%{box-shadow:0 0 0 1cqw rgba(52,211,158,0)}100%{box-shadow:0 0 0 0 rgba(52,211,158,0)}}
+
+  /* caption */
+  .cap{position:absolute;left:0;right:0;bottom:4.6cqw;text-align:center;z-index:40;
+    font-family:var(--ui);font-weight:400;font-size:1.4cqw;letter-spacing:.01em;color:#d6d6db;
+    opacity:0;filter:blur(10px);transform:translateY(.5cqw);
+    transition:opacity .6s ease,filter .6s ease,transform .6s cubic-bezier(.2,.7,.2,1)}
+  .cap.show{opacity:1;filter:blur(0);transform:none}
+  .cap .accent{color:var(--green)}
+
+  /* cold-open title */
+  .intro{position:absolute;inset:0;display:grid;place-content:center;gap:1.2cqw;text-align:center;
+    opacity:0;transition:opacity .8s ease;z-index:55}
+  .intro.show{opacity:1}
+  .il1,.il2{font-family:var(--ui);font-weight:500;font-size:2.5cqw;letter-spacing:-.015em;
+    opacity:0;transform:translateY(.7cqw);transition:opacity .8s ease,transform .8s cubic-bezier(.2,.7,.2,1)}
+  .il1{color:#fff}.il2{color:var(--dim)}
+  .il1.in,.il2.in{opacity:1;transform:none}
+
+  /* end card */
+  .end{position:absolute;inset:0;display:grid;place-content:center;gap:1.6cqw;text-align:center;
+    opacity:0;transition:opacity .7s ease;z-index:50}
+  .end.show{opacity:1}
+  .mark{font-family:var(--ui);font-weight:600;font-size:7cqw;letter-spacing:-.02em;color:#fff}
+  .mark .d{color:var(--green)}
+  .tag{font-family:var(--ui);font-size:1.7cqw;color:var(--dim);letter-spacing:.01em}
+  .cta{font-size:1.35cqw;color:var(--dim2);letter-spacing:.03em}
+  .cta b{color:var(--text);font-weight:500}
+  .cta .sep{color:#2a2a30;padding:0 .8cqw}
+
+  /* controls (auto-hide, never recorded) */
+  .ctl{position:fixed;bottom:18px;right:18px;z-index:100;display:flex;gap:8px;
+    font-family:var(--ui);font-size:12px;transition:opacity .4s ease}
+  .ctl.hide{opacity:0;pointer-events:none}
+  .ctl button{background:rgba(20,20,24,.8);color:#cfcfd6;border:1px solid rgba(255,255,255,.12);
+    border-radius:8px;padding:7px 11px;cursor:pointer;backdrop-filter:blur(8px)}
+  .ctl button:hover{border-color:rgba(52,211,158,.5);color:#fff}
+  .ctl .rec b{color:#34d39e}
+</style>
+</head>
+<body>
+  <div class="stage" id="stage">
+
+    <div class="win" id="win">
+      <div class="titlebar">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span class="title" id="wtitle">teddy — zsh</span>
+      </div>
+      <div class="body" id="body"></div>
+    </div>
+
+    <div class="cap" id="cap"></div>
+
+    <div class="intro" id="intro">
+      <div class="il1" id="il1">Your Mac is the most powerful computer you own.</div>
+      <div class="il2" id="il2">And it's asleep.</div>
+    </div>
+
+    <div class="end" id="end">
+      <div class="mark">herds<span class="d">.</span></div>
+      <div class="tag">Your Mac is your cloud.</div>
+      <div class="cta"><b>pip install herds</b><span class="sep">·</span>herds.run</div>
+    </div>
+  </div>
+
+  <div class="ctl" id="ctl">
+    <button onclick="play()">↺ Replay</button>
+    <button onclick="toggleFS()">⤢ Fullscreen</button>
+    <button class="rec" onclick="record()"><b>●</b> REC → .webm</button>
+  </div>
+
+<script>
+const $ = s => document.querySelector(s);
+const body = $('#body'), win = $('#win'), cap = $('#cap'), end = $('#end'),
+      wtitle = $('#wtitle'), ctl = $('#ctl');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const rnd = (a,b) => a + Math.random()*(b-a);
+let RUN = 0; // generation token so a replay cancels the previous run
+
+// ── typing that feels human (variable cadence, small pauses) ──────────────
+async function typeInto(span, text, gen){
+  for(const ch of text){
+    if(gen !== RUN) throw 'cancel';
+    span.textContent += ch;
+    let d = rnd(24,52);
+    if(ch === ' ') d += rnd(0,60);
+    if('.,:("'.includes(ch)) d += rnd(40,120);
+    await sleep(d);
+  }
+}
+function line(html=''){ const d=document.createElement('div'); d.className='ln'; d.innerHTML=html; body.appendChild(d); return d; }
+function caret(el){ const c=document.createElement('span'); c.className='cursor'; el.appendChild(c); return c; }
+
+async function prompt(cmd, gen, {path='~'}={}){
+  const l = line(`<span class="pmt">➜</span> <span class="path">${path}</span> <span class="cmd"></span>`);
+  const c = caret(l);
+  const span = l.querySelector('.cmd');
+  await typeInto(span, cmd, gen);
+  await sleep(rnd(120,240)); c.remove();
+  return l;
+}
+async function out(html, gen, d=[70,150]){ if(gen!==RUN) throw 'cancel'; line(`<span class="out">${html}</span>`); await sleep(rnd(d[0],d[1])); }
+
+function setTitle(t){ wtitle.innerHTML = t; }
+async function swapBody(gen){
+  win.classList.remove('show'); await sleep(420);
+  if(gen!==RUN) throw 'cancel';
+  body.innerHTML=''; body.style.fontSize=''; win.style.transform='translate(-50%,-50%)';
+  win.classList.add('show'); await sleep(360);
+}
+async function showCap(html, gen){ if(gen!==RUN) throw 'cancel'; cap.innerHTML=html; cap.classList.add('show'); }
+function hideCap(){ cap.classList.remove('show'); }
+
+// ── the film ──────────────────────────────────────────────────────────────
+async function film(gen){
+  // beat markers → the offline renderer reads these so the score locks to picture
+  const T0 = performance.now();
+  window.__marks = {};
+  const mark = k => { window.__marks[k] = (performance.now() - T0) / 1000; };
+  // reset
+  end.classList.remove('show'); hideCap(); body.innerHTML='';
+  const intro=$('#intro'), il1=$('#il1'), il2=$('#il2');
+  intro.classList.remove('show'); il1.classList.remove('in'); il2.classList.remove('in');
+
+  /* ── Cold open · the pitch ───────────────────────────────────── */
+  intro.classList.add('show');
+  await sleep(400); il1.classList.add('in');
+  await sleep(1600); il2.classList.add('in');
+  await sleep(1900);
+  intro.classList.remove('show');
+  await sleep(750); il1.classList.remove('in'); il2.classList.remove('in');
+
+  setTitle('teddy — zsh'); win.classList.add('show'); await sleep(500);
+
+  /* ── Scene A · install + go live ─────────────────────────────── */
+  await prompt('pip install herds', gen);
+  await out('Collecting herds', gen, [120,220]);
+  await out('Successfully installed <span class="ok">herds-0.1.24</span>', gen, [260,360]);
+  await sleep(320);
+  await prompt('herds auth', gen);
+  await out('<span class="ok">✓</span> signed in as teddy', gen, [220,300]);
+  await sleep(320);
+  await prompt('herds host', gen);
+  const spin = line('<span class="out">◐ starting tunnel…</span>');
+  await sleep(760); spin.remove();
+  await out('<span class="ok">✓</span> Herds host is live', gen, [180,240]);
+  await out('  Dashboard   <a class="url">https://teddy.herds.run</a>', gen, [200,280]);
+  await out('  Host token  herds_sk_9f3a……c1', gen, [180,260]);
+  await out('<span class="pmt">→</span> your Mac is now your cloud', gen, [240,320]);
+  mark('live');
+  await showCap('three commands — <span class="accent">your Mac is now your cloud.</span>', gen);
+  await sleep(1500); hideCap(); await sleep(260);
+
+  /* ── Scene B · drive it from anywhere ────────────────────────── */
+  await swapBody(gen); setTitle('drive.py');
+  body.style.fontSize='1.24cqw';
+  const code = line(''); const cc = caret(code);   // caret stays pinned at the end
+  const py =
+`import herds
+
+mac = herds.mac(
+    url="https://teddy.herds.run",
+    token="hx_live_…",
+)
+mac.run("xcodebuild -scheme App test", stream=True)`;
+  // type the code, colorizing each line once it's done
+  for(const raw of py.split('\n')){
+    if(gen!==RUN) throw 'cancel';
+    const span = document.createElement('span'); code.insertBefore(span, cc);
+    await typeInto(span, raw, gen);
+    const tmp = document.createElement('template'); tmp.innerHTML = colorPy(raw);
+    code.insertBefore(tmp.content, span); span.remove();
+    code.insertBefore(document.createElement('br'), cc);
+    await sleep(rnd(40,120));
+  }
+  cc.remove();
+  await sleep(500);
+  const run = line('<span class="pmt">▸</span> <span class="cmd">python drive.py</span>');
+  await sleep(500);
+  await out('Compiling App (14 files)…', gen, [340,460]);
+  await out('Linking App', gen, [260,360]);
+  await out("Test Suite 'AppTests' started", gen, [220,300]);
+  await out('  <span class="ok">✓</span> testSignIn        0.031s', gen, [160,240]);
+  await out('  <span class="ok">✓</span> testCheckout      0.052s', gen, [160,240]);
+  await out('  <span class="ok">✓</span> testOfflineSync   0.048s', gen, [160,240]);
+  await sleep(200);
+  await out('<span class="ok">** TEST SUCCEEDED **</span>   <span class="muted">real Xcode · 8.2s</span>', gen, [200,260]);
+  mark('xcode');
+  await showCap('real Xcode. real macOS. <span class="accent">from anywhere.</span>', gen);
+  await sleep(1600); hideCap(); await sleep(260);
+
+  /* ── Scene C · you already know the API (Modal parity) ───────── */
+  await swapBody(gen); setTitle('the same code you already know');
+  body.style.fontSize='';
+  const cols = document.createElement('div'); cols.className='cols'; body.appendChild(cols);
+  const fnBody =
+      `      <div class="ln"><span class="cm">@app.function()</span></div>`
+    + `      <div class="ln"><span class="kw">def</span> <span class="fn">fix</span>(task):</div>`
+    + `      <div class="ln">    <span class="kw">import</span> subprocess</div>`
+    + `      <div class="ln">    subprocess.<span class="fn">run</span>([<span class="str">"codex"</span>, <span class="str">"exec"</span>, task])</div>`
+    + `      <div class="ln">&nbsp;</div>`
+    + `      <div class="ln"><span class="fn">fix</span>.<span class="fn">remote</span>(<span class="str">"fix the flaky test"</span>)</div>`;
+  cols.innerHTML = `
+    <div class="card" id="cModal">
+      <h4>Modal · rented Linux</h4>
+      <div class="ln"><span class="kw">import</span> modal</div>
+      <div class="ln">app = modal.<span class="fn">App</span>(<span class="str">"ci"</span>)</div>
+      <div class="ln">&nbsp;</div>
+      ${fnBody}
+    </div>
+    <div class="card herds" id="cHerds">
+      <h4>Herds · your Mac</h4>
+      <div class="ln"><span class="kw">import</span> <span class="swap">herds</span></div>
+      <div class="ln">app = herds.<span class="fn">App</span>(<span class="str">"ci"</span>)</div>
+      <div class="ln">&nbsp;</div>
+      ${fnBody}
+    </div>`;
+  await sleep(120); $('#cModal').classList.add('in');
+  await sleep(280); $('#cHerds').classList.add('in'); mark('parity');
+  await showCap('a real function you already know how to write — <span class="accent">on your Mac.</span>', gen);
+  await sleep(2900); hideCap(); await sleep(260);
+
+  /* ── Scene F · Claude Agent SDK, wrapped in Herds ────────────── */
+  await swapBody(gen); setTitle('agent.py');
+  body.style.fontSize='1.24cqw';
+  const acode = line(''); const acc = caret(acode);
+  const apy =
+`import herds
+
+# an isolated workspace on your Mac
+box = herds.mac().sandbox()
+box.put(".")                     # ship your repo
+
+# Claude Code, running right on your Mac
+box.exec("claude -p 'fix the failing tests'", stream=True)`;
+  for(const raw of apy.split('\n')){
+    if(gen!==RUN) throw 'cancel';
+    const span=document.createElement('span'); acode.insertBefore(span, acc);
+    await typeInto(span, raw, gen);
+    const tmp=document.createElement('template'); tmp.innerHTML=colorPy(raw);
+    acode.insertBefore(tmp.content, span); span.remove();
+    acode.insertBefore(document.createElement('br'), acc);
+    await sleep(rnd(30,95));
+  }
+  acc.remove(); await sleep(500);
+  await out('<span class="ok">●</span> Read   tests/test_auth.py', gen, [280,400]);
+  await out('<span class="ok">●</span> Edit   auth.py           <span class="muted">+12 −5</span>', gen, [300,420]);
+  await out('<span class="ok">●</span> Bash   pytest -q          <span class="ok">✓ 24 passed</span>', gen, [320,460]);
+  await sleep(160); mark('agents');
+  await showCap('run <span class="accent">Claude Code</span> — or any agent — right on your Mac.', gen);
+  await sleep(2100); hideCap(); await sleep(300);
+
+  /* ── Scene G · end card ──────────────────────────────────────── */
+  win.classList.remove('show'); await sleep(560);
+  if(gen!==RUN) throw 'cancel';
+  end.classList.add('show'); mark('end');
+  await sleep(4000);
+}
+
+// minimal, low-saturation python coloring for the typed lines.
+// Pull strings out first (so later keyword spans can't collide), then restore.
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function colorPy(raw){
+  if(raw.trim().startsWith('#')) return `<span class="ln"><span class="cm">${esc(raw)}</span></span>`;
+  const strings=[];
+  let s = esc(raw).replace(/("[^"]*"|'[^']*'|…)/g, m => { strings.push(m); return `${strings.length-1}`; });
+  s = s.replace(/\b(import|def|from|return|with|as|async|await|for|in|lambda)\b/g,'<span class="kw">$1</span>');
+  s = s.replace(/\b(herds|mac|run|App|function|remote|sandbox|exec|put|print|main)\b/g,'<span class="fn">$1</span>');
+  s = s.replace(/(\d+)/g,(_,i)=>`<span class="str">${strings[i]}</span>`);
+  return `<span class="ln">${s}</span>`;
+}
+
+// ── run / loop / controls ──────────────────────────────────────────────────
+const RENDER = new URLSearchParams(location.search).has('render');
+if(RENDER) ctl.style.display='none';   // no controls in the exported film
+let looping = !RENDER;                 // render mode = one clean, non-looping pass
+async function play(){
+  const gen = ++RUN;
+  try{
+    do { await film(gen); if(looping) await sleep(1400); } while(looping && gen===RUN);
+  }catch(e){ /* cancelled by a new play() */ }
+  window.__done = true;                // signals the offline renderer that the pass is complete
+}
+function toggleFS(){ const el=$('#stage'); (document.fullscreenElement? document.exitFullscreen() : el.requestFullscreen?.()); }
+
+// auto-hide controls when idle (so nothing shows if you screen-record)
+let idle; function poke(){ ctl.classList.remove('hide'); clearTimeout(idle); idle=setTimeout(()=>ctl.classList.add('hide'),1800); }
+window.addEventListener('mousemove',poke); poke();
+window.addEventListener('keydown',e=>{ if(e.key==='r'||e.key==='R')play(); if(e.key==='f'||e.key==='F')toggleFS(); });
+
+// ── export to real .webm via screen capture (one clean pass) ───────────────
+async function record(){
+  try{
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video:{ frameRate:60 }, audio:false, preferCurrentTab:true
+    });
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+      ? 'video/webm;codecs=vp9' : 'video/webm';
+    const rec = new MediaRecorder(stream, { mimeType:mime, videoBitsPerSecond: 16_000_000 });
+    const chunks=[]; rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+    rec.onstop=()=>{ const blob=new Blob(chunks,{type:'video/webm'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+      a.download='herds-demo.webm'; a.click(); ctl.classList.remove('hide'); };
+    ctl.classList.add('hide');                 // keep controls out of frame
+    looping=false;                             // one clean pass, no loop
+    const gen=++RUN; rec.start();
+    film(gen).then(()=> setTimeout(()=>{ rec.stop(); stream.getTracks().forEach(t=>t.stop()); looping=true; }, 400));
+    stream.getVideoTracks()[0].onended=()=>{ try{rec.stop()}catch(_){} looping=true; };
+  }catch(e){ /* user cancelled the picker */ }
+}
+
+play();
+</script>
+</body>
+</html>

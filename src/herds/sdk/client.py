@@ -173,6 +173,14 @@ class HerdsClient:
         if r.status_code >= 400:
             _raise_http(r)
 
+    def session_keepalive(self, request_id: str) -> None:
+        """Mark a resident session active so the idle reaper spares it — hold a
+        session alive during work with no stdin/stdout (e.g. awaiting a user
+        answer). Best-effort: a 404 (session already gone) is swallowed."""
+        r = self._http.post(f"/v1/sessions/{request_id}/keepalive")
+        if r.status_code >= 400 and r.status_code != 404:
+            _raise_http(r)
+
     def stream_logs(self, request_id: str) -> Iterator[Frame]:
         """Yield every frame for an already-started request_id, until EXIT."""
         ws_url = self.control_plane.replace("http://", "ws://").replace("https://", "wss://")
@@ -180,7 +188,17 @@ class HerdsClient:
         from ..relay import _wss_ssl_context
 
         log_url = f"{ws_url}/v1/jobs/{request_id}/logs{q}"
-        with ws_connect(log_url, max_size=None, close_timeout=5, ssl=_wss_ssl_context(log_url)) as ws:
+        # ping_interval keeps the log WS alive across long IDLE stretches — a
+        # resident session that's mid-turn but producing no output (a driver
+        # parked awaiting an AskUserQuestion answer, or a slow tool call) would
+        # otherwise let an intermediary idle-close the socket, ending this
+        # generator with no EXIT frame → the consumer reads it as "turn ended"
+        # and orphans the wait. 20s matches the relay's ws_ping_interval.
+        with ws_connect(
+            log_url, max_size=None, close_timeout=5,
+            ping_interval=20, ping_timeout=20,
+            ssl=_wss_ssl_context(log_url),
+        ) as ws:
             for raw in ws:
                 frame = Frame.load(raw)
                 yield frame
@@ -246,7 +264,17 @@ class HerdsClient:
         from ..relay import _wss_ssl_context
 
         log_url = f"{ws_url}/v1/jobs/{request_id}/logs{q}"
-        with ws_connect(log_url, max_size=None, close_timeout=5, ssl=_wss_ssl_context(log_url)) as ws:
+        # ping_interval keeps the log WS alive across long IDLE stretches — a
+        # resident session that's mid-turn but producing no output (a driver
+        # parked awaiting an AskUserQuestion answer, or a slow tool call) would
+        # otherwise let an intermediary idle-close the socket, ending this
+        # generator with no EXIT frame → the consumer reads it as "turn ended"
+        # and orphans the wait. 20s matches the relay's ws_ping_interval.
+        with ws_connect(
+            log_url, max_size=None, close_timeout=5,
+            ping_interval=20, ping_timeout=20,
+            ssl=_wss_ssl_context(log_url),
+        ) as ws:
             for raw in ws:
                 frame = Frame.load(raw)
                 if on_output and frame.type in (FrameType.STDOUT, FrameType.STDERR):
