@@ -7,6 +7,8 @@
 *Modal, for Macs.*
 
 [![PyPI](https://img.shields.io/pypi/v/herds?color=34d39e&label=pip%20install%20herds)](https://pypi.org/project/herds/)
+[![Python](https://img.shields.io/pypi/pyversions/herds?color=34d39e)](https://pypi.org/project/herds/)
+[![CI](https://github.com/teddyoweh/herds/actions/workflows/ci.yml/badge.svg)](https://github.com/teddyoweh/herds/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 <br/>
@@ -84,6 +86,19 @@ no Tailscale, no port forwarding. `herds auth` opens your browser to approve and
 syncs the token back; the dashboard opens already signed in. (No account?
 `herds host` still works with a temporary tunnel.)
 
+### Requirements
+
+| | |
+|---|---|
+| **Python** | **3.9 – 3.14.** Every release is tested on all six. |
+| **The Mac you host** | macOS (Apple Silicon or Intel) — this is the runtime. |
+| **The machine you drive from** | Anything that runs Python. The SDK is a thin HTTP/WebSocket client, so your CI, your Linux box, or another Mac all work. |
+
+The SDK deliberately holds the floor at 3.9 so it drops into older CI images and
+system Pythons without a version bump. One caveat: the optional MCP server
+(`pip install 'herds[mcp]'`, `herds mcp`) needs **3.10+**, because upstream `mcp`
+does — everything else in herds runs on 3.9.
+
 **Add more Macs** — one line each:
 
 ```bash
@@ -142,7 +157,7 @@ Mac → back — so the agent needs no SSH, no VPN, and no inbound ports.
 **Or skip the SDK entirely — plug the Mac into any MCP client:**
 
 ```bash
-pip install 'herds[mcp]'
+pip install 'herds[mcp]'   # needs Python 3.10+ (upstream `mcp` does)
 herds mcp        # serves run / read_file / write_file / list_dir / screenshot / notify
 ```
 ```jsonc

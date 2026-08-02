@@ -12,7 +12,7 @@ import sqlite3
 import secrets
 import threading
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from ..protocol import JobState, MachineStatus
 
@@ -185,7 +185,7 @@ class _SafeDB:
 
 
 class Store:
-    def __init__(self, path: str | Path = ":memory:"):
+    def __init__(self, path: Union[str, Path] = ":memory:"):
         conn = sqlite3.connect(str(path), check_same_thread=False)
         conn.row_factory = sqlite3.Row
         self.db = _SafeDB(conn)

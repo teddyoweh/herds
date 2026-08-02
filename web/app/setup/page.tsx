@@ -104,7 +104,7 @@ function InstallCLI() {
         </Term>
       ) : (
         <Term chrome="your Mac — zsh" command="pip install herds">
-          <Note c="# same package from PyPI — Python 3.11+ already on this Mac" />
+          <Note c="# same package from PyPI — works on any Python 3.9+" />
           <Line c="pip install herds" />
           <OK>installed herds 0.1</OK>
         </Term>

@@ -25,7 +25,7 @@ import time
 import uuid
 from collections import deque
 from pathlib import Path
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable, Optional, Union
 
 from .. import config
 from . import images
@@ -310,7 +310,7 @@ def _seatbelt_profile(sandbox: Sandbox, volume_paths: list[Path], network: bool)
 
 
 def _wrap_command(
-    command: list[str] | str,
+    command: Union[list[str], str],
     sandbox: Sandbox,
     volume_paths: list[Path],
     network: bool,
@@ -533,7 +533,7 @@ class Executor:
     async def _prepare_launch(
         self,
         request_id: str,
-        command: list[str] | str,
+        command: Union[list[str], str],
         *,
         sink: OutputSink,
         image: Optional[str],
@@ -673,7 +673,7 @@ class Executor:
     async def start_session(
         self,
         request_id: str,
-        command: list[str] | str,
+        command: Union[list[str], str],
         *,
         sink: OutputSink,
         image: Optional[str] = None,
@@ -776,7 +776,7 @@ class Executor:
     async def run(
         self,
         request_id: str,
-        command: list[str] | str,
+        command: Union[list[str], str],
         *,
         sink: OutputSink,
         image: Optional[str] = None,

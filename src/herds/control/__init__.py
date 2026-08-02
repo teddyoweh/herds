@@ -23,7 +23,7 @@ import sys
 import uuid
 from collections import deque
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from fastapi import Depends, FastAPI, HTTPException, Header, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -225,7 +225,7 @@ def cron_due(expr: str, dt) -> bool:
     return dom_ok and dow_ok
 
 
-def create_app(db_path: str | Path = ":memory:") -> FastAPI:
+def create_app(db_path: Union[str, Path] = ":memory:") -> FastAPI:
     store = Store(db_path)
     hub = Hub(store)
     app = FastAPI(title="Herds Control Plane", version="0.1.0")

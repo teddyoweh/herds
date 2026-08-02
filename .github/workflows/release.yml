@@ -1,0 +1,84 @@
+name: Release
+
+# Tag a release and this ships it:
+#   git tag v0.2.2 && git push origin v0.2.2
+#
+# Publishing uses PyPI Trusted Publishing (OIDC) -- no API token stored in the
+# repo. Configure it once at https://pypi.org/manage/project/herds/settings/publishing/
+#   owner: teddyoweh   repo: herds   workflow: release.yml   environment: pypi
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build distributions
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Verify the tag matches pyproject version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)
+          echo "tag=$TAG pyproject=$PKG"
+          [ "$TAG" = "$PKG" ] || { echo "::error::tag $TAG != pyproject version $PKG"; exit 1; }
+
+      - name: Smoke-test on the oldest supported Python before shipping
+        run: |
+          uv venv --python 3.9
+          uv pip install -e ".[dev]"
+          .venv/bin/python -m pytest -q
+
+      - name: Build sdist + wheel
+        run: uv build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/herds
+    permissions:
+      id-token: write   # OIDC token for trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    name: GitHub release
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes

@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "herds"
-version = "0.2.1"
+version = "0.2.2"
 description = "Connect your Mac to the internet and turn it into a programmable runtime. Modal, for Macs."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.9"
 license = "Apache-2.0"
 authors = [{ name = "Spawn Labs", email = "teddy@spawnlabs.ai" }]
 keywords = ["mac", "macos", "runtime", "sandbox", "modal", "ci", "xcode", "agents"]
@@ -17,9 +17,12 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Build Tools",
     "Topic :: System :: Distributed Computing",
 ]
@@ -39,7 +42,9 @@ dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "anyio>=4.0"]
 # Postgres-backed relay account store (our cloud relay only; set HERDS_DATABASE_URL).
 relay = ["psycopg[binary]>=3.1", "psycopg-pool>=3.2"]
 # MCP server (`herds mcp`) — expose the Mac as MCP tools for any agent.
-mcp = ["mcp>=1.2"]
+# The upstream `mcp` package requires 3.10+, so this extra is a no-op on 3.9;
+# every other part of herds still works there.
+mcp = ["mcp>=1.2; python_version >= '3.10'"]
 
 [project.scripts]
 herds = "herds.cli:app"
@@ -56,6 +61,18 @@ packages = ["src/herds"]
 artifacts = ["src/herds/web_dist/**/*"]
 
 [tool.hatch.build.targets.sdist]
+# Only what's needed to rebuild the wheel + run the suite. Without this, hatch
+# sweeps in demo/frames, node_modules and the Next.js site — a ~1 GB sdist that
+# PyPI rejects outright.
+include = [
+    "src/herds",
+    "tests",
+    "pyproject.toml",
+    "README.md",
+    "DESIGN.md",
+    "ROADMAP.md",
+]
+exclude = ["**/node_modules", "**/__pycache__"]
 # Keep the bundled dashboard in the sdist too, so a wheel built from it isn't UI-less.
 artifacts = ["src/herds/web_dist/**/*"]
 

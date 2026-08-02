@@ -6,11 +6,12 @@ import platform
 import subprocess
 import uuid
 from functools import lru_cache
+from typing import Optional
 
 from ..protocol import MachineInfo
 
 
-def _sysctl(key: str) -> str | None:
+def _sysctl(key: str) -> Optional[str]:
     try:
         out = subprocess.run(
             ["sysctl", "-n", key], capture_output=True, text=True, timeout=2
@@ -20,7 +21,7 @@ def _sysctl(key: str) -> str | None:
         return None
 
 
-def _macos_version() -> str | None:
+def _macos_version() -> Optional[str]:
     try:
         out = subprocess.run(
             ["sw_vers", "-productVersion"], capture_output=True, text=True, timeout=2
@@ -30,7 +31,7 @@ def _macos_version() -> str | None:
         return None
 
 
-def _model_name() -> str | None:
+def _model_name() -> Optional[str]:
     """Authoritative marketing model name (e.g. 'MacBook Pro') via system_profiler.
 
     Apple-Silicon model identifiers (``Mac15,3``) can't be classified reliably by
@@ -58,7 +59,7 @@ _TYPE_SLUGS = (
 )
 
 
-def _device_type(model_name: str | None, model_id: str | None) -> str | None:
+def _device_type(model_name: Optional[str], model_id: Optional[str]) -> Optional[str]:
     """Machine-readable form factor from the model name and/or identifier."""
     hay = " ".join(x for x in (model_name, model_id) if x).lower()
     for needle, slug in _TYPE_SLUGS:
@@ -67,7 +68,7 @@ def _device_type(model_name: str | None, model_id: str | None) -> str | None:
     return None
 
 
-def _pretty_name(model_name: str | None, model_id: str | None, chip: str | None) -> str:
+def _pretty_name(model_name: Optional[str], model_id: Optional[str], chip: Optional[str]) -> str:
     """Best-effort friendly name like 'MacBook Pro (Apple M4)'."""
     base = model_name
     if not base:

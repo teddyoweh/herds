@@ -36,7 +36,7 @@ elif command -v pip3 >/dev/null 2>&1; then
   pip3 install --user -U herds
 else
   e "Couldn't install uv, and no pipx/pip3 found."
-  e "Install Python 3.11+ (brew install python) or uv, then re-run."
+  e "Install Python 3.9+ (brew install python) or uv, then re-run."
   exit 1
 fi
 

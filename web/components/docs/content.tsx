@@ -66,7 +66,7 @@ const Quickstart = ({ go }: { go: Go }) => (
     <H2>1 · Install</H2>
     <Code lang="bash">{`pip install herds        # or:  uv tool install herds`}</Code>
     <P>
-      Herds needs Python 3.11+. The package ships both the <Co>herds</Co> Python SDK and the <Co>herds</Co> command-line tool.
+      Herds needs Python 3.9 or newer. The package ships both the <Co>herds</Co> Python SDK and the <Co>herds</Co> command-line tool.
     </P>
 
     <H2>2 · Sign in &amp; go live</H2>
@@ -186,8 +186,9 @@ const Installation = () => (
 
     <H2>Requirements</H2>
     <UL>
-      <LI><strong className="font-semibold text-stone-800">Python 3.11+</strong> (tested on 3.11, 3.12, 3.13).</LI>
+      <LI><strong className="font-semibold text-stone-800">Python 3.9+</strong> (every release is tested on 3.9, 3.10, 3.11, 3.12, 3.13 and 3.14).</LI>
       <LI>To host a Mac: <strong className="font-semibold text-stone-800">macOS</strong>. To drive one from the SDK: any OS.</LI>
+      <LI>The optional MCP server (<Co>herds[mcp]</Co>) needs <strong className="font-semibold text-stone-800">Python 3.10+</strong> — everything else runs on 3.9.</LI>
     </UL>
 
     <H2>Install</H2>

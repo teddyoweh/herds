@@ -35,7 +35,12 @@ from .sdk import (
     Fleet,
 )
 
-__version__ = "0.2.0"
+try:  # single source of truth is pyproject; read it back off the install
+    from importlib.metadata import PackageNotFoundError, version as _pkg_version
+
+    __version__ = _pkg_version("herds")
+except (ImportError, PackageNotFoundError):  # running from a source tree
+    __version__ = "0.2.2"
 
 __all__ = [
     "App",

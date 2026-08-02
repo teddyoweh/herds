@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Herds drives a real Mac, so the suite runs on macOS across every
+    # interpreter `requires-python` claims to support.
+    name: py${{ matrix.python }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      # uv ships standalone builds for every version on arm64 macOS, which
+      # actions/setup-python still doesn't for the older ones.
+      - name: Create venv on Python ${{ matrix.python }}
+        run: uv venv --python ${{ matrix.python }}
+
+      - name: Install package + dev extras
+        run: uv pip install -e ".[dev]"
+
+      - name: Report interpreter
+        run: .venv/bin/python -VV
+
+      - name: Run tests
+        run: .venv/bin/python -m pytest -q
+
+  wheel:
+    # The thing users actually hit: does `pip install herds` work on the floor?
+    name: wheel installs on 3.9
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Build sdist + wheel
+        run: uv build
+
+      - name: Install the built wheel on 3.9 (no source tree on path)
+        run: |
+          uv venv --python 3.9 /tmp/wheelcheck
+          VIRTUAL_ENV=/tmp/wheelcheck uv pip install dist/*.whl
+          cd /tmp
+          /tmp/wheelcheck/bin/python -c "
+          import herds
+          from herds.control import create_app
+          from herds.cli import app
+          print('herds', herds.__version__, 'imports clean on', __import__('sys').version.split()[0])
+          print('control routes:', len(create_app().routes))
+          "
+          /tmp/wheelcheck/bin/herds --help > /dev/null && echo 'herds CLI OK'

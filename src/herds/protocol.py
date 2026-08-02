@@ -12,7 +12,7 @@ and the SDK can never silently drift out of sync.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -128,7 +128,7 @@ class Frame(BaseModel):
         return self.model_dump_json(exclude_none=True)
 
     @classmethod
-    def load(cls, raw: str | bytes) -> "Frame":
+    def load(cls, raw: Union[str, bytes]) -> "Frame":
         return cls.model_validate_json(raw)
 
 
@@ -137,7 +137,7 @@ class Frame(BaseModel):
 
 def exec_frame(
     request_id: str,
-    command: list[str] | str,
+    command: Union[list[str], str],
     *,
     image: Optional[str] = None,
     volumes: Optional[dict[str, str]] = None,
@@ -173,7 +173,7 @@ def exec_frame(
 
 def session_start_frame(
     request_id: str,
-    command: list[str] | str,
+    command: Union[list[str], str],
     *,
     image: Optional[str] = None,
     volumes: Optional[dict[str, str]] = None,
@@ -237,7 +237,7 @@ def sandbox_create_frame(
     *,
     image: Optional[str] = None,
     volumes: Optional[dict[str, str]] = None,
-    command: Optional[list[str] | str] = None,
+    command: Optional[Union[list[str], str]] = None,
     env: Optional[dict[str, str]] = None,
     timeout: Optional[int] = None,
     network: bool = True,
@@ -279,7 +279,7 @@ def snapshot_frame(request_id: str, sandbox_id: str, base: str) -> Frame:
 def sandbox_exec_frame(
     request_id: str,
     sandbox_id: str,
-    command: list[str] | str,
+    command: Union[list[str], str],
     *,
     workdir: Optional[str] = None,
     env: Optional[dict[str, str]] = None,
@@ -369,7 +369,7 @@ def error_frame(request_id: Optional[str], message: str) -> Frame:
 
 
 class ExecRequest(BaseModel):
-    command: list[str] | str
+    command: Union[list[str], str]
     image: Optional[str] = None
     volumes: dict[str, str] = Field(default_factory=dict)   # mount_path -> volume name
     workdir: Optional[str] = None

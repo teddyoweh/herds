@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -530,6 +531,8 @@ def mcp_serve(
         from mcp.server.fastmcp import FastMCP, Image
     except ImportError:
         err.print("[red]MCP support isn't installed.[/red] Run: [bold]pip install 'herds[mcp]'[/bold]")
+        if sys.version_info < (3, 10):
+            err.print("[dim]Note: the MCP server needs Python 3.10+; the rest of herds runs on 3.9.[/dim]")
         raise typer.Exit(1)
     import herds
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+from typing import Optional, Tuple
 
 
 def _cpu_percent() -> float:
@@ -48,7 +49,7 @@ def _mem_percent() -> float:
     return round(used / total * 100.0, 1)
 
 
-def _battery() -> tuple[float | None, bool | None]:
+def _battery() -> Tuple[Optional[float], Optional[bool]]:
     """(%, charging?) from ``pmset -g batt``. (None, None) on desktops / no battery."""
     try:
         out = subprocess.run(

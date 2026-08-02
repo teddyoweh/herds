@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass, field
-from typing import Callable, Iterator, Optional
+from typing import Callable, Iterator, Optional, Union
 
 import httpx
 from websockets.sync.client import connect as ws_connect
@@ -72,7 +72,7 @@ class TcpTunnel:
         self.url = url
         self._closed = False
 
-    def send(self, data: bytes | str) -> None:
+    def send(self, data: Union[bytes, str]) -> None:
         payload = data.encode() if isinstance(data, str) else bytes(data)
         self._ws.send(payload)
 
