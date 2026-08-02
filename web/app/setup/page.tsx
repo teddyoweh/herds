@@ -117,7 +117,7 @@ function InstallCLI() {
    already has herds (just connect). A small toggle keeps both honest. */
 function AddMac() {
   const [tab, setTab] = useState<"fresh" | "has">("fresh");
-  const fresh = "curl -fsSL herds.run/install | sh -s -- you.herds.run hx_…";
+  const fresh = "curl -fsSL herds.run/install | sh -s -- hx_…@you.herds.run";
   return (
     <>
       <div className="mt-4 inline-flex rounded-full bg-[#f3f2ee] p-1 text-[12.5px]">
@@ -127,13 +127,13 @@ function AddMac() {
       {tab === "fresh" ? (
         <Term chrome="on the new Mac — zsh" command={fresh}>
           <Note c="# one line: installs Herds, then joins your fleet" />
-          <Line c="curl …/install | sh -s -- you.herds.run hx_…" />
+          <Line c="curl …/install | sh -s -- hx_…@you.herds.run" />
           <OK>Mac mini · M2 Pro joined the fleet</OK>
         </Term>
       ) : (
-        <Term chrome="on the other Mac — zsh" command="herds connect you.herds.run hx_…">
+        <Term chrome="on the other Mac — zsh" command="herds connect hx_…@you.herds.run">
           <Note c="# herds already installed — just point it at your host" />
-          <Line c="herds connect you.herds.run hx_…" />
+          <Line c="herds connect hx_…@you.herds.run" />
           <OK>Mac Studio joined the fleet</OK>
         </Term>
       )}

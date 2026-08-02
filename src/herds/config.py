@@ -37,6 +37,49 @@ AUTH_PATH = HERDS_HOME / "auth.json"
 DEFAULT_RELAY = os.environ.get("HERDS_RELAY", "wss://api.relay.herds.run")
 
 
+# --------------------------------------------------------------------------- #
+# Self-describing connect tokens
+# --------------------------------------------------------------------------- #
+#
+# Joining a Mac used to need two things pasted in the right order — a link and a
+# token — which is two chances to get it wrong and one more thing to carry
+# around. The endpoint isn't a second secret; it's just where the token is
+# valid. So carry it *in* the token:
+#
+#     herds_sk_mqoa56xOPbW1WUex9EC2rBMFv0CMyEwA@teddyoweh.relay.herds.run
+#
+# Deliberately readable rather than an opaque blob: pasting a token that
+# silently points your Mac at someone else's relay is a real risk, and you can
+# read this one. Shaped like user@host so it's obvious what it means.
+
+
+def join_token(token: str, url: str) -> str:
+    """Pack a token and its control plane into one paste-able credential."""
+    host = url.split("://", 1)[-1].rstrip("/")
+    return f"{token}@{host}"
+
+
+def split_token(value: str):
+    """Return ``(token, control_plane_url_or_None)`` for a connect credential.
+
+    Accepts the packed ``secret@host`` form, or a bare token (returns None for
+    the URL, so the caller falls back to config/env as before).
+    """
+    value = (value or "").strip()
+    if "@" not in value:
+        return value, None
+    token, _, host = value.rpartition("@")
+    token, host = token.strip(), host.strip().rstrip("/")
+    if not token or not host:
+        return value, None
+    if "://" in host:
+        return token, host
+    # Loopback and bare host:port are plain HTTP; anything else is a real
+    # deployment and must not be downgraded off TLS.
+    local = host.split(":", 1)[0] in ("localhost", "127.0.0.1", "0.0.0.0", "::1")
+    return token, f"{'http' if local else 'https'}://{host}"
+
+
 def ensure_dirs() -> None:
     for d in (HERDS_HOME, VOLUMES_DIR, SANDBOXES_DIR, IMAGES_DIR, LOGS_DIR, RUN_DIR):
         d.mkdir(parents=True, exist_ok=True)

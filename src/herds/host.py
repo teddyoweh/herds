@@ -8,7 +8,7 @@ It orchestrates four things and prints one link + one token:
   4. this Mac's own daemon, so the host is also a compute node
 
 The single tunneled origin serves the UI, the API, and all WebSockets. Other
-Macs join with ``herds connect <link> <token>``.
+Macs join with ``herds connect <token>`` — the token carries its own link.
 """
 
 from __future__ import annotations
@@ -458,13 +458,15 @@ def _running_panel(st: dict, log: Optional[Path] = None) -> None:
     public_url = st.get("public_url") or f"http://127.0.0.1:{st.get('port')}"
     token = st.get("token", "")
     provider = st.get("provider", "Herds")
+    join = config.join_token(token, public_url) if token else ""
     open_url = f"{public_url}/?token={token}" if token else public_url
     console.print(Panel.fit(
         f"[green]✓ Herds host is live[/green] [dim](background · pid {st.get('pid')})[/dim]\n\n"
         f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]  [dim]via {provider}[/dim]\n\n"
-        f"[bold]Host token[/bold]\n  [yellow]{token}[/yellow] [dim](stable)[/dim]\n\n"
+        f"[bold]Connect token[/bold] [dim](carries its own link — this is all you paste)[/dim]\n"
+        f"  [yellow]{join}[/yellow]\n\n"
         f"[bold]Add another Mac[/bold] [dim](even a fresh one — installs + joins)[/dim]\n"
-        f"  [cyan]curl -fsSL herds.run/install | sh -s -- {public_url} {token}[/cyan]\n\n"
+        f"  [cyan]curl -fsSL herds.run/install | sh -s -- {join}[/cyan]\n\n"
         f"[dim]It keeps running after you close this terminal.\n"
         f"  status  [bold]herds host status[/bold]   ·   stop  [bold]herds host stop[/bold]"
         + (f"\n  logs    [bold]{log}[/bold]" if log else "") + "[/dim]",
@@ -655,13 +657,15 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
         "token": token, "provider": provider, "permanent": permanent,
     })
 
+    join = config.join_token(token, public_url)
     open_url = f"{public_url}/?token={token}"
     console.print(Panel.fit(
         f"[green]✓ Herds host is live[/green]\n\n"
         f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]\n  {link_note}\n\n"
-        f"[bold]Host token[/bold]\n  [yellow]{token}[/yellow] [dim](stable)[/dim]\n\n"
+        f"[bold]Connect token[/bold] [dim](carries its own link — this is all you paste)[/dim]\n"
+        f"  [yellow]{join}[/yellow]\n\n"
         f"[bold]Add another Mac[/bold] [dim](even a fresh one — installs + joins)[/dim]\n"
-        f"  [cyan]curl -fsSL herds.run/install | sh -s -- {public_url} {token}[/cyan]",
+        f"  [cyan]curl -fsSL herds.run/install | sh -s -- {join}[/cyan]",
         title="herds host", border_style="green",
     ))
     # The magic link signs the dashboard in on open. Printed outside the panel so it

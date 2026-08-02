@@ -76,8 +76,8 @@ herds host             # 3 · go live        — your Mac is now an API
 
 ```
 ✓ Herds host is live (background · pid 64265)
-  Dashboard   https://you.herds.run          ← permanent, branded link · zero setup
-  Host token  herds_sk_…                     ← use it to add more Macs / agents
+  Dashboard      https://you.herds.run       ← permanent, branded link · zero setup
+  Connect token  herds_sk_…@you.herds.run    ← one paste adds another Mac
 
   It keeps running after you close this terminal.
     status  herds host status   ·   stop  herds host stop
@@ -111,8 +111,8 @@ does — everything else in herds runs on 3.9.
 **Add more Macs** — one line each:
 
 ```bash
-curl -fsSL herds.run/install | sh -s -- you.herds.run hx_…   # a fresh Mac: installs + joins
-herds connect you.herds.run hx_…                             # already has herds? just connect
+curl -fsSL herds.run/install | sh -s -- hx_…@you.herds.run   # a fresh Mac: installs + joins
+herds connect hx_…@you.herds.run                             # already has herds? just connect
 ```
 
 **Drive it** — from Python, the CLI, or the web dashboard:
@@ -554,7 +554,7 @@ herds doctor             check macOS permissions for driving real apps
 herds open               open your live dashboard in the browser
 herds token new|ls|revoke   scoped, revocable tokens (read|run|admin) for agents/CI
 herds schedule add|ls|rm    recurring cron jobs that run on your Mac
-herds connect <link> <token>   join another Mac to a host
+herds connect <token>    join another Mac (the token carries its own link)
 herds disconnect [id]    remove a Mac from the fleet (revokes its token so it
                          can't rejoin) · no id = this Mac, and stops it locally
 herds serve              run a bare control plane locally

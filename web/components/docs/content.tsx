@@ -74,8 +74,8 @@ const Quickstart = ({ go }: { go: Go }) => (
     <Code lang="bash">{`herds auth          # sign in — opens your browser to approve, syncs a token back
 herds host          # your Mac goes live: control plane + dashboard + public link`}</Code>
     <Code lang="text">{`✓ Herds host is live
-  Dashboard   https://you.herds.run        ← permanent, branded link · zero setup
-  Host token  herds_sk_…                    ← use it to add more Macs / agents
+  Dashboard      https://you.herds.run     ← permanent, branded link · zero setup
+  Connect token  herds_sk_…@you.herds.run  ← one paste adds another Mac
 → opening your dashboard, already signed in …`}</Code>
     <P>
       <Co>herds auth</Co> mints your account token and a permanent subdomain like <Co>you.herds.run</Co>; <Co>herds host</Co> starts a
@@ -91,8 +91,8 @@ mac.run("xcodebuild -scheme App test", check=True)   # real Xcode; raises on non
 
     <H2>Add more Macs</H2>
     <P>Any other Mac joins the same fleet with one line:</P>
-    <Code lang="bash">{`curl -fsSL herds.run/install | sh -s -- you.herds.run hx_…   # fresh Mac: installs + joins
-herds connect you.herds.run hx_…                             # already has herds? just connect`}</Code>
+    <Code lang="bash">{`curl -fsSL herds.run/install | sh -s -- hx_…@you.herds.run   # fresh Mac: installs + joins
+herds connect hx_…@you.herds.run                             # already has herds? just connect`}</Code>
 
     <H2>Were you handed a Mac?</H2>
     <P>
@@ -747,7 +747,8 @@ const CLI = () => (
     <Code lang="bash">{`herds auth [--token hx_…] [--name <subdomain>]   # sign in, get account + link
 herds host [--port 8787] [--no-tunnel] [--quick] # control plane + dashboard + link
 herds host setup                                  # walkthrough: Tailscale Funnel
-herds connect <url> <token>                        # join THIS Mac to a host
+herds connect <token>                              # join THIS Mac (token carries its link)
+herds disconnect [id]                              # remove a Mac from the fleet
 herds open                                          # open the dashboard in a browser`}</Code>
 
     <H2>Running commands</H2>
@@ -800,7 +801,7 @@ herds host --quick         # force a quick tunnel instead of the relay`}</Code>
 
     <H2>A second Mac</H2>
     <P>Join another machine to the same host with its host token:</P>
-    <Code lang="bash">{`herds connect https://you.relay.herds.run herds_sk_…`}</Code>
+    <Code lang="bash">{`herds connect herds_sk_…@you.relay.herds.run`}</Code>
 
     <H2>Tailscale Funnel</H2>
     <P>For a stable self-managed tunnel, the setup walkthrough wires up Tailscale Funnel and the system daemon:</P>

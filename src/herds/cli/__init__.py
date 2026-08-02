@@ -891,20 +891,38 @@ def disconnect(
 
 @app.command()
 def connect(
-    url: Optional[str] = typer.Argument(None, help="Host link, e.g. https://….trycloudflare.com"),
-    token: Optional[str] = typer.Argument(None, help="Host token from `herds host`."),
+    token: Optional[str] = typer.Argument(
+        None, help="Connect token from `herds host` — carries its own link."),
+    legacy_token: Optional[str] = typer.Argument(
+        None, help="(legacy) when the first argument is a bare link.", hidden=True),
     control_plane: Optional[str] = typer.Option(
-        None, "--control-plane", help="Control plane URL (overrides positional)."
+        None, "--control-plane", "--url", help="Control plane URL (overrides the token's)."
     ),
     name: Optional[str] = typer.Option(None, help="Override this machine's name."),
 ):
-    """Connect THIS Mac to a host and keep it online (runs in the foreground)."""
+    """Connect THIS Mac to a host and keep it online (runs in the foreground).
+
+    One token is all you need — it carries its own link:
+
+        herds connect herds_sk_…@you.relay.herds.run
+
+    The older `herds connect <link> <token>` form still works.
+    """
     import asyncio
 
     from ..daemon import Daemon
 
     config.ensure_dirs()
     cfg = config.Config.load()
+
+    # Legacy call shape: `connect <url> <token>`. Detect it by the second
+    # positional being present, rather than by guessing what a URL looks like.
+    if legacy_token:
+        url, token = token, legacy_token
+    else:
+        token, url = config.split_token(token or "")
+        token = token or None
+
     target = control_plane or url
     if target:
         cfg.control_plane = target

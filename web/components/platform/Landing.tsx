@@ -1942,7 +1942,7 @@ function GetStarted() {
           <Out>M3 Max · live at <span className="text-stone-300">you.herds.run</span></Out>
           <div className="h-3" />
           <Cmt c="# on any other Mac that has herds" />
-          <Cmd c="herds connect you.herds.run hx_…" />
+          <Cmd c="herds connect hx_…@you.herds.run" />
           <Out>Mac mini joined the fleet</Out>
         </StepCard>
         <StepCard step="03" label="Drive it — Python or web" chrome="agent.py">

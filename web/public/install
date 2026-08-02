@@ -4,7 +4,8 @@
 #   curl -fsSL herds.run/install | sh
 #
 # Optionally connect to a fleet in the same command:
-#   curl -fsSL herds.run/install | sh -s -- <link> <token>
+#   curl -fsSL herds.run/install | sh -s -- <token>
+# (the connect token carries its own link; <link> <token> still works)
 
 g() { printf "\033[32m%s\033[0m\n" "$1"; }
 d() { printf "\033[2m%s\033[0m\n" "$1"; }
@@ -46,24 +47,29 @@ hash -r 2>/dev/null || true
 HERDS="$(command -v herds 2>/dev/null || true)"
 [ -z "$HERDS" ] && [ -x "$HOME/.local/bin/herds" ] && HERDS="$HOME/.local/bin/herds"
 if [ -z "$HERDS" ]; then
-  e "Installed, but 'herds' isn't on PATH yet. Open a new terminal and run: herds connect <link> <token>"
+  e "Installed, but 'herds' isn't on PATH yet. Open a new terminal and run: herds connect <token>"
   exit 0
 fi
 
 g "✓ Herds installed"
 "$HERDS" version 2>/dev/null || true
 
-# 4. If a link + token were passed, join the fleet right now.
+# 4. If a connect token was passed, join the fleet right now. One argument is
+#    the modern form (the token carries its own link); two is the old link+token.
 if [ -n "$1" ]; then
   echo
   g "Joining the fleet…"
-  exec "$HERDS" connect "$1" "$2"
+  if [ -n "$2" ]; then
+    exec "$HERDS" connect "$1" "$2"
+  else
+    exec "$HERDS" connect "$1"
+  fi
 fi
 
 echo
 d "Next steps:"
 echo "  herds auth                       # sign in (stable link)"
 echo "  herds host                       # put THIS Mac online"
-echo "  herds connect <link> <token>     # join another host's fleet"
+echo "  herds connect <token>            # join another host's fleet"
 echo
 d "If 'herds' isn't found, open a new terminal (uv added it to your PATH)."
