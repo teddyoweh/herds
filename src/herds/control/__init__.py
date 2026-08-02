@@ -446,6 +446,38 @@ def create_app(db_path: Union[str, Path] = ":memory:") -> FastAPI:
             raise HTTPException(404, "tag not found")
         return {"machine_id": mid, "tags": store.tags_for(mid)}
 
+    @app.delete("/v1/machines/{machine_id}")
+    async def remove_machine_ep(machine_id: str, authorization: Optional[str] = Header(None)):
+        """Remove a Mac from the fleet: revoke its token and drop the live link.
+
+        Admin scope — this is destructive and permanent for that machine's
+        registration. Works whether or not the Mac is currently online, so a
+        stolen, sold or dead machine can always be cut off.
+        """
+        owner = require_scope(authorization, "admin")
+        row = store.get_machine(machine_id)
+        if not row or row.get("owner") != owner:
+            raise HTTPException(404, "machine not found")
+
+        counts = store.delete_machine(machine_id, owner)
+        if not counts:
+            raise HTTPException(404, "machine not found")
+
+        # Close the live socket so the daemon stops immediately rather than at
+        # its next heartbeat; its token is already gone, so it can't re-register.
+        agent = hub.agents.pop(machine_id, None)
+        was_online = agent is not None
+        if agent is not None:
+            try:
+                await agent.ws.close(code=4003, reason="removed from fleet")
+            except Exception:  # noqa: BLE001
+                pass
+        hub.metrics.pop(machine_id, None)
+        hub.battery.pop(machine_id, None)
+
+        return {"machine_id": machine_id, "removed": True,
+                "was_online": was_online, "deleted": counts}
+
     # -- SDK: exec ---------------------------------------------------------- #
 
     def _resolve_machine(machine_id: str, owner: str) -> str:

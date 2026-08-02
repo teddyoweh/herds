@@ -267,6 +267,35 @@ class Store:
         self.db.commit()
         return cur.rowcount > 0
 
+    def delete_machine(self, machine_id: str, owner: Optional[str] = None) -> dict:
+        """Remove a Mac from the fleet and revoke its ability to rejoin.
+
+        A Mac could be added but never removed, so a decommissioned machine sat
+        in the fleet forever and its device token stayed valid — meaning it could
+        silently reconnect. Deleting the token is the part that actually makes
+        this a disconnect rather than a cosmetic hide.
+
+        Job rows are kept: they are the audit trail of what ran, and losing that
+        because a machine was retired would be worse than an orphan reference.
+        Returns per-table delete counts.
+        """
+        row = self.get_machine(machine_id)
+        if not row or (owner and row.get("owner") != owner):
+            return {}
+
+        counts = {}
+        for table in ("machine_tags", "device_tokens", "sandboxes", "volumes",
+                      "metric_samples", "schedules"):
+            try:
+                cur = self.db.execute(f"DELETE FROM {table} WHERE machine_id=?", (machine_id,))
+                counts[table] = cur.rowcount
+            except sqlite3.OperationalError:
+                pass  # table without a machine_id column in an older db
+        cur = self.db.execute("DELETE FROM machines WHERE machine_id=?", (machine_id,))
+        counts["machines"] = cur.rowcount
+        self.db.commit()
+        return counts
+
     @staticmethod
     def _machine_row(r: sqlite3.Row) -> dict:
         return {

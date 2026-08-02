@@ -555,6 +555,8 @@ herds open               open your live dashboard in the browser
 herds token new|ls|revoke   scoped, revocable tokens (read|run|admin) for agents/CI
 herds schedule add|ls|rm    recurring cron jobs that run on your Mac
 herds connect <link> <token>   join another Mac to a host
+herds disconnect [id]    remove a Mac from the fleet (revokes its token so it
+                         can't rejoin) · no id = this Mac, and stops it locally
 herds serve              run a bare control plane locally
 herds machines           list your connected Macs
 herds tag <id> <tags…>   label a Mac for routing  ·  herds tags  ·  herds untag <id> <tag>

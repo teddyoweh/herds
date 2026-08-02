@@ -831,6 +831,65 @@ def skill(
 
 
 @app.command()
+def disconnect(
+    machine: Optional[str] = typer.Argument(
+        None, help="Machine id to remove. Omit to remove THIS Mac."),
+    url: Optional[str] = typer.Option(None, "--url", help="Control-plane / relay URL."),
+    token: Optional[str] = typer.Option(None, "--token", help="An admin token."),
+    keep_local: bool = typer.Option(
+        False, "--keep-local", help="Leave the LaunchAgent and local config in place."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Don't ask for confirmation."),
+):
+    """Remove a Mac from the fleet — the inverse of `herds connect`.
+
+    Revokes the machine's device token so it cannot rejoin, drops its live
+    connection, and deletes its tags, sandboxes, volumes, metrics and schedules.
+    Job history is kept. With no argument this also stops and uninstalls the
+    local agent on this Mac.
+    """
+    self_target = machine is None
+    if self_target:
+        cfg = config.Config.load()
+        machine = cfg.machine_id
+        if not machine:
+            err.print("[red]This Mac isn't connected to anything.[/red]")
+            raise typer.Exit(1)
+
+    http = _control_http(url, token)
+    r = http.get("/v1/machines")
+    known = {m["machine_id"]: m for m in r.json().get("machines", [])} if r.status_code < 400 else {}
+    label = known.get(machine, {}).get("name", machine)
+
+    if not yes:
+        console.print(f"Remove [bold]{label}[/bold] [dim]({machine})[/dim] from the fleet?")
+        console.print("[dim]Its token is revoked — it cannot rejoin without a new one.[/dim]")
+        if not typer.confirm("Continue?", default=False):
+            raise typer.Exit(1)
+
+    r = http.delete(f"/v1/machines/{machine}")
+    if r.status_code == 404:
+        err.print(f"[yellow]No such machine:[/yellow] {machine} [dim](already removed?)[/dim]")
+    elif r.status_code >= 400:
+        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        raise typer.Exit(1)
+    else:
+        d = r.json()
+        state = "was online — link dropped" if d.get("was_online") else "was offline"
+        console.print(f"[green]✓[/green] removed [bold]{label}[/bold] [dim]({state})[/dim]")
+
+    if self_target and not keep_local:
+        uid = subprocess.run(["id", "-u"], capture_output=True, text=True).stdout.strip()
+        subprocess.run(["launchctl", "bootout", f"gui/{uid}", str(_PLIST_PATH)],
+                       capture_output=True)
+        if _PLIST_PATH.exists():
+            _PLIST_PATH.unlink()
+        creds = config.Credentials.load()
+        creds.device_token = None
+        creds.save()
+        console.print("[green]✓[/green] stopped the local agent and cleared its token")
+
+
+@app.command()
 def connect(
     url: Optional[str] = typer.Argument(None, help="Host link, e.g. https://….trycloudflare.com"),
     token: Optional[str] = typer.Argument(None, help="Host token from `herds host`."),
