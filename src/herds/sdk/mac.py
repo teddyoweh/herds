@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Iterator, Optional, Union
 
 from ..protocol import ExecRequest
@@ -15,6 +16,12 @@ from .client import HerdsClient, Result, default_client
 from .image import Image
 from .secret import Secret
 from .volume import Volume
+
+import re
+
+# Volume/sandbox names are identifiers, not paths — anything else is refused
+# rather than escaped, so a name can never break out of the herds home.
+_NAME_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 ImageLike = Union[Image, str, None]
 VolumesLike = Optional[dict[str, Union[Volume, str]]]
@@ -217,6 +224,94 @@ class Mac:
         return Volume.from_name(volume).put(
             local, remote, client=self._client, machine=self.machine_id, clean=clean, ignore=ignore,
         )
+
+    def fetch(
+        self,
+        url: str,
+        dest: str = "",
+        *,
+        volume: Optional[str] = None,
+        sandbox: Optional[str] = None,
+        headers: Optional[dict] = None,
+        timeout: int = 3600,
+        resume: bool = True,
+        real: bool = True,
+    ) -> dict:
+        """Have the **Mac** download a URL straight to its own disk.
+
+        ``push``/``put`` send every byte from here, through the control plane and
+        relay, to the Mac — so a big artifact moves at relay speed. Measured on a
+        real fleet: ~24 MB/s locally but **0.2–0.8 MB/s through the relay**, which
+        turns a 572 MB app bundle into 13–41 minutes and saturates the relay for
+        everyone else while it runs.
+
+        The Mac already has its own internet connection. For anything that is
+        *fetchable* — an installer, a release artifact, a model, a dataset —
+        pulling it there directly is the difference between minutes and seconds,
+        and costs the relay nothing::
+
+            mac.fetch("https://example.com/App.dmg", "App.dmg")
+            mac.fetch(url, "model.safetensors", volume="weights")
+
+        Mac-to-Mac works the same way: ``expose()`` the file on one and fetch the
+        URL from the other, so the bytes go direct instead of via the relay.
+        """
+        import json as _json
+        import shlex
+
+        if volume and sandbox:
+            raise ValueError("pass volume= or sandbox=, not both")
+
+        name = dest or url.split("?")[0].rstrip("/").rsplit("/", 1)[-1] or "download"
+
+        # Names go into the script as quoted shell *variables* rather than being
+        # spliced into a path literal — shlex.quote only adds quotes when it has
+        # to, so slicing them off corrupts ordinary names.
+        def _safe(kind: str, value: str) -> str:
+            if not _NAME_OK.match(value):
+                raise ValueError(f"unsafe {kind} name: {value!r}")
+            return value
+
+        # `is not None`, not truthiness: an empty name is a mistake worth
+        # surfacing, not a silent fallback to the working directory.
+        if volume is not None:
+            base = f'"${{HERDS_HOME:-$HOME/.herds}}/volumes/{_safe("volume", volume)}"'
+        elif sandbox is not None:
+            base = f'"${{HERDS_HOME:-$HOME/.herds}}/sandboxes/{_safe("sandbox", sandbox)}/workspace"'
+        else:
+            base = '"$PWD"'
+
+        hdr = " ".join(f"-H {shlex.quote(f'{k}: {v}')}" for k, v in (headers or {}).items())
+        script = (
+            "set -e\n"
+            f"name={shlex.quote(name)}\n"
+            f"base={base}\n"
+            'case "$name" in /*) target="$name";; *) target="$base/$name";; esac\n'
+            'mkdir -p "$(dirname "$target")"\n'
+            f"curl -fL --retry 3 --retry-delay 2 {'-C -' if resume else ''} {hdr} "
+            f"-o \"$target\" {shlex.quote(url)}\n"
+            'printf \'{"path":"%s","bytes":%s}\\n\' "$target" "$(wc -c < "$target" | tr -d " ")"\n'
+        )
+
+        started = time.time()
+        r = self.run(script, timeout=timeout, inherit_home=real)
+        elapsed = time.time() - started
+        if not r.ok:
+            from .client import HerdsError
+            raise HerdsError(f"fetch failed ({r.exit_code}): {r.stderr.strip()[:400]}")
+
+        info = {"path": None, "bytes": 0}
+        for line in reversed(r.stdout.strip().splitlines()):
+            if line.startswith("{"):
+                try:
+                    info = _json.loads(line)
+                    break
+                except ValueError:
+                    continue
+        info["seconds"] = round(elapsed, 2)
+        if elapsed > 0 and info.get("bytes"):
+            info["mb_per_s"] = round(info["bytes"] / 1e6 / elapsed, 2)
+        return info
 
     # -- Mac-native primitives: the stuff only a real Mac can do ------------- #
 

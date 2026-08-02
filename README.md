@@ -353,6 +353,31 @@ img = herds.Image.macos().run_commands(
 mac.run("python scrape.py", image=img)   # installs once; cached thereafter
 ```
 
+### Moving big files — pull, don't push
+
+```python
+# The MAC downloads it, over its own connection. Zero relay bytes.
+mac.fetch("https://example.com/App.dmg", "App.dmg")
+mac.fetch(url, "model.safetensors", volume="weights", headers={"Authorization": "Bearer …"})
+```
+
+`push`/`Volume.put` send every byte from *you*, through the control plane and the
+relay, to the Mac. Measured on a real fleet:
+
+| path | throughput | a 572 MB app bundle |
+|---|---|---|
+| control plane on the same machine | ~24 MB/s | ~24 s |
+| **through the relay** | **0.2–0.8 MB/s** | **13–41 min** |
+
+The relay is a control channel, not a pipe — pushing a large artifact through it
+is slow *and* saturates it for every other machine in the fleet meanwhile. If the
+thing is fetchable, `mac.fetch()` has the Mac pull it directly and the relay
+carries nothing but the command.
+
+Mac-to-Mac is the same trick: `expose()` the file on one and `fetch()` that URL
+from the other, so the bytes go direct instead of hairpinning through the relay.
+Keep `push`/`put` for what it's good at — source trees and small artifacts.
+
 ### Volumes — persistent directories on the Mac
 
 ```python
