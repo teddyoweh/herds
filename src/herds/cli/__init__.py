@@ -822,14 +822,23 @@ def run(
     machine: str = typer.Option("default", "--machine", "-m", help="Target machine id."),
     image: Optional[str] = typer.Option(None, "--image", "-i", help="Image, e.g. xcode:26."),
     timeout: Optional[int] = typer.Option(None, help="Timeout in seconds."),
+    real: bool = typer.Option(
+        False, "--real", "--inherit-home",
+        help="Run on the REAL Mac: your actual $HOME, logins and disk, no sandbox. "
+             "Needed to install apps, write outside the sandbox, or use your keychain.",
+    ),
 ):
-    """Run a command on a Mac, streaming output live."""
+    """Run a command on a Mac, streaming output live.
+
+    Sandboxed by default: $HOME points at a throwaway sandbox and writes are
+    rolled back. Pass --real to run as you, against the real machine.
+    """
     from ..sdk.mac import Mac
 
     m = Mac(machine, client=_client())
     cmd = " ".join(command)
     try:
-        result = m.run(cmd, image=image, timeout=timeout, stream=True)
+        result = m.run(cmd, image=image, timeout=timeout, stream=True, inherit_home=real)
     except Exception as exc:  # noqa: BLE001
         err.print(f"[red]{exc}[/red]")
         raise typer.Exit(1)
@@ -841,12 +850,20 @@ def shell(
     cmd: str = typer.Option(..., "--cmd", "-c", help="Command to run."),
     machine: str = typer.Option("default", "--machine", "-m"),
     image: Optional[str] = typer.Option(None, "--image", "-i"),
+    real: bool = typer.Option(
+        False, "--real", "--inherit-home",
+        help="Run on the REAL Mac: your actual $HOME, logins and disk, no sandbox.",
+    ),
 ):
-    """Run a one-off command on a Mac (an SSH-equivalent for quick checks)."""
+    """Run a one-off command on a Mac (an SSH-equivalent for quick checks).
+
+    Sandboxed by default: $HOME points at a throwaway sandbox and writes are
+    rolled back. Pass --real to run as you, against the real machine.
+    """
     from ..sdk.mac import Mac
 
     m = Mac(machine, client=_client())
-    result = m.run(cmd, image=image, stream=True)
+    result = m.run(cmd, image=image, stream=True, inherit_home=real)
     raise typer.Exit(result.exit_code)
 
 

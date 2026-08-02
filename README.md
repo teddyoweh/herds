@@ -276,11 +276,34 @@ Mac (a live view, or an external Playwright over CDP), open a
 
 ### Run commands
 
+> **Sandboxed by default — `inherit_home=True` / `--real` to run as *you*.**
+> A plain `mac.run(...)` gets a throwaway `HOME`
+> (`~/.herds/sandboxes/sbx_eph_…/home`) and a Seatbelt profile that rolls writes
+> back, so repeated runs can't corrupt each other. That's the right default for
+> CI and untrusted code — but it means installing apps, writing outside the
+> sandbox, or using your keychain/logins **silently won't stick** (you'll see
+> "directories are not writable" or a read-only filesystem). Opt out when you
+> mean "my Mac, my tools":
+>
+> ```python
+> mac.run("brew install --cask cursor", inherit_home=True)   # real $HOME, real disk
+> ```
+> ```bash
+> herds run --real -- brew install --cask cursor            # same, from the CLI
+> herds shell --real -c 'ls ~/Library'
+> ```
+>
+> `mac.agent(...)`, `screenshot()`, `clipboard`, `notify()` and the AppleScript
+> helpers already default to the real session — they'd be useless sandboxed.
+
 ```python
 mac = herds.mac()
 
 # blocking, returns a Result(exit_code, stdout, stderr, duration_ms)
 r = mac.run("swift build", check=True)
+
+# run against the REAL Mac — your $HOME, logins, keychain, /Applications
+mac.run("brew install --cask warp", inherit_home=True)
 
 # stream output live to your terminal
 mac.run("npm test", stream=True)
@@ -495,6 +518,8 @@ herds machines           list your connected Macs
 herds tag <id> <tags…>   label a Mac for routing  ·  herds tags  ·  herds untag <id> <tag>
 herds run -- <cmd>       run a command on a Mac (streams output)
 herds shell -c <cmd>     one-off command (SSH-equivalent)
+  └ add --real to either  run as YOU on the real Mac (real $HOME, disk, logins)
+                          — without it, writes land in a throwaway sandbox
 herds logs               recent jobs
 herds status             local configuration
 herds volume ls|create|rm
