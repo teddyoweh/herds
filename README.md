@@ -375,10 +375,25 @@ Parallel uploads only bought 1.4x, so it's throughput-limited end to end. If the
 thing is fetchable, `mac.fetch()` has the Mac pull it directly and the relay
 carries nothing but the command.
 
-`push`/`put` do compress now (gzip, ~1.9x on Chrome.app, ~2.8x on Cursor.app)
-and preserve the framework symlinks a `.app` needs to launch. There's still a
-**512 MB** cap per upload — you'll be told immediately rather than at the end of
-a long push.
+**`push` now routes around the relay entirely.** By default the Mac pulls the
+payload straight from your machine over the LAN or your tailnet, and only the
+command goes through the relay:
+
+```python
+mac.push("./Big.app", "apps")                 # direct if reachable, relay if not
+mac.push("./Big.app", "apps", direct=False)   # force the relay path
+```
+
+Measured on the same payload (41 MB source, 10.6 MB gzipped): **relay 14.9s vs
+direct 1.3s — 11x**. Tailscale addresses are tried first, so it works across
+networks and through the client-isolated Wi-Fi that defeats plain LAN discovery.
+If nothing here is reachable from the Mac it falls back to the relay silently —
+this can only be faster, never a new way to fail.
+
+Payloads are also gzipped (~1.9x on Chrome.app, ~2.8x on Cursor.app) and keep the
+framework symlinks a `.app` needs to launch. There's still a **512 MB** cap on
+the relay path — you'll be told immediately rather than at the end of a long
+push.
 
 Mac-to-Mac is the same trick: `expose()` the file on one and `fetch()` that URL
 from the other, so the bytes go direct instead of hairpinning through the relay.

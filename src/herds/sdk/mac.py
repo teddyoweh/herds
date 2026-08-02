@@ -213,17 +213,96 @@ class Mac:
         sbx = Sandbox.create(image=image, volumes=volumes, inherit_home=inherit_home, mac=self)
         return sbx.session(command, workdir=workdir, env=env, network=network)
 
-    def push(self, local: str, volume: str, remote: str = "", *, clean: bool = False, ignore=None) -> dict:
+    def push(self, local: str, volume: str, remote: str = "", *, clean: bool = False,
+             ignore=None, direct: bool = True, timeout: int = 900) -> dict:
         """Push a local file/dir to a named volume on this Mac (sugar over Volume.put)::
 
             mac.push("./my-project", "repo")
             mac.run("python3 app/main.py", volumes={"app": herds.Volume.from_name("repo")})
+
+        By default the Mac pulls the payload **directly from this machine** —
+        over the LAN or your tailnet — instead of pushing every byte through the
+        relay, which sustains only ~0.5 MB/s and is shared by the whole fleet.
+        If no address here is reachable from the Mac it falls back to the relay
+        automatically, so this is only ever faster, never a new failure mode.
+        Pass ``direct=False`` to force the relay path.
         """
         from .volume import Volume
+
+        if direct:
+            out = self._push_direct(local, volume, remote, clean=clean,
+                                    ignore=ignore, timeout=timeout)
+            if out is not None:
+                return out
 
         return Volume.from_name(volume).put(
             local, remote, client=self._client, machine=self.machine_id, clean=clean, ignore=ignore,
         )
+
+    def _push_direct(self, local, volume, remote, *, clean, ignore, timeout):
+        """Serve the payload here and have the Mac fetch it. None if not possible."""
+        import time as _time
+        from pathlib import Path
+
+        from . import _direct
+        from .volume import _DEFAULT_IGNORE, _tar_dir
+
+        src = Path(local).expanduser()
+        if not src.exists():
+            raise FileNotFoundError(f"no such path: {src}")
+        if not _direct.candidate_hosts():
+            return None  # nothing to serve on — let the relay handle it
+
+        payload = _tar_dir(src, set(_DEFAULT_IGNORE) | set(ignore or [])) if src.is_dir() else None
+        if payload is None:
+            # A lone file still ships as a one-member archive, so the Mac can use
+            # the same safe extractor instead of a second code path.
+            import io
+            import tarfile
+
+            buf = io.BytesIO()
+            with tarfile.open(fileobj=buf, mode="w:gz", compresslevel=1) as tf:
+                tf.add(str(src), arcname=src.name, recursive=False)
+            payload = buf.getvalue()
+
+        base = f'"${{HERDS_HOME:-$HOME/.herds}}/volumes/{volume}"'
+        started = _time.time()
+        with _direct.serve(payload) as (urls, served):
+            if not urls:
+                return None
+            import shlex
+
+            dest_expr = f"{base}/{remote}" if remote else base
+            # Quote every argv element: the payload script is multi-line and
+            # full of quotes, so a naive join would be shredded by the shell.
+            argv = _direct.pull_command("@DEST@", urls)
+            quoted = " ".join("\"$dest\"" if a == "@DEST@" else shlex.quote(a) for a in argv)
+            script = (
+                f"dest={dest_expr}\n"
+                + ("rm -rf \"$dest\"\n" if clean else "")
+                + "mkdir -p \"$dest\"\n"
+                + quoted
+            )
+            r = self.run(script, timeout=timeout, inherit_home=True)
+
+        if not r.ok:
+            return None  # unreachable or blocked — caller falls back to the relay
+
+        import json as _json
+
+        for line in reversed(r.stdout.strip().splitlines()):
+            if line.startswith("{"):
+                try:
+                    out = _json.loads(line)
+                except ValueError:
+                    continue
+                elapsed = _time.time() - started
+                out.update({"via": "direct", "seconds": round(elapsed, 2),
+                            "sent_bytes": len(payload)})
+                if elapsed > 0:
+                    out["mb_per_s"] = round(len(payload) / 1e6 / elapsed, 2)
+                return out
+        return None
 
     def fetch(
         self,
