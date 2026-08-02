@@ -165,7 +165,11 @@ async def test_snapshot_then_restore_reproduces_file(herds_home):
     info = ex.snapshot("sbx_src", "base1")
     assert info["image_id"] == "base1"
     assert info["size_bytes"] > 0
-    assert (herds_home / "images" / "base1.tar").exists()
+    # Backed by an APFS clone where available, a tarball otherwise — assert the
+    # artifact exists rather than pinning which form it took.
+    assert info["mode"] in ("clone", "tar")
+    assert Path(info["path"]).exists()
+    assert Path(info["path"]).parent == herds_home / "images"
 
     # A brand-new sandbox seeded from the base restores the file.
     ex.create_sandbox("sbx_dst", base="base1")

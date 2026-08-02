@@ -491,6 +491,175 @@ class _UI:
         clause = f" using {{{using}}}" if using else ""
         self._osa(f'tell application "System Events" to keystroke {_as(final)}{clause}')
 
+    # -- pointer ------------------------------------------------------------ #
+    # System Events can type but cannot move or click a pointer, so these post
+    # real CGEvents through the Mac's own system interpreter. See sdk/_input.py.
+
+    def _input(self, op: str, *args, timeout: int = 30) -> str:
+        from . import _input
+
+        r = self._m.run(_input.command(op, *args), timeout=timeout, inherit_home=True)
+        if not r.ok:
+            from .client import HerdsError
+            raise HerdsError(f"ui {op} failed: {_tcc_hint(r.stderr, 'Accessibility')}")
+        return r.stdout.strip()
+
+    def cursor(self) -> tuple:
+        """Current pointer position as ``(x, y)``."""
+        x, y = self._input("cursor").split()
+        return int(x), int(y)
+
+    def screen(self) -> tuple:
+        """Main display size as ``(width, height)`` in points."""
+        w, h = self._input("screen").split()
+        return int(w), int(h)
+
+    def move(self, x: float, y: float) -> None:
+        """Move the pointer to absolute screen coordinates."""
+        self._input("move", x, y)
+
+    def click(self, x: float, y: float, *, button: str = "left", count: int = 1) -> None:
+        """Click at absolute screen coordinates.
+
+        Prefer :meth:`find` and ``element.click()`` where you can — coordinates
+        break the moment a window moves, an AX target doesn't.
+        """
+        self._input("click", x, y, button, count)
+
+    def double_click(self, x: float, y: float, *, button: str = "left") -> None:
+        self._input("click", x, y, button, 2)
+
+    def right_click(self, x: float, y: float) -> None:
+        self._input("click", x, y, "right", 1)
+
+    def drag(self, x1: float, y1: float, x2: float, y2: float, *, button: str = "left") -> None:
+        """Press at (x1,y1), move in steps, release at (x2,y2)."""
+        self._input("drag", x1, y1, x2, y2, button, timeout=60)
+
+    def scroll(self, dy: float, dx: float = 0) -> None:
+        """Scroll by pixels; positive dy scrolls up."""
+        self._input("scroll", dy, dx)
+
+    # -- accessibility tree ------------------------------------------------- #
+    # The reliable way to drive a GUI: semantic elements, not pixels.
+
+    def _ax(self, op: str, *args, timeout: int = 60) -> str:
+        from . import _input
+
+        r = self._m.run(_input.ax_command(op, *args), timeout=timeout, inherit_home=True)
+        if not r.ok:
+            from .client import HerdsError
+            raise HerdsError(f"ax {op} failed: {_tcc_hint(r.stderr, 'Accessibility')}")
+        return r.stdout
+
+    def trusted(self) -> bool:
+        """Whether this Mac has granted Accessibility — the gate for all UI control."""
+        return self._ax("trusted", timeout=30).strip() == "1"
+
+    def apps(self) -> list:
+        """Running GUI apps, by process name.
+
+        Read from the process table rather than System Events: enumerating apps
+        via AppleScript needs an Automation grant a headless daemon can't obtain.
+        """
+        r = self._m.run(
+            ["/bin/zsh", "-lc",
+             "ps -Ao comm= | grep '\\.app/Contents/MacOS/' | sed 's|.*/||' | sort -u"],
+            timeout=30, inherit_home=True,
+        )
+        return [ln.strip() for ln in r.stdout.splitlines() if ln.strip()]
+
+    def windows(self, app: str, *, timeout: int = 30) -> list:
+        """Window titles of a single app."""
+        out = self._ax("windows", app, timeout=timeout)
+        names = []
+        for line in out.splitlines():
+            parts = line.split("\t", 1)
+            if len(parts) == 2:
+                names.append(parts[1])
+        return names
+
+    def tree(self, app: str, window="1", *, depth: int = 12, limit: int = 4000,
+             timeout: int = 60) -> list:
+        """Semantic UI elements of ``app`` as a list of :class:`Element`.
+
+        ``window`` is a 1-based index, or ``"menubar"`` for the app's menu bar.
+        Entries carry a role, a label and real screen geometry — the things you
+        actually want to target, instead of guessing pixels off a screenshot.
+        """
+        out = self._ax("tree", app, window, int(depth), int(limit), timeout=timeout)
+        els = []
+        for line in out.splitlines():
+            parts = line.split("\t")
+            if len(parts) != 7:
+                continue
+            d, role, name, x, y, w, h = parts
+            try:
+                els.append(Element(self, app, role, name,
+                                   int(x), int(y), int(w), int(h), depth=int(d)))
+            except ValueError:
+                continue
+        return els
+
+    def find(self, app: str, *, role: Optional[str] = None, name: Optional[str] = None,
+             contains: Optional[str] = None, window="1", timeout: int = 60):
+        """First element in ``app`` matching role/name/substring, else None."""
+        return next(iter(self.find_all(app, role=role, name=name, contains=contains,
+                                       window=window, timeout=timeout)), None)
+
+    def find_all(self, app: str, *, role: Optional[str] = None, name: Optional[str] = None,
+                 contains: Optional[str] = None, window="1", timeout: int = 60) -> list:
+        """Every element in ``app`` matching the given filters."""
+        out = []
+        for e in self.tree(app, window, timeout=timeout):
+            if role and e.role.lower() not in (role.lower(), "ax" + role.lower()):
+                continue
+            if name and e.name != name:
+                continue
+            if contains and contains.lower() not in e.name.lower():
+                continue
+            out.append(e)
+        return out
+
+    def menu(self, app: str, *path: str, timeout: int = 60) -> None:
+        """Click a menu item by path, e.g. ``mac.ui.menu("Finder", "File", "New Window")``.
+
+        Resolved through the accessibility tree and clicked with a real mouse
+        event, so it works headless — the AppleScript equivalent needs an
+        Automation grant a daemon can't get.
+        """
+        if not path:
+            raise ValueError("menu() needs at least one item")
+        target = path[-1]
+        for e in self.tree(app, "menubar", timeout=timeout):
+            if e.name == target and e.role in ("AXMenuItem", "AXMenuBarItem"):
+                e.click()
+                return
+        raise LookupError(f"no menu item {target!r} in {app}")
+
+
+class Element:
+    """A node in a Mac's accessibility tree — semantic, with real geometry."""
+
+    def __init__(self, ui: "_UI", app: str, role: str, name: str,
+                 x: int, y: int, w: int, h: int, depth: int = 0):
+        self._ui = ui
+        self.app, self.role, self.name, self.depth = app, role, name, depth
+        self.x, self.y, self.width, self.height = x, y, w, h
+
+    @property
+    def center(self) -> tuple:
+        return self.x + self.width // 2, self.y + self.height // 2
+
+    def click(self, *, button: str = "left", count: int = 1) -> None:
+        """Click this element's centre — stable across window moves."""
+        cx, cy = self.center
+        self._ui.click(cx, cy, button=button, count=count)
+
+    def __repr__(self) -> str:
+        return (f"Element(app={self.app!r}, role={self.role!r}, name={self.name!r}, "
+                f"at=({self.x},{self.y}), size=({self.width}x{self.height}))")
+
 
 class _Chrome:
     """Drive Google Chrome in the Mac's real session via AppleScript."""

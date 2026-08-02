@@ -633,8 +633,101 @@ def mcp_serve(
 
 
 @app.command()
-def doctor():
-    """Check macOS permissions + readiness for driving real apps (Chrome/Xcode/iMessage)."""
+def doctor(
+    machine: str = typer.Option("default", "--machine", "-m", help="Which Mac to audit."),
+    local: bool = typer.Option(False, "--local", help="Audit this process instead of the daemon."),
+):
+    """Check macOS permissions + readiness for driving real apps (Chrome/Xcode/iMessage).
+
+    Audits the *daemon on the Mac*, because TCC grants are per-process: the CLI
+    on your laptop having Accessibility says nothing about whether the daemon
+    can move a mouse.
+    """
+    if not local:
+        try:
+            _doctor_remote(machine)
+            return
+        except Exception as exc:  # noqa: BLE001
+            err.print(f"[yellow]Couldn't audit the Mac ({exc}); falling back to a local check.[/yellow]")
+            err.print("[dim]A local check reports THIS process's permissions, not the daemon's.[/dim]\n")
+    _doctor_local()
+
+
+def _doctor_remote(machine: str) -> None:
+    """Run the probe inside the daemon's process tree and report the truth."""
+    import json
+
+    from ..sdk._input import doctor_command
+    from ..sdk.mac import Mac
+
+    m = Mac(machine, client=_client())
+    r = m.run(doctor_command(), timeout=90, inherit_home=True)
+    if not r.ok:
+        raise RuntimeError(r.stderr.strip()[:200] or f"exit {r.exit_code}")
+    d = json.loads(r.stdout.strip().splitlines()[-1])
+
+    table = Table(title=f"herds doctor — {m.name}")
+    table.add_column("Capability")
+    table.add_column("Status")
+    table.add_column("Unlocks", style="dim")
+
+    def row(name, ok, unlocks):
+        table.add_row(name, "[green]✓ granted[/green]" if ok else "[red]✗ missing[/red]", unlocks)
+
+    row("GUI login session", d["gui_session"], "driving GUI apps at all")
+    row("Screen Recording", d["screen_recording"], "mac.screenshot()")
+    row("Accessibility", d["accessibility"], "mac.ui.click / type / AX tree")
+    row("Automation", d["automation"], "mac.chrome(), AppleScript control")
+    row("Full Disk Access", d["full_disk_access"], "read iMessage chat.db, app data")
+    row("Chrome installed", d["chrome"], "mac.chrome()")
+    row("Xcode tools", d["xcode"], "xcodebuild / simctl")
+    console.print(table)
+
+    if not d["accessibility"]:
+        console.print(
+            "\n[bold red]Accessibility is not granted to the daemon.[/bold red]\n"
+            "Every synthetic event is silently dropped — [dim]mac.ui.click() and "
+            "mac.ui.type() will appear to succeed and do nothing.[/dim]"
+        )
+    if not d["automation"]:
+        console.print(
+            "\n[bold yellow]Automation is not granted to the daemon.[/bold yellow]\n"
+            "AppleEvents [dim]block until timeout[/dim] rather than failing, so "
+            "mac.chrome() and AppleScript helpers will hang."
+        )
+
+    missing = [n for n, ok in [("Screen Recording", d["screen_recording"]),
+                               ("Accessibility", d["accessibility"]),
+                               ("Full Disk Access", d["full_disk_access"])] if not ok]
+    if missing:
+        panes = {"Screen Recording": "Privacy_ScreenCapture",
+                 "Accessibility": "Privacy_Accessibility",
+                 "Full Disk Access": "Privacy_AllFiles"}
+        console.print(
+            "\n[bold]Grant these on that Mac[/bold] "
+            "[dim](TCC is per-binary — granting your terminal does nothing here)[/dim]"
+        )
+        console.print(f"  probe ran as   [cyan]{d['responsible_binary']}[/cyan]")
+        if d.get("ppid_cmd"):
+            console.print(f"  parent process [cyan]{d['ppid_cmd']}[/cyan]")
+        console.print(
+            "  [dim]macOS attributes the grant to the responsible process — in practice "
+            "whatever runs [bold]herds host[/bold]. Add that binary.[/dim]"
+        )
+        console.print("\n[bold]On that Mac, open:[/bold]")
+        for n in missing:
+            console.print(
+                f"  • {n}: [cyan]open 'x-apple.systempreferences:"
+                f"com.apple.preference.security?{panes[n]}'[/cyan]"
+            )
+        console.print("\n[dim]Add the binary above with '+', enable it, then: "
+                      "[bold]herds host stop && herds host[/bold][/dim]")
+    else:
+        console.print("\n[green]✓ All set — this Mac can drive real apps.[/green]")
+
+
+def _doctor_local():
+    """Legacy in-process check. Reports THIS process, on THIS machine."""
     import os
     import subprocess
     import tempfile
@@ -683,7 +776,7 @@ def doctor():
 
     row("GUI login session", gui, "driving GUI apps at all")
     row("Screen Recording", screen, "mac.screenshot()")
-    row("Accessibility", access, "mac.ui.type / clicks")
+    row("Accessibility", access, "mac.ui.click / type / AX tree")
     row("Full Disk Access", fda, "read iMessage chat.db, app data")
     table.add_row("Automation", "[yellow]— per-app[/yellow]", "control Chrome/Messages (prompts on first use)")
     row("Chrome installed", chrome, "mac.chrome()")

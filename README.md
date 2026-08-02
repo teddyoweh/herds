@@ -439,6 +439,35 @@ the Mac, or stream a live browser view — control plane → daemon → the sand
 running *inside* the sandbox never needs this — it drives Chromium over its own
 localhost.)
 
+### Driving the GUI — semantic, not pixels
+
+```python
+mac.ui.click(400, 300)                  # real HID-level events, not keystroke fakes
+mac.ui.drag(100, 100, 400, 300)         # interpolated, so drop targets accept it
+mac.ui.scroll(-250)
+
+# Better: target the accessibility tree — survives windows moving.
+save = mac.ui.find("Preview", role="AXButton", name="Save")
+save.click()                            # clicks its centre
+
+for el in mac.ui.tree("Finder", "menubar", depth=3):
+    print(el.role, el.name, el.center)
+```
+
+Built on CGEvent and the AX C API rather than AppleScript. That's not a style
+choice: AppleScript needs an **Automation** TCC grant, the consent prompt can
+only be shown to a foreground app, and a launchd daemon therefore *hangs until
+timeout* instead of failing. The C APIs need only **Accessibility**.
+
+> **Check permissions on the Mac, not on your laptop.** TCC grants are
+> per-process, so `herds doctor` audits the daemon:
+> ```bash
+> herds doctor            # probes the Mac's daemon (use --local for this process)
+> ```
+> If Accessibility is missing, synthetic events are **silently dropped** —
+> `mac.ui.click()` returns success and nothing moves. `herds doctor` names the
+> binary to grant.
+
 ### Mac-native control — the stuff only a real Mac can do
 
 ```python
