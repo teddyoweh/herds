@@ -39,6 +39,21 @@ def _spawn(cmd, env=None, cwd=None, **kw) -> subprocess.Popen:
     return subprocess.Popen(cmd, env=env, cwd=cwd, **kw)
 
 
+def _system_path() -> str:
+    """Inherited PATH, guaranteed to include the macOS system tool directories.
+
+    A LaunchAgent plist that pins PATH (older herds installs shipped
+    ``/opt/homebrew/bin:/usr/bin:/bin``) silently drops /usr/sbin, where
+    ``sysctl`` and ``system_profiler`` live — and the daemon then registers this
+    Mac with no model, chip, cpu or memory. Children always get them back.
+    """
+    parts = [p for p in os.environ.get("PATH", "").split(os.pathsep) if p]
+    for d in ("/usr/bin", "/bin", "/usr/sbin", "/sbin"):
+        if d not in parts:
+            parts.append(d)
+    return os.pathsep.join(parts)
+
+
 def _persistent_token() -> str:
     """A stable host token that survives restarts (so the link+token never change)."""
     f = config.HERDS_HOME / "host_token"
@@ -344,6 +359,169 @@ def _already_hosting_panel(st: dict) -> None:
     console.print(f"    [link={open_url}][cyan]{open_url}[/cyan][/link]\n", soft_wrap=True)
 
 
+def _host_log_path() -> Path:
+    return config.LOGS_DIR / "host.out.log"
+
+
+def should_detach(foreground: bool, background: bool, isatty: bool) -> bool:
+    """Whether ``herds host`` should detach into the background.
+
+    Explicit flags win. Otherwise detach only for an interactive terminal: under
+    launchd (and CI) stdout is a log file, and detaching there would exit
+    immediately, which ``KeepAlive`` reads as a crash and respawns forever.
+    """
+    if background:
+        return True
+    if foreground:
+        return False
+    return isatty
+
+
+def _relaunch_cmd(extra: list) -> list:
+    """The command that re-runs *this* herds in the foreground, for the detached child.
+
+    Re-executes the running interpreter rather than whatever ``herds`` happens to
+    be first on PATH, so the background host is always the same version — and the
+    same virtualenv — the user just invoked.
+    """
+    return [sys.executable, "-c", "from herds.cli import app; app()",
+            "host", "--foreground", *extra]
+
+
+def start_host_background(port: int = 8787, tunnel: bool = True,
+                          quick: bool = False, force: bool = False,
+                          wait: float = 150.0) -> None:
+    """Start the host detached, wait until it's actually serving, then print the link.
+
+    The child is fully re-parented (``start_new_session``) so it outlives this
+    shell — closing the terminal, or the SSH session that opened it, won't take
+    the fleet down with it.
+    """
+    config.ensure_dirs()
+
+    existing = _existing_host()
+    if existing and not force:
+        _already_hosting_panel(existing)
+        return
+    if existing and force:
+        stop_host(quiet=True)
+
+    extra = []
+    if port != 8787:
+        extra += ["--port", str(port)]
+    if not tunnel:
+        extra.append("--no-tunnel")
+    if quick:
+        extra.append("--quick")
+    if force:
+        extra.append("--restart")
+
+    log = _host_log_path()
+    console.print("[dim]Starting the host in the background…[/dim]")
+    with open(log, "ab", buffering=0) as fh:
+        proc = subprocess.Popen(
+            _relaunch_cmd(extra),
+            stdout=fh, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+            start_new_session=True,   # detach: survives this terminal closing
+            env={**os.environ, "HERDS_HOME": str(config.HERDS_HOME)},
+        )
+
+    # The child writes host.json only once the link is verified and serving, so
+    # polling it means "ready", not merely "spawned".
+    deadline = time.monotonic() + wait
+    with console.status("[dim]waiting for the link to come up…[/dim]", spinner="dots"):
+        while time.monotonic() < deadline:
+            if proc.poll() is not None:
+                err.print(f"[red]The host exited while starting up.[/red] Log: [dim]{log}[/dim]")
+                _tail_log(log)
+                raise SystemExit(1)
+            st = _existing_host()
+            if st:
+                _running_panel(st, log)
+                return
+            time.sleep(1.0)
+
+    err.print(f"[yellow]The host is still starting after {int(wait)}s.[/yellow] "
+              f"It may come up shortly — check [bold]herds host status[/bold] or the log:\n  [dim]{log}[/dim]")
+
+
+def _tail_log(log: Path, n: int = 15) -> None:
+    try:
+        lines = log.read_text(errors="replace").splitlines()[-n:]
+    except OSError:
+        return
+    if lines:
+        err.print("[dim]" + "\n".join(lines) + "[/dim]")
+
+
+def _running_panel(st: dict, log: Optional[Path] = None) -> None:
+    public_url = st.get("public_url") or f"http://127.0.0.1:{st.get('port')}"
+    token = st.get("token", "")
+    provider = st.get("provider", "Herds")
+    open_url = f"{public_url}/?token={token}" if token else public_url
+    console.print(Panel.fit(
+        f"[green]✓ Herds host is live[/green] [dim](background · pid {st.get('pid')})[/dim]\n\n"
+        f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]  [dim]via {provider}[/dim]\n\n"
+        f"[bold]Host token[/bold]\n  [yellow]{token}[/yellow] [dim](stable)[/dim]\n\n"
+        f"[bold]Add another Mac[/bold] [dim](even a fresh one — installs + joins)[/dim]\n"
+        f"  [cyan]curl -fsSL herds.run/install | sh -s -- {public_url} {token}[/cyan]\n\n"
+        f"[dim]It keeps running after you close this terminal.\n"
+        f"  status  [bold]herds host status[/bold]   ·   stop  [bold]herds host stop[/bold]"
+        + (f"\n  logs    [bold]{log}[/bold]" if log else "") + "[/dim]",
+        title="herds host", border_style="green",
+    ))
+    console.print("\n  [bold green]→ Open your dashboard[/bold green] [dim](opens already signed in)[/dim]")
+    console.print(f"    [link={open_url}][cyan]{open_url}[/cyan][/link]\n", soft_wrap=True)
+
+
+def stop_host(quiet: bool = False) -> bool:
+    """Stop the background host. Returns True if something was actually stopped."""
+    st = _read_host_state()
+    pid = (st or {}).get("pid")
+    if not st or not pid or not _pid_alive(int(pid)):
+        _clear_host_state()
+        if not quiet:
+            console.print("[dim]No host is running on this Mac.[/dim]")
+        return False
+
+    pid = int(pid)
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError as exc:
+        if not quiet:
+            err.print(f"[red]Couldn't stop pid {pid}:[/red] {exc}")
+        return False
+
+    for _ in range(40):  # up to 10s for a graceful teardown
+        if not _pid_alive(pid):
+            break
+        time.sleep(0.25)
+    else:
+        try:
+            os.kill(pid, signal.SIGKILL)   # last resort
+        except OSError:
+            pass
+
+    _clear_host_state()
+    if not quiet:
+        console.print(f"[green]✓[/green] Host stopped [dim](pid {pid})[/dim].")
+    return True
+
+
+def host_status() -> None:
+    """Report whether this Mac is hosting, and where."""
+    st = _existing_host()
+    if not st:
+        stale = _read_host_state()
+        if stale:
+            console.print("[yellow]Not hosting[/yellow] [dim](found stale state — clearing it)[/dim]")
+            _clear_host_state()
+        else:
+            console.print("[dim]Not hosting.[/dim] Start with [bold]herds host[/bold].")
+        return
+    _running_panel(st, _host_log_path())
+
+
 def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
              quick: bool = False, force: bool = False) -> None:
     config.ensure_dirs()
@@ -395,7 +573,8 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
 
     procs: list[subprocess.Popen] = []
     supervised: list[dict] = []  # critical children — auto-restarted if they crash
-    base_env = {**os.environ, "HERDS_HOME": str(config.HERDS_HOME)}
+    base_env = {**os.environ, "HERDS_HOME": str(config.HERDS_HOME),
+                "PATH": _system_path()}
 
     def _spawn_supervised(name: str, cmd: list, env: dict) -> subprocess.Popen:
         p = _spawn(cmd, env=env)

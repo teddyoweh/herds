@@ -12,6 +12,8 @@ import re
 import subprocess
 from typing import Optional, Tuple
 
+from .machine import _tool  # absolute-path lookup; see the note in machine.py
+
 
 def _cpu_percent() -> float:
     try:
@@ -25,7 +27,9 @@ def _cpu_percent() -> float:
 def _mem_percent() -> float:
     """Parse ``vm_stat`` into a used-memory percentage."""
     try:
-        out = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=2).stdout
+        out = subprocess.run(
+            [_tool("vm_stat")], capture_output=True, text=True, timeout=2
+        ).stdout
     except (OSError, subprocess.SubprocessError):
         return 0.0
     page = 4096
@@ -53,7 +57,7 @@ def _battery() -> Tuple[Optional[float], Optional[bool]]:
     """(%, charging?) from ``pmset -g batt``. (None, None) on desktops / no battery."""
     try:
         out = subprocess.run(
-            ["pmset", "-g", "batt"], capture_output=True, text=True, timeout=2
+            [_tool("pmset"), "-g", "batt"], capture_output=True, text=True, timeout=2
         ).stdout
     except (OSError, subprocess.SubprocessError):
         return None, None

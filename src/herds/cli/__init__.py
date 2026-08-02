@@ -28,6 +28,7 @@ from rich.table import Table
 
 from .. import __version__, config
 from ..daemon import machine as machine_mod
+from ..daemon.machine import _tool
 
 app = typer.Typer(
     name="herds",
@@ -385,17 +386,64 @@ def _host_main(
     no_tunnel: bool = typer.Option(False, "--no-tunnel", help="Serve locally only, no public link."),
     quick: bool = typer.Option(False, "--quick", help="Temporary Cloudflare quick tunnel (changes each run; less reliable)."),
     restart: bool = typer.Option(False, "--restart", "--force", help="Start a new host even if this Mac is already hosting."),
+    foreground: bool = typer.Option(False, "--foreground", "-f", help="Stay attached to this terminal instead of detaching."),
+    background: bool = typer.Option(False, "--background", "-b", help="Force detaching, even when output isn't a terminal."),
 ):
     """Self-host this Mac with a permanent Tailscale Funnel link.
+
+    Runs in the background by default: it prints the link and hands your prompt
+    back, and keeps running after you close the terminal. Manage it with
+    `herds host status` and `herds host stop`.
 
     If this Mac is already hosting, shows the live link instead of starting a
     duplicate. Run `herds host setup` first to enable Tailscale Funnel.
     """
     if ctx.invoked_subcommand is not None:
         return
-    from ..host import run_host
+    from ..host import run_host, should_detach, start_host_background
 
-    run_host(port=port, tunnel=not no_tunnel, quick=quick, force=restart)
+    if foreground and background:
+        err.print("[red]--foreground and --background are mutually exclusive.[/red]")
+        raise typer.Exit(2)
+
+    if should_detach(foreground, background, sys.stdout.isatty()):
+        start_host_background(port=port, tunnel=not no_tunnel, quick=quick, force=restart)
+    else:
+        run_host(port=port, tunnel=not no_tunnel, quick=quick, force=restart)
+
+
+@host_app.command("stop")
+def _host_stop():
+    """Stop the host running in the background on this Mac."""
+    from ..host import stop_host
+
+    stop_host()
+
+
+@host_app.command("status")
+def _host_status():
+    """Show whether this Mac is hosting, and on which link."""
+    from ..host import host_status
+
+    host_status()
+
+
+@host_app.command("logs")
+def _host_logs(
+    follow: bool = typer.Option(False, "--follow", "-F", help="Stream new output as it arrives."),
+    lines: int = typer.Option(40, "--lines", "-n", help="How many trailing lines to show."),
+):
+    """Show the background host's log."""
+    from ..host import _host_log_path
+
+    log = _host_log_path()
+    if not log.exists():
+        console.print(f"[dim]No log yet at {log}.[/dim]")
+        raise typer.Exit(0)
+    if follow:
+        subprocess.run([_tool("tail"), "-n", str(lines), "-f", str(log)])
+    else:
+        subprocess.run([_tool("tail"), "-n", str(lines), str(log)])
 
 
 @host_app.command("setup")
@@ -1024,7 +1072,16 @@ def _plist_contents(herds_bin: str) -> str:
   <array>
     <string>{herds_bin}</string>
     <string>host</string>
+    <!-- launchd supervises this process directly, so it must NOT detach:
+         a background start would exit immediately and KeepAlive would
+         respawn it in a tight loop. -->
+    <string>--foreground</string>
   </array>
+  <!-- /usr/sbin must be here: sysctl and system_profiler live there, and the
+       daemon reads this Mac's model/chip/cpu/memory from them. Without it the
+       Mac registers as a specless device. -->
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string></dict>
   <key>RunAtLoad</key><true/>
   <!-- Only load inside a real GUI (Aqua) session: screenshots, AppleScript and
        UI control need a window server. Without this the agent can load at the

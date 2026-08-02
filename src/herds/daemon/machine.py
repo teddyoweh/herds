@@ -2,33 +2,53 @@
 
 from __future__ import annotations
 
+import os
 import platform
+import shutil
 import subprocess
 import uuid
-from functools import lru_cache
 from typing import Optional
 
 from ..protocol import MachineInfo
 
+# Resolve the macOS system tools by absolute path.
+#
+# `sysctl` and `system_profiler` live in /usr/sbin, which is NOT on the PATH a
+# LaunchAgent inherits if the plist pins one (a plist with
+# PATH=/opt/homebrew/bin:/usr/bin:/bin is enough to lose them). Looking them up
+# by bare name then raised FileNotFoundError, which the handlers below swallow
+# as "no data" -- so the host Mac registered itself with a null model, chip,
+# cpu_count and memory_gb while `sw_vers` and `pmset` (both /usr/bin) kept
+# working. Absolute paths make the probe independent of how we were launched.
+_BIN_DIRS = ("/usr/sbin", "/usr/bin", "/sbin", "/bin")
 
-def _sysctl(key: str) -> Optional[str]:
+
+def _tool(name: str) -> str:
+    """Absolute path to a macOS system tool, falling back to PATH lookup."""
+    for d in _BIN_DIRS:
+        p = os.path.join(d, name)
+        if os.path.isfile(p) and os.access(p, os.X_OK):
+            return p
+    return shutil.which(name) or name
+
+
+def _run_tool(name: str, *args: str, timeout: float = 2) -> Optional[str]:
+    """Run a system tool and return stripped stdout, or None if it's unavailable."""
     try:
         out = subprocess.run(
-            ["sysctl", "-n", key], capture_output=True, text=True, timeout=2
+            [_tool(name), *args], capture_output=True, text=True, timeout=timeout
         )
         return out.stdout.strip() or None
     except (OSError, subprocess.SubprocessError):
         return None
+
+
+def _sysctl(key: str) -> Optional[str]:
+    return _run_tool("sysctl", "-n", key)
 
 
 def _macos_version() -> Optional[str]:
-    try:
-        out = subprocess.run(
-            ["sw_vers", "-productVersion"], capture_output=True, text=True, timeout=2
-        )
-        return out.stdout.strip() or None
-    except (OSError, subprocess.SubprocessError):
-        return None
+    return _run_tool("sw_vers", "-productVersion")
 
 
 def _model_name() -> Optional[str]:
@@ -36,16 +56,13 @@ def _model_name() -> Optional[str]:
 
     Apple-Silicon model identifiers (``Mac15,3``) can't be classified reliably by
     prefix, so we read the real name once. Runs a single time (gather is cached)."""
-    try:
-        out = subprocess.run(
-            ["system_profiler", "SPHardwareDataType"], capture_output=True, text=True, timeout=6
-        ).stdout
-        for line in out.splitlines():
-            line = line.strip()
-            if line.startswith("Model Name:"):
-                return line.split(":", 1)[1].strip() or None
-    except (OSError, subprocess.SubprocessError):
+    out = _run_tool("system_profiler", "SPHardwareDataType", timeout=6)
+    if not out:
         return None
+    for line in out.splitlines():
+        line = line.strip()
+        if line.startswith("Model Name:"):
+            return line.split(":", 1)[1].strip() or None
     return None
 
 
@@ -81,14 +98,31 @@ def _pretty_name(model_name: Optional[str], model_id: Optional[str], chip: Optio
     return f"{base} ({chip})" if chip else base
 
 
-@lru_cache(maxsize=1)
-def gather(machine_id: str, agent_version: str = "0.1.0") -> MachineInfo:
+def _agent_version() -> str:
+    from .. import __version__
+
+    return __version__
+
+
+# Cache only a *complete* probe. The daemon is long-lived and re-registers on
+# every reconnect, so caching a degraded read (see _tool above) would pin this
+# Mac as a specless device until the process restarted.
+_CACHE: dict = {}
+
+
+def gather(machine_id: str, agent_version: Optional[str] = None) -> MachineInfo:
+    agent_version = agent_version or _agent_version()
+    key = (machine_id, agent_version)
+    cached = _CACHE.get(key)
+    if cached is not None:
+        return cached
+
     chip = _sysctl("machdep.cpu.brand_string")
     model = _sysctl("hw.model")
     mem_bytes = _sysctl("hw.memsize")
     cpu_count = _sysctl("hw.ncpu")
     model_name = _model_name()
-    return MachineInfo(
+    info = MachineInfo(
         machine_id=machine_id,
         name=_pretty_name(model_name, model, chip),
         model=model,
@@ -100,6 +134,10 @@ def gather(machine_id: str, agent_version: str = "0.1.0") -> MachineInfo:
         macos_version=_macos_version(),
         agent_version=agent_version,
     )
+    # Everything that needs a subprocess came back -> safe to memoize.
+    if model and chip and cpu_count and mem_bytes:
+        _CACHE[key] = info
+    return info
 
 
 def new_machine_id() -> str:

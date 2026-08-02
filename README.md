@@ -75,9 +75,12 @@ herds host             # 3 · go live        — your Mac is now an API
 ```
 
 ```
-✓ Herds host is live
+✓ Herds host is live (background · pid 64265)
   Dashboard   https://you.herds.run          ← permanent, branded link · zero setup
   Host token  herds_sk_…                     ← use it to add more Macs / agents
+
+  It keeps running after you close this terminal.
+    status  herds host status   ·   stop  herds host stop
 → opening your dashboard, already signed in …
 ```
 
@@ -85,6 +88,12 @@ That's it. Your Mac is online at a **permanent, branded link** — no Cloudflare
 no Tailscale, no port forwarding. `herds auth` opens your browser to approve and
 syncs the token back; the dashboard opens already signed in. (No account?
 `herds host` still works with a temporary tunnel.)
+
+`herds host` **returns your prompt** and keeps serving after you close the
+terminal — check on it with `herds host status`, tail it with `herds host logs`,
+and stop it with `herds host stop`. Use `--foreground` to stay attached instead
+(that's what the `herds install` LaunchAgent uses). The Mac you host from
+**joins its own fleet as a node**, so `herds.mac()` can target it like any other.
 
 ### Requirements
 
@@ -472,6 +481,8 @@ run history — all polling the same API the SDK and CLI use.
 ```
 herds auth               sign in (free) — get a stable, branded link
 herds host               self-host: control plane + dashboard + public link
+                         (runs in the background; the Mac joins its own fleet)
+herds host status|stop|logs  manage the background host  ·  --foreground to attach
 herds skill [--install]  print/install the agent skill (SKILL.md) for Claude Code
 herds mcp                MCP server — expose this Mac as tools for ANY agent
 herds doctor             check macOS permissions for driving real apps
