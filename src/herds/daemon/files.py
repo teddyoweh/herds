@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import io
+import os
 import shutil
 import tarfile
 from pathlib import Path
@@ -153,11 +154,33 @@ def extract_tar(kind: str, ident: str, rel: str, tar_b64: str, clean: bool = Fal
     n = 0
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:*") as tf:
         for m in tf.getmembers():
-            if not (m.isfile() or m.isdir()):
-                continue  # skip symlinks/devices/hardlinks
             mp = (dest / m.name).resolve()
             if dest != mp and dest not in mp.parents:
                 continue  # refuse traversal outside dest
-            tf.extract(m, path=dest)
-            n += 1
+
+            if m.isfile() or m.isdir():
+                tf.extract(m, path=dest)
+                n += 1
+            elif m.issym() or m.islnk():
+                # Symlinks used to be dropped wholesale. That's safe but wrong
+                # for the main use case: a macOS .app bundle's frameworks are
+                # Versions/Current symlinks, and a copy without them produces a
+                # bundle that will not launch. Keep the link only when its
+                # target stays inside the destination.
+                if not _link_stays_inside(dest, mp, m.linkname):
+                    continue
+                tf.extract(m, path=dest)
+                n += 1
+            # devices/fifos are still skipped entirely
     return {"path": rel, "members": n, "ok": True}
+
+
+def _link_stays_inside(dest: Path, link_path: Path, linkname: str) -> bool:
+    """True when a symlink resolves within ``dest`` (absolute links always fail).
+
+    Checked against the link's own directory, which is how the OS resolves it.
+    """
+    if not linkname or os.path.isabs(linkname):
+        return False
+    target = (link_path.parent / linkname).resolve()
+    return target == dest or dest in target.parents

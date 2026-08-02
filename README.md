@@ -370,9 +370,15 @@ relay, to the Mac. Measured on a real fleet:
 | **through the relay** | **0.2–0.8 MB/s** | **13–41 min** |
 
 The relay is a control channel, not a pipe — pushing a large artifact through it
-is slow *and* saturates it for every other machine in the fleet meanwhile. If the
+is slow *and* saturates it for every other machine in the fleet meanwhile.
+Parallel uploads only bought 1.4x, so it's throughput-limited end to end. If the
 thing is fetchable, `mac.fetch()` has the Mac pull it directly and the relay
 carries nothing but the command.
+
+`push`/`put` do compress now (gzip, ~1.9x on Chrome.app, ~2.8x on Cursor.app)
+and preserve the framework symlinks a `.app` needs to launch. There's still a
+**512 MB** cap per upload — you'll be told immediately rather than at the end of
+a long push.
 
 Mac-to-Mac is the same trick: `expose()` the file on one and `fetch()` that URL
 from the other, so the bytes go direct instead of hairpinning through the relay.

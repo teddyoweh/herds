@@ -34,12 +34,58 @@ def _resolve_machine(client, machine: str) -> str:
     return online[0]["machine_id"]
 
 
-def _tar_dir(src: Path, ignore: set) -> bytes:
-    """Tar a directory, pruning ignored dirs (so we never walk node_modules)."""
+# The daemon refuses uploads past this. Checked here too, so a doomed transfer
+# fails in a second instead of after a 40-minute push through the relay.
+WRITE_CAP = 512 * 1024 * 1024
+
+
+def _check_size(payload: bytes, src: Path) -> None:
+    if len(payload) <= WRITE_CAP:
+        return
+    from .client import HerdsError
+
+    raise HerdsError(
+        f"{src.name} is {len(payload) / 1e6:.0f} MB after packing, over the "
+        f"{WRITE_CAP // (1024 * 1024)} MB upload limit — the Mac would reject it.\n"
+        f"Pushing this through the relay would take ~{len(payload) / 1e6 / 0.5 / 60:.0f} "
+        f"minutes anyway (the relay sustains ~0.5 MB/s and is shared by the whole "
+        f"fleet). Have the Mac pull it instead:\n"
+        f"    mac.fetch('<url>', '{src.name}')\n"
+        f"or, for Mac-to-Mac, expose() it on the source and fetch that URL."
+    )
+
+
+def _tar_dir(src: Path, ignore: set, compresslevel: int = 1) -> bytes:
+    """Tar a directory, pruning ignored dirs (so we never walk node_modules).
+
+    Gzipped, because the wire is the bottleneck: pushing through the relay runs
+    at ~0.5 MB/s while gzip level 1 compresses at hundreds of MB/s, so
+    compression is never the limiting step and real payloads shrink ~2x (a
+    measured 1.9x on Chrome.app, 2.8x on Cursor.app). Level 1 rather than 6
+    deliberately — it stays far faster than even a local control plane (~24
+    MB/s), so this can't become the new bottleneck.
+
+    The daemon extracts with ``mode="r:*"``, which sniffs the format, so this is
+    backwards compatible with daemons that predate it.
+
+    Symlinks are preserved: an ``.app`` bundle's framework layout is symlinks
+    (``Versions/Current``), and a copy without them produces a bundle that will
+    not launch.
+    """
     buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w") as tf:
-        for dirpath, dirnames, filenames in os.walk(src):
+    with tarfile.open(fileobj=buf, mode="w:gz", compresslevel=compresslevel) as tf:
+        for dirpath, dirnames, filenames in os.walk(src, followlinks=False):
             dirnames[:] = [d for d in dirnames if d not in ignore]
+            # Directory symlinks show up in dirnames; os.walk won't descend them
+            # with followlinks=False, so add them as links explicitly.
+            for dn in list(dirnames):
+                full = os.path.join(dirpath, dn)
+                if os.path.islink(full):
+                    dirnames.remove(dn)
+                    try:
+                        tf.add(full, arcname=os.path.relpath(full, src), recursive=False)
+                    except OSError:
+                        pass
             for fn in filenames:
                 if fn in ignore:
                     continue
@@ -91,12 +137,16 @@ class Volume:
 
         if src.is_dir():
             ignored = set(_DEFAULT_IGNORE) | set(ignore or [])
+            payload = _tar_dir(src, ignored)
+            _check_size(payload, src)
             body = {"machine_id": mid, "path": remote,
-                    "tar_b64": base64.b64encode(_tar_dir(src, ignored)).decode(), "clean": clean}
+                    "tar_b64": base64.b64encode(payload).decode(), "clean": clean}
         else:
             rel = remote.rstrip("/") + "/" + src.name if remote.endswith("/") else (remote or src.name)
+            payload = src.read_bytes()
+            _check_size(payload, src)
             body = {"machine_id": mid, "path": rel,
-                    "content_b64": base64.b64encode(src.read_bytes()).decode()}
+                    "content_b64": base64.b64encode(payload).decode()}
 
         r = c._http.put(f"/v1/volumes/{self.name}/put", json=body, timeout=300)
         if r.status_code >= 400:
