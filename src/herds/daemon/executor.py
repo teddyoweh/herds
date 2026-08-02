@@ -363,18 +363,48 @@ def _build_env(
     return env
 
 
-def _seatbelt_profile(sandbox: Sandbox, volume_paths: list[Path], network: bool) -> str:
-    """A permissive-read / confined-write Seatbelt profile.
+# Credential stores a sandboxed run has no business reading. Reads stay broadly
+# open because toolchains genuinely live all over the disk — but "isolated" has
+# to mean more than "can't corrupt anything". Without these denies a sandbox can
+# read every key and cookie on the Mac and, since network is on by default, post
+# them anywhere. `inherit_home=True` is the deliberate opt-out.
+_SECRET_SUBPATHS = (
+    ".ssh", ".aws", ".gnupg", ".config/gh", ".config/gcloud", ".kube",
+    ".docker", ".netrc", ".npmrc", ".pypirc", ".git-credentials",
+    "Library/Keychains", "Library/Application Support/com.apple.TCC",
+    "Library/Application Support/Google/Chrome",
+    "Library/Application Support/Firefox",
+    "Library/Messages", "Library/Cookies",
+)
 
-    Reads are open (toolchains live all over the disk); writes are fenced to the
-    sandbox + mounted volumes + the system temp dirs. Network is a toggle.
+
+def _secret_paths() -> list:
+    home = Path.home()
+    return [str(home / p) for p in _SECRET_SUBPATHS]
+
+
+def _seatbelt_profile(sandbox: Sandbox, volume_paths: list[Path], network: bool) -> str:
+    """Confined-write, credential-blind Seatbelt profile.
+
+    Reads stay open (toolchains live all over the disk) *except* for credential
+    stores; writes are fenced to the sandbox + mounted volumes + system temp
+    dirs. Network is a toggle.
     """
     writable = [str(sandbox.root), "/private/tmp", "/private/var/folders"]
     writable += [str(p) for p in volume_paths]
     write_rules = "\n".join(f'  (subpath "{p}")' for p in writable)
+    # A volume explicitly mounted into the sandbox wins — the user asked for it.
+    vols = [str(p) for p in volume_paths]
+    secret_rules = "\n".join(
+        f'  (subpath "{p}")' for p in _secret_paths()
+        if not any(p.startswith(v) for v in vols)
+    )
     net_rule = "(allow network*)" if network else "(deny network*)"
     return f"""(version 1)
 (allow default)
+(deny file-read*
+{secret_rules}
+)
 (deny file-write*)
 (allow file-write*
 {write_rules}

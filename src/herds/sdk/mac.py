@@ -471,25 +471,25 @@ class _UI:
         return r.stdout.strip()
 
     def type(self, text: str) -> None:
-        """Type text into the focused field."""
-        self._osa(f'tell application "System Events" to keystroke {_as(text)}')
+        """Type text into the focused field.
+
+        Posts unicode CGEvents, so it is keyboard-layout independent and works
+        headless. The old System Events ``keystroke`` was an AppleEvent, which
+        hangs on a launchd daemon rather than failing.
+        """
+        if text:
+            self._input("type", text, timeout=max(30, len(text) // 8))
 
     def key(self, name: str) -> None:
         """Press a named key — return, tab, escape, space, up/down/left/right."""
-        code = _KEYCODES.get(name.lower())
-        if code is None:
-            self._osa(f'tell application "System Events" to keystroke {_as(name)}')
-        else:
-            self._osa(f'tell application "System Events" to key code {code}')
+        self._input("press", name)
 
     def hotkey(self, *keys: str) -> None:
         """Press a chord, e.g. ``mac.ui.hotkey("cmd", "s")`` (mods: cmd/option/control/shift)."""
         if not keys:
             return
         *mods, final = keys
-        using = ", ".join(_MODIFIERS[m.lower()] for m in mods)
-        clause = f" using {{{using}}}" if using else ""
-        self._osa(f'tell application "System Events" to keystroke {_as(final)}{clause}')
+        self._input("press", final, *mods)
 
     # -- pointer ------------------------------------------------------------ #
     # System Events can type but cannot move or click a pointer, so these post
@@ -570,14 +570,50 @@ class _UI:
         return [ln.strip() for ln in r.stdout.splitlines() if ln.strip()]
 
     def windows(self, app: str, *, timeout: int = 30) -> list:
-        """Window titles of a single app."""
+        """Windows of a single app as dicts with index, title and geometry."""
         out = self._ax("windows", app, timeout=timeout)
-        names = []
+        wins = []
         for line in out.splitlines():
-            parts = line.split("\t", 1)
-            if len(parts) == 2:
-                names.append(parts[1])
-        return names
+            p = line.split("\t")
+            if len(p) != 6:
+                continue
+            try:
+                wins.append({"index": int(p[0]), "title": p[1], "x": int(p[2]),
+                             "y": int(p[3]), "width": int(p[4]), "height": int(p[5])})
+            except ValueError:
+                continue
+        return wins
+
+    def focus(self, app: str, *, timeout: int = 30) -> None:
+        """Bring an app to the front (and launch it if it isn't running).
+
+        Uses ``open -a``, which is a launch-services call rather than an
+        AppleEvent, so it works headless.
+        """
+        r = self._m.run(["/usr/bin/open", "-a", app], timeout=timeout, inherit_home=True)
+        if not r.ok:
+            from .client import HerdsError
+            raise HerdsError(f"couldn't focus {app!r}: {r.stderr.strip()[:200]}")
+
+    def move_window(self, app: str, x: int, y: int, *, window: int = 1) -> None:
+        """Move a window to absolute screen coordinates."""
+        self._ax("move", app, window, x, y)
+
+    def resize_window(self, app: str, width: int, height: int, *, window: int = 1) -> None:
+        """Resize a window."""
+        self._ax("resize", app, window, width, height)
+
+    def raise_window(self, app: str, *, window: int = 1) -> None:
+        """Raise a window and make its app frontmost."""
+        self._ax("raise", app, window)
+
+    def press_element(self, app: str, name: str, *, window="1", timeout: int = 60) -> None:
+        """Activate a control by its own AXPress action — no pointer involved.
+
+        More reliable than clicking coordinates when the target may be occluded,
+        offscreen, or moving.
+        """
+        self._ax("press_element", app, window, name, timeout=timeout)
 
     def tree(self, app: str, window="1", *, depth: int = 12, limit: int = 4000,
              timeout: int = 60) -> list:
@@ -630,12 +666,9 @@ class _UI:
         """
         if not path:
             raise ValueError("menu() needs at least one item")
-        target = path[-1]
-        for e in self.tree(app, "menubar", timeout=timeout):
-            if e.name == target and e.role in ("AXMenuItem", "AXMenuBarItem"):
-                e.click()
-                return
-        raise LookupError(f"no menu item {target!r} in {app}")
+        # AXPress rather than a click: menu items report a zero/offscreen origin
+        # until their parent menu is open, so their coordinates are meaningless.
+        self.press_element(app, path[-1], window="menubar", timeout=timeout)
 
 
 class Element:

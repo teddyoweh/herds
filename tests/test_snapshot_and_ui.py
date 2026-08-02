@@ -164,3 +164,65 @@ def test_element_click_targets_its_centre():
 
     Element(FakeUI(), "App", "AXButton", "Save", 100, 200, 60, 40).click()
     assert clicks == [(130, 220)]
+
+
+# --- sandbox is credential-blind ------------------------------------------- #
+
+@macos_only
+def test_sandbox_cannot_read_credentials(tmp_path):
+    """A sandbox that can read ~/.ssh and reach the network isn't isolation.
+
+    Reads stay broadly open because toolchains live everywhere, but credential
+    stores are denied — otherwise "sandboxed" only means "can't corrupt".
+    """
+    class S:
+        root = tmp_path
+    prof = ex._seatbelt_profile(S(), [], network=True)
+    home = os.path.expanduser("~")
+
+    def readable(path: str) -> bool:
+        r = subprocess.run(
+            ["sandbox-exec", "-p", prof, "/bin/sh", "-c", f"cat {path} >/dev/null 2>&1"],
+            capture_output=True,
+        )
+        return r.returncode == 0
+
+    assert not readable(f"{home}/.ssh/*"), "sandbox could read SSH private keys"
+    assert not readable(f"{home}/.aws/credentials")
+    assert readable("/usr/bin/git"), "toolchain reads must keep working"
+    assert readable("/etc/hosts")
+
+
+def test_mounted_volume_overrides_a_secret_deny(tmp_path, monkeypatch):
+    """An explicitly mounted volume wins — the user asked for that path."""
+    monkeypatch.setattr(ex.Path, "home", staticmethod(lambda: tmp_path))
+    vol = tmp_path / ".ssh"
+    prof = ex._seatbelt_profile(type("S", (), {"root": tmp_path})(), [vol], network=False)
+    assert f'(subpath "{vol}")' not in prof.split("(deny file-read*")[1].split(")")[0] + ")"
+
+
+def test_inherit_home_skips_the_profile_entirely():
+    """--real is the documented opt-out; it must not be silently fenced."""
+    src = (Path(ex.__file__)).read_text()
+    assert "no Seatbelt write-fence" in src
+
+
+# --- keyboard is CGEvent, not AppleScript ---------------------------------- #
+
+def test_keyboard_ops_exist_in_the_payload():
+    for op in ("type", "press"):
+        assert f'op == "{op}"' in _input.SCRIPT
+    assert "CGEventCreateKeyboardEvent" in _input.SCRIPT
+    assert "CGEventKeyboardSetUnicodeString" in _input.SCRIPT, "typing must be layout-independent"
+
+
+@macos_only
+def test_press_rejects_unknown_key_instead_of_guessing():
+    r = subprocess.run(_input.command("press", "nosuchkey"), capture_output=True, text=True, timeout=30)
+    assert r.returncode != 0
+    assert "unknown key" in r.stderr
+
+
+def test_window_ops_exist():
+    for op in ("move", "resize", "raise", "press_element"):
+        assert f'op == "{op}"' in _input.AX_SCRIPT

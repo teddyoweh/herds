@@ -279,7 +279,9 @@ Mac (a live view, or an external Playwright over CDP), open a
 > **Sandboxed by default — `inherit_home=True` / `--real` to run as *you*.**
 > A plain `mac.run(...)` gets a throwaway `HOME`
 > (`~/.herds/sandboxes/sbx_eph_…/home`) and a Seatbelt profile that rolls writes
-> back, so repeated runs can't corrupt each other. That's the right default for
+> back **and denies reads of credential stores** — `~/.ssh`, `~/.aws`,
+> `~/.config/gh`, Keychains, browser cookies — so a sandboxed run can't read your
+> keys and post them somewhere. That's the right default for
 > CI and untrusted code — but it means installing apps, writing outside the
 > sandbox, or using your keychain/logins **silently won't stick** (you'll see
 > "directories are not writable" or a read-only filesystem). Opt out when you
@@ -442,13 +444,24 @@ localhost.)
 ### Driving the GUI — semantic, not pixels
 
 ```python
-mac.ui.click(400, 300)                  # real HID-level events, not keystroke fakes
+# pointer + keyboard, all real HID-level CGEvents
+mac.ui.click(400, 300);  mac.ui.right_click(400, 300)
 mac.ui.drag(100, 100, 400, 300)         # interpolated, so drop targets accept it
 mac.ui.scroll(-250)
+mac.ui.type("hello ünicode 🎉")          # layout-independent
+mac.ui.hotkey("cmd", "s")
 
-# Better: target the accessibility tree — survives windows moving.
+# windows: enumerate, move, resize, raise, focus/launch
+mac.ui.focus("Preview")
+for w in mac.ui.windows("Preview"):
+    print(w["index"], w["title"], w["x"], w["y"], w["width"], w["height"])
+mac.ui.move_window("Preview", 0, 0); mac.ui.resize_window("Preview", 1200, 800)
+
+# Best: target the accessibility tree — survives windows moving.
 save = mac.ui.find("Preview", role="AXButton", name="Save")
 save.click()                            # clicks its centre
+mac.ui.press_element("Preview", "Save") # or AXPress it — works even if occluded
+mac.ui.menu("Finder", "New Window")
 
 for el in mac.ui.tree("Finder", "menubar", depth=3):
     print(el.role, el.name, el.center)

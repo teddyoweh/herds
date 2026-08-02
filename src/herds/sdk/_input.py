@@ -90,6 +90,66 @@ def drag(x1, y1, x2, y2, button="left", steps=24):
 def scroll(dy, dx=0):
     _post(CG.CGEventCreateScrollWheelEvent(None, UNIT_PIXEL, 2, int(dy), int(dx)))
 
+# -- keyboard --------------------------------------------------------------- #
+# Same reasoning as the mouse: System Events `keystroke` is an AppleEvent and
+# hangs on a daemon. CGEvent works with only Accessibility.
+
+CG.CGEventCreateKeyboardEvent.restype = ctypes.c_void_p
+CG.CGEventCreateKeyboardEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint16, ctypes.c_bool]
+CG.CGEventKeyboardSetUnicodeString.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_void_p]
+CG.CGEventSetFlags.argtypes = [ctypes.c_void_p, ctypes.c_uint64]
+
+FLAGS = {"cmd": 1 << 20, "command": 1 << 20, "shift": 1 << 17,
+         "option": 1 << 19, "alt": 1 << 19, "control": 1 << 18, "ctrl": 1 << 18,
+         "fn": 1 << 23}
+
+# ANSI virtual keycodes. Only needed for non-character keys and for chords —
+# plain text goes through the unicode path below and is layout-independent.
+KEYS = {
+    "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9,
+    "b": 11, "q": 12, "w": 13, "e": 14, "r": 15, "y": 16, "t": 17,
+    "1": 18, "2": 19, "3": 20, "4": 21, "6": 22, "5": 23, "9": 25, "7": 26,
+    "8": 28, "0": 29, "o": 31, "u": 32, "i": 34, "p": 35, "l": 37, "j": 38,
+    "k": 40, "n": 45, "m": 46,
+    "return": 36, "enter": 36, "tab": 48, "space": 49, "delete": 51,
+    "backspace": 51, "escape": 53, "esc": 53,
+    "left": 123, "right": 124, "down": 125, "up": 126,
+    "home": 115, "end": 119, "pageup": 116, "pagedown": 121,
+    "f1": 122, "f2": 120, "f3": 99, "f4": 118, "f5": 96, "f6": 97,
+}
+
+def type_text(text):
+    """Type arbitrary text, independent of keyboard layout."""
+    for ch in text:
+        buf = ctypes.create_unicode_buffer(ch)
+        # UTF-16 code units; ctypes' wchar_t is UTF-32 on macOS, so re-encode.
+        u16 = ch.encode("utf-16-le")
+        n = len(u16) // 2
+        arr = (ctypes.c_uint16 * n).from_buffer_copy(u16)
+        for down in (True, False):
+            ev = CG.CGEventCreateKeyboardEvent(None, 0, down)
+            CG.CGEventKeyboardSetUnicodeString(ev, n, arr)
+            _post(ev)
+        time.sleep(0.004)
+
+def press(name, mods=()):
+    """Press a named key, optionally with modifiers (a chord)."""
+    code = KEYS.get(name.lower())
+    if code is None:
+        if len(name) == 1 and not mods:
+            type_text(name)
+            return
+        raise SystemExit("unknown key %r" % name)
+    flags = 0
+    for m in mods:
+        flags |= FLAGS.get(m.lower(), 0)
+    for down in (True, False):
+        ev = CG.CGEventCreateKeyboardEvent(None, code, down)
+        if flags:
+            CG.CGEventSetFlags(ev, flags)
+        _post(ev)
+        time.sleep(0.008)
+
 def screen():
     d = CG.CGMainDisplayID()
     return CG.CGDisplayPixelsWide(d), CG.CGDisplayPixelsHigh(d)
@@ -110,6 +170,10 @@ elif op == "drag":
          a[5] if len(a) > 5 else "left")
 elif op == "scroll":
     scroll(float(a[1]), float(a[2]) if len(a) > 2 else 0)
+elif op == "type":
+    type_text(a[1])
+elif op == "press":
+    press(a[1], a[2:])
 else:
     sys.stderr.write("unknown op %s\n" % op)
     sys.exit(2)
@@ -226,6 +290,17 @@ def walk(el, depth, max_depth, rows, limit):
         for i in range(min(CF.CFArrayGetCount(kids), limit)):
             walk(CF.CFArrayGetValueAtIndex(kids, i), depth + 1, max_depth, rows, limit)
 
+AX.AXUIElementSetAttributeValue.restype = ctypes.c_int
+AX.AXUIElementSetAttributeValue.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+AX.AXValueCreate.restype = ctypes.c_void_p
+AX.AXValueCreate.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
+
+def window(app, idx):
+    wins = attr(app, "AXWindows")
+    if not wins or CF.CFArrayGetCount(wins) <= idx:
+        raise SystemExit("no window %d" % (idx + 1))
+    return CF.CFArrayGetValueAtIndex(wins, idx)
+
 a = sys.argv[1:]
 op = a[0]
 if op == "trusted":
@@ -237,7 +312,47 @@ if op == "windows":
     wins = attr(app, "AXWindows")
     n = CF.CFArrayGetCount(wins) if wins else 0
     for i in range(n):
-        print("%d\t%s" % (i + 1, label(CF.CFArrayGetValueAtIndex(wins, i))))
+        w = CF.CFArrayGetValueAtIndex(wins, i)
+        pos = as_point(attr(w, "AXPosition")) or (0, 0)
+        size = as_size(attr(w, "AXSize")) or (0, 0)
+        print("%d\t%s\t%d\t%d\t%d\t%d" % (
+            i + 1, label(w), pos[0], pos[1], size[0], size[1]))
+elif op == "move":
+    p = CGPoint(float(a[3]), float(a[4]))
+    AX.AXUIElementSetAttributeValue(window(app, int(a[2]) - 1), cfstr("AXPosition"),
+                                    AX.AXValueCreate(1, ctypes.byref(p)))
+elif op == "resize":
+    s = CGSize(float(a[3]), float(a[4]))
+    AX.AXUIElementSetAttributeValue(window(app, int(a[2]) - 1), cfstr("AXSize"),
+                                    AX.AXValueCreate(2, ctypes.byref(s)))
+elif op == "raise":
+    w = window(app, int(a[2]) - 1)
+    AX.AXUIElementPerformAction(w, cfstr("AXRaise"))
+    AX.AXUIElementSetAttributeValue(app, cfstr("AXFrontmost"), ctypes.c_void_p(1))
+elif op == "press_element":
+    # Activate via the element's own AXPress action — no pointer involved, so it
+    # works even when the target is behind another window.
+    which = a[2]
+    root = attr(app, "AXMenuBar") if which == "menubar" else window(app, int(which) - 1)
+    rows = []
+    walk(root, 0, 12, rows, 4000)
+    target = a[3]
+    found = [None]
+    def hunt(el, depth):
+        if found[0] is not None or depth > 12:
+            return
+        if label(el) == target:
+            found[0] = el
+            return
+        kids = attr(el, "AXChildren")
+        if kids and CF.CFGetTypeID(kids) == CF.CFArrayGetTypeID():
+            for i in range(CF.CFArrayGetCount(kids)):
+                hunt(CF.CFArrayGetValueAtIndex(kids, i), depth + 1)
+    hunt(root, 0)
+    if found[0] is None:
+        raise SystemExit("no element %r" % target)
+    if AX.AXUIElementPerformAction(found[0], cfstr("AXPress")) != 0:
+        raise SystemExit("AXPress failed on %r" % target)
 elif op == "tree":
     which = a[2] if len(a) > 2 else "window"
     max_depth = int(a[3]) if len(a) > 3 else 12
