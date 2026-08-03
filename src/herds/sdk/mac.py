@@ -8,6 +8,9 @@
 
 from __future__ import annotations
 
+import contextlib
+import os
+import sys
 import time
 from typing import Iterator, Optional, Union
 
@@ -212,6 +215,61 @@ class Mac:
 
         sbx = Sandbox.create(image=image, volumes=volumes, inherit_home=inherit_home, mac=self)
         return sbx.session(command, workdir=workdir, env=env, network=network)
+
+    def shell(
+        self,
+        command: str = "",
+        *,
+        real: bool = True,
+        workdir: Optional[str] = None,
+        env: Optional[dict[str, str]] = None,
+        attach: Optional[bool] = None,
+    ):
+        """Open an interactive terminal on this Mac — ssh, without the ssh::
+
+            herds.mac().shell()                 # a real login shell
+            herds.mac().shell("vim notes.md")   # straight into a program
+
+        The Mac runs it under a **pty** (via ``script``), so you get your prompt,
+        colour, and full-screen programs like ``vim``/``top``. Your local
+        terminal goes raw, so keystrokes and Ctrl-C reach the Mac instead of
+        being line-buffered or killing the client. Ctrl-] detaches and leaves the
+        remote process running.
+
+        ``real=True`` (the default) runs as *you*, with your real HOME and
+        logins — a sandboxed shell with none of your tools isn't a shell you'd
+        use. Returns the :class:`Session` when there's no terminal to attach to
+        (a script, a notebook), so it stays programmable.
+        """
+        from . import _shell
+
+        rows, cols = _shell.terminal_size()
+        base_env = {"TERM": os.environ.get("TERM", "xterm-256color"),
+                    "LINES": str(rows), "COLUMNS": str(cols)}
+        base_env.update(env or {})
+
+        session = self.session(
+            _shell.pty_command(command, home=real and workdir is None),
+            workdir=workdir, env=base_env, inherit_home=real,
+        )
+
+        if attach is None:
+            attach = sys.stdin.isatty() and sys.stdout.isatty()
+        if not attach:
+            return session
+
+        # Size the remote pty to this terminal, and keep it in step.
+        def _resize(r, c):
+            with contextlib.suppress(Exception):
+                session.send(f"\x1b[8;{r};{c}t")
+                session.send(f" stty rows {r} cols {c} 2>/dev/null\n")
+
+        _resize(rows, cols)
+        try:
+            _shell.interact(session, on_resize=_resize)
+        finally:
+            session.close()
+        return None
 
     def push(self, local: str, volume: str, remote: str = "", *, clean: bool = False,
              ignore=None, direct: bool = True, timeout: int = 900) -> dict:

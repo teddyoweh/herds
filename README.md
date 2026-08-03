@@ -353,6 +353,28 @@ img = herds.Image.macos().run_commands(
 mac.run("python scrape.py", image=img)   # installs once; cached thereafter
 ```
 
+### An interactive shell — ssh, without the ssh
+
+```python
+herds.mac().shell()                  # a real login shell on the Mac
+herds.mac().shell("vim notes.md")    # straight into a program
+```
+```bash
+herds ssh                 # same thing from the CLI
+herds ssh mac-mini -c htop
+```
+
+The Mac runs it under a **pty**, so you get your prompt, colours, and
+full-screen programs (`vim`, `top`, `less`). Your local terminal goes raw, so
+keystrokes and Ctrl-C reach the Mac instead of being line-buffered or killing the
+client. **Ctrl-]** detaches and leaves the remote process running. It runs as
+*you* — real `$HOME`, real logins — and starts in your home directory, because a
+sandboxed shell with none of your tools isn't a shell you'd use (`--sandboxed`
+if you want one anyway).
+
+Called without a terminal — a script, a notebook — it returns the `Session`
+instead of taking over, so it stays programmable.
+
 ### Moving big files — pull, don't push
 
 ```python
@@ -607,7 +629,8 @@ herds serve              run a bare control plane locally
 herds machines           list your connected Macs
 herds tag <id> <tags…>   label a Mac for routing  ·  herds tags  ·  herds untag <id> <tag>
 herds run -- <cmd>       run a command on a Mac (streams output)
-herds shell -c <cmd>     one-off command (SSH-equivalent)
+herds ssh [machine]      interactive terminal (real pty · Ctrl-] detaches)
+herds shell -c <cmd>     one-off command
   └ add --real to either  run as YOU on the real Mac (real $HOME, disk, logins)
                           — without it, writes land in a throwaway sandbox
 herds logs               recent jobs

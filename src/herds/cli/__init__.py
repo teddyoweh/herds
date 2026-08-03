@@ -830,6 +830,30 @@ def skill(
     ))
 
 
+@app.command("ssh")
+def ssh_cmd(
+    machine: str = typer.Argument("default", help="Which Mac (id, name, or 'default')."),
+    command: Optional[str] = typer.Option(None, "--cmd", "-c", help="Run this instead of a login shell."),
+    sandboxed: bool = typer.Option(False, "--sandboxed", help="Isolated workspace instead of your real HOME."),
+):
+    """Open an interactive terminal on a Mac — ssh, without the ssh.
+
+    Real pty, so your prompt, colours and full-screen programs (vim, top) work.
+    Ctrl-] detaches and leaves the remote process running.
+    """
+    from ..sdk.mac import Mac
+
+    m = Mac(machine, client=_client())
+    console.print(f"[dim]connecting to [bold]{m.name}[/bold] — Ctrl-] to detach[/dim]")
+    try:
+        m.shell(command or "", real=not sandboxed)
+    except KeyboardInterrupt:
+        pass
+    except Exception as exc:  # noqa: BLE001
+        err.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+
+
 @app.command()
 def disconnect(
     machine: Optional[str] = typer.Argument(
