@@ -61,6 +61,8 @@ function MachineDetailInner() {
         <Spec label="macOS" value={mac?.info?.macos_version ?? "—"} />
       </div>
 
+      <Drive id={id} name={mac?.name} online={online} />
+
       <div className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <GaugeNeedle value={ts?.live_cpu ?? 0} sub="live" />
         <LiquidFill value={ts?.live_mem ?? 0} label={(ts?.live_mem ?? 0) < 50 ? "Comfortable" : (ts?.live_mem ?? 0) < 80 ? "Moderate" : "High"} />
@@ -107,6 +109,39 @@ function Back() {
     <Link href="/machines" className="mb-6 inline-block text-[12px] text-zinc-600 transition-colors hover:text-zinc-300">
       ← Machines
     </Link>
+  );
+}
+
+
+/* How to actually drive this Mac. The id always works; the name is nicer to
+   type and resolves the same way (id, name, prefix, substring, or tag). */
+function Drive({ id, name, online }: { id: string; name?: string; online: boolean }) {
+  const sel = name && !name.includes(" ") ? name : id;
+  const rows: [string, string][] = [
+    ["terminal", `herds ssh ${sel}`],
+    ["one command", `herds run -m ${sel} -- uname -a`],
+    ["python", `herds.mac("${sel}").shell()`],
+  ];
+  return (
+    <div className="surface mb-6 px-5 py-4">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-[11px] uppercase tracking-wider text-zinc-600">Drive this Mac</span>
+        {!online && <span className="text-[11px] text-zinc-600">offline — commands will queue or fail</span>}
+      </div>
+      <div className="space-y-1.5">
+        {rows.map(([label, cmd]) => (
+          <div key={label} className="flex items-center gap-3">
+            <span className="w-20 shrink-0 text-[11px] text-zinc-600">{label}</span>
+            <code className="min-w-0 flex-1 truncate font-mono text-[12px] text-zinc-300">{cmd}</code>
+            <Copy text={cmd} />
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-[11px] leading-relaxed text-zinc-600">
+        Sandboxed by default — add <code className="font-mono text-zinc-500">--real</code> to run against the real machine.
+        <code className="font-mono text-zinc-500"> herds ssh</code> is already real, and Ctrl-] detaches.
+      </p>
+    </div>
   );
 }
 

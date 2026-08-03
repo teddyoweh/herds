@@ -306,3 +306,47 @@ export async function deleteSecret(name: string) {
   if (!res.ok) throw new Error("failed to delete");
   return res.json();
 }
+
+/* Apps. The /app and /apps pages have always imported these; they were never
+   written, so `next build` failed on a missing export and the whole site —
+   dashboard and docs — couldn't ship. Shapes follow the control plane:
+   GET /v1/apps -> {apps}, GET /v1/apps/{name} -> {app, functions, jobs, sandboxes}. */
+
+export type App = {
+  name: string;
+  owner?: string;
+  description?: string | null;
+  job_count: number;
+  function_count: number;
+  sandbox_count: number;
+  deployed_ms?: number | null;
+  last_active_ms?: number | null;
+};
+
+export type AppFunction = {
+  app: string;
+  owner?: string;
+  name: string;
+  image?: string | null;
+  schedule?: string | null;
+  kind: string;            // 'function' | 'web' | …
+  port?: number | null;
+  url?: string | null;
+  sandbox_id?: string | null;
+  created_ms?: number | null;
+};
+
+export const useApps = () => useSWR<{ apps: App[] }>("/v1/apps", fetcher, live);
+
+export const useApp = (name: string) =>
+  useSWR<{ app: App; functions: AppFunction[]; jobs: Job[]; sandboxes: Sandbox[] }>(
+    name ? `/v1/apps/${encodeURIComponent(name)}` : null,
+    fetcher,
+    live,
+  );
+
+export async function deleteApp(name: string) {
+  const res = await fetch(`${API}/v1/apps/${encodeURIComponent(name)}`, authInit({ method: "DELETE" }));
+  if (!res.ok) throw new Error("failed to delete app");
+  return res.json();
+}

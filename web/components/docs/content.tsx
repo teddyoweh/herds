@@ -752,11 +752,37 @@ herds disconnect [id]                              # remove a Mac from the fleet
 herds open                                          # open the dashboard in a browser`}</Code>
 
     <H2>Running commands</H2>
-    <Code lang="bash">{`herds run -- <cmd>          # run a command on a Mac (streams output)
+    <Code lang="bash">{`herds ssh [machine]         # interactive terminal (real pty · Ctrl-] detaches)
+herds ssh mini -c htop      # run one program interactively
+herds run -- <cmd>          # run a command on a Mac (streams output)
 herds shell -c "<cmd>"      # one-off command
 herds machines              # list connected Macs
 herds logs [-m <id>]        # recent jobs
 herds status                # local config`}</Code>
+    <P>
+      Every command that takes a machine accepts an id, a name, an id prefix, part of a name, or a tag —{" "}
+      <Co>-m mini</Co>, <Co>-m ci</Co>, <Co>-m mac_ed74</Co>. Ambiguous references are listed, never guessed.
+    </P>
+
+    <Callout type="warn" title="Sandboxed by default">
+      <Co>run</Co> and <Co>shell</Co> execute in a throwaway sandbox: <Co>$HOME</Co> points at{" "}
+      <Co>~/.herds/sandboxes/sbx_eph_…/home</Co> and writes are rolled back. That&rsquo;s right for CI and untrusted code, but it means
+      installing apps or using your keychain <em>silently won&rsquo;t stick</em>. Add <Co>--real</Co> to run as you against the real
+      machine:
+      <Code lang="bash">{`herds run --real -- brew install --cask cursor
+herds shell --real -c 'ls ~/Library'`}</Code>
+      In the SDK that&rsquo;s <Co>mac.run(cmd, inherit_home=True)</Co>. <Co>herds ssh</Co> is already real by default.
+    </Callout>
+
+    <H2>Hosting &amp; permissions</H2>
+    <Code lang="bash">{`herds host                  # go live — runs in the BACKGROUND, returns your prompt
+herds host status           # is this Mac hosting, and on which link
+herds host stop             # stop the background host
+herds host logs [-F]        # tail it
+herds host --foreground     # stay attached (what the LaunchAgent uses)
+
+herds doctor                # audit GUI/TCC permissions ON THE MAC
+herds doctor --local        # audit this process instead`}</Code>
 
     <H2>Volumes &amp; images</H2>
     <Code lang="bash">{`herds volume ls
@@ -942,6 +968,121 @@ python my_agent.py     # the SDK is now pointed at that Mac`}</Code>
 
 /* ============================ registry ================================== */
 
+
+/* ============================ Terminal & GUI ============================== */
+
+const Terminal = ({ go }: { go: Go }) => (
+  <>
+    <Lead>
+      An interactive terminal on a Mac, and real keyboard/mouse control of its GUI — no ssh, no VNC, no inbound ports.
+    </Lead>
+
+    <H2>A shell</H2>
+    <Code lang="python">{`herds.mac().shell()                  # a real login shell
+herds.mac().shell("vim notes.md")    # straight into a program`}</Code>
+    <Code lang="bash">{`herds ssh                  # one Mac online? it just connects
+herds ssh mini             # or name the one you want
+herds ssh mini -c htop`}</Code>
+    <P>
+      The Mac runs it under a <strong className="font-semibold text-stone-800">pty</strong>, so you get your prompt, colours, and
+      full-screen programs like <Co>vim</Co> and <Co>top</Co>. Your local terminal goes raw, so keystrokes and Ctrl-C reach the Mac
+      instead of being line-buffered or killing the client. <Co>Ctrl-]</Co> detaches and leaves the remote process running.
+    </P>
+    <Callout type="tip" title="It always tells you which Mac">
+      <Co>herds.mac()</Co> resolves to the <em>idlest</em> Mac — right for fanning work out, wrong for a terminal. A shell pins its
+      target first and prints it, and <Co>herds ssh</Co> with several Macs online lists them and stops rather than guessing.
+    </Callout>
+    <P>
+      It runs as <em>you</em> — real <Co>$HOME</Co>, real logins — and opens in your home directory. Pass <Co>--sandboxed</Co> (CLI) or{" "}
+      <Co>real=False</Co> (SDK) for an isolated workspace instead. With no terminal attached (a script, a notebook) it returns the{" "}
+      <A href="#" onClick={(e) => { e.preventDefault(); go("sessions"); }}>Session</A> instead of taking over.
+    </P>
+
+    <H2>Picking a Mac</H2>
+    <P>Any command that takes a machine accepts whatever you&rsquo;d naturally type — id, name, id prefix, part of the name, or a tag:</P>
+    <Code lang="bash">{`herds ssh mac_ed74b9b0        # exact id
+herds ssh "Teddys Mac mini"   # name (case-insensitive)
+herds ssh mini                # part of the name
+herds ssh ci                  # a tag:  herds tag mac_ed74b9b0 ci
+herds run -m mini -- uname -a`}</Code>
+    <P>If a reference matches more than one Mac, herds lists the candidates and stops instead of guessing.</P>
+
+    <H2>Driving the GUI</H2>
+    <Code lang="python">{`mac.ui.click(400, 300);  mac.ui.right_click(400, 300)
+mac.ui.drag(100, 100, 400, 300)      # interpolated, so drop targets accept it
+mac.ui.scroll(-250)
+mac.ui.type("hello unicode")          # layout-independent
+mac.ui.hotkey("cmd", "s")
+
+mac.ui.focus("Preview")               # launches or fronts the app
+mac.ui.move_window("Preview", 0, 0)
+mac.ui.resize_window("Preview", 1200, 800)`}</Code>
+
+    <H3>Target elements, not pixels</H3>
+    <Code lang="python">{`save = mac.ui.find("Preview", role="AXButton", name="Save")
+save.click()                              # clicks its centre
+mac.ui.press_element("Preview", "Save")   # or AXPress it — works if occluded
+mac.ui.menu("Finder", "New Window")
+
+for el in mac.ui.tree("Finder", "menubar", depth=3):
+    print(el.role, el.name, el.center)`}</Code>
+    <P>
+      Coordinates break the moment a window moves; accessibility elements don&rsquo;t. Built on CGEvent and the AX C API rather than
+      AppleScript — AppleScript needs an <strong className="font-semibold text-stone-800">Automation</strong> grant whose prompt can
+      only be shown to a foreground app, so from a launchd daemon those calls hang until timeout instead of failing.
+    </P>
+
+    <Callout type="warn" title="Check permissions on the Mac, not on your laptop">
+      TCC grants are per-process. If <strong className="font-semibold text-stone-800">Accessibility</strong> isn&rsquo;t granted to the
+      daemon, macOS <em>silently drops</em> synthetic events — <Co>mac.ui.click()</Co> returns success and nothing moves.
+      <Code lang="bash">{`herds doctor          # audits the daemon on the Mac
+herds doctor --local  # audit this process instead`}</Code>
+      It names the exact binary to grant. After granting: <Co>herds host stop &amp;&amp; herds host</Co>.
+    </Callout>
+  </>
+);
+
+/* ============================ Moving files ================================ */
+
+const Transfers = () => (
+  <>
+    <Lead>Getting bytes onto a Mac quickly — and why the obvious way is the slow way.</Lead>
+
+    <H2>The shape of the problem</H2>
+    <P>The relay is a control channel, not a pipe. Measured on a real fleet:</P>
+    <Code lang="text">{`control plane on the same machine   ~24 MB/s     572MB in ~24s
+through the relay                    0.2-0.8 MB/s 572MB in 13-41 min`}</Code>
+    <P>
+      Parallel uploads only bought 1.4x, so it&rsquo;s throughput-limited end to end — chunking can&rsquo;t fix it. Worse, a large push
+      saturates the relay for every other machine in the fleet while it runs.
+    </P>
+
+    <H2>Let the Mac pull</H2>
+    <Code lang="python">{`mac.fetch("https://example.com/App.dmg", "App.dmg")
+mac.fetch(url, "model.safetensors", volume="weights",
+          headers={"Authorization": "Bearer …"})`}</Code>
+    <P>
+      The Mac downloads over its own connection and the relay carries only the command. Mac-to-Mac is the same trick:{" "}
+      <Co>expose()</Co> the file on one and <Co>fetch()</Co> that URL from the other.
+    </P>
+
+    <H2>push goes direct too</H2>
+    <Code lang="python">{`mac.push("./Big.app", "apps")                 # direct if reachable, relay if not
+mac.push("./Big.app", "apps", direct=False)   # force the relay`}</Code>
+    <P>
+      By default the payload is served from your machine and the Mac pulls it over the LAN or your tailnet — measured{" "}
+      <strong className="font-semibold text-stone-800">11x</strong> on the same payload. Tailscale addresses are tried first, so it
+      works across networks and through client-isolated Wi-Fi. If nothing is reachable it falls back to the relay silently.
+    </P>
+    <Callout type="tip" title="App bundles">
+      Archives are gzipped (~1.9x on Chrome.app, ~2.8x on Cursor.app) and <strong className="font-semibold text-stone-800">keep
+      symlinks</strong> — a <Co>.app</Co>&rsquo;s frameworks are <Co>Versions/Current</Co> links, and a copy without them will not
+      launch. The relay path caps at 512 MB and tells you before the upload, not after.
+    </Callout>
+  </>
+);
+
+
 export const PAGES: DocPage[] = [
   { id: "introduction", group: "Getting started", title: "Introduction", description: "What Herds is, and the mental model.", Body: Introduction },
   { id: "quickstart", group: "Getting started", title: "Quickstart", description: "From install to your first command.", Body: Quickstart },
@@ -959,6 +1100,9 @@ export const PAGES: DocPage[] = [
   { id: "secrets", group: "Python SDK", title: "Secrets", description: "Injected environment bundles.", Body: Secrets },
   { id: "functions", group: "Python SDK", title: "Remote functions", description: "Run a Python function on the Mac.", Body: Functions },
   { id: "results", group: "Python SDK", title: "Results & errors", description: "Result objects and exceptions.", Body: Results },
+
+  { id: "terminal", group: "Python SDK", title: "Terminal & GUI", description: "Interactive shell, and keyboard/mouse control.", Body: Terminal },
+  { id: "transfers", group: "Python SDK", title: "Moving files", description: "fetch, direct push, and why the relay is slow.", Body: Transfers },
 
   { id: "cli", group: "Command line", title: "CLI reference", description: "Every herds subcommand.", Body: CLI },
 
