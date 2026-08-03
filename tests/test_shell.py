@@ -98,49 +98,48 @@ def test_raw_terminal_restores_settings_on_exception(monkeypatch):
         os.close(master)
 
 
-def test_shell_returns_the_session_when_not_attached(monkeypatch):
-    """Programmatic use (scripts, notebooks) must stay possible."""
+def _fake_mac(monkeypatch, capture: dict):
+    """A Mac whose identity is already resolved, so no network is touched.
+
+    shell() reads .name first (that's what pins the target), so the fake must
+    provide it — patching only __init__ leaves the property reaching for a client.
+    """
     from herds.sdk.mac import Mac
 
-    made = {}
-
     class FakeSession:
-        pass
+        def send(self, d):
+            capture.setdefault("sent", []).append(d)
 
-    def fake_session(self, command, **kw):
-        made["command"] = command
-        made["kwargs"] = kw
-        return FakeSession()
+        def close(self):
+            capture["closed"] = True
 
-    monkeypatch.setattr(Mac, "__init__", lambda self, *a, **k: None)
-    monkeypatch.setattr(Mac, "session", fake_session)
+    monkeypatch.setattr(Mac, "__init__",
+                        lambda self, *a, **k: setattr(self, "machine_id", "mac_test"))
+    monkeypatch.setattr(Mac, "name", property(lambda self: "TheMac"))
+    monkeypatch.setattr(Mac, "session", lambda self, c, **kw: (
+        capture.update({"command": c, "kwargs": kw}) or FakeSession()))
+    return Mac()
 
-    out = Mac().shell(attach=False)
-    assert isinstance(out, FakeSession)
-    assert "script -q /dev/null" in made["command"]
-    assert made["kwargs"]["inherit_home"] is True, "a shell without your tools is useless"
+
+def test_shell_returns_the_session_when_not_attached(monkeypatch):
+    """Programmatic use (scripts, notebooks) must stay possible."""
+    cap = {}
+    out = _fake_mac(monkeypatch, cap).shell(attach=False)
+    assert out is not None
+    assert "script -q /dev/null" in cap["command"]
+    assert cap["kwargs"]["inherit_home"] is True, "a shell without your tools is useless"
 
 
 def test_shell_can_be_sandboxed_explicitly(monkeypatch):
-    from herds.sdk.mac import Mac
-
-    seen = {}
-    monkeypatch.setattr(Mac, "__init__", lambda self, *a, **k: None)
-    monkeypatch.setattr(Mac, "session",
-                        lambda self, c, **kw: seen.update(kw) or object())
-    Mac().shell(attach=False, real=False)
-    assert seen["inherit_home"] is False
+    cap = {}
+    _fake_mac(monkeypatch, cap).shell(attach=False, real=False)
+    assert cap["kwargs"]["inherit_home"] is False
 
 
 def test_shell_sets_term_and_size_env(monkeypatch):
-    from herds.sdk.mac import Mac
-
-    seen = {}
-    monkeypatch.setattr(Mac, "__init__", lambda self, *a, **k: None)
-    monkeypatch.setattr(Mac, "session",
-                        lambda self, c, **kw: seen.update(kw) or object())
-    Mac().shell(attach=False)
-    env = seen["env"]
+    cap = {}
+    _fake_mac(monkeypatch, cap).shell(attach=False)
+    env = cap["kwargs"]["env"]
     assert "TERM" in env and env["LINES"].isdigit() and env["COLUMNS"].isdigit()
 
 
@@ -163,3 +162,84 @@ def test_detach_key_is_documented():
     assert "Ctrl-]" in inspect.getdoc(Mac.shell)
     # keyword-only, so the default lives in __kwdefaults__
     assert _shell.interact.__kwdefaults__["escape"] == "\x1d"  # Ctrl-]
+
+
+# --- which machine? --------------------------------------------------------- #
+#
+# `herds.mac()` resolves to the *idlest* online Mac. That's the right default for
+# fanning work out with run()/map(), and the wrong one for a terminal: two
+# invocations could land on two different machines with nothing on screen saying
+# which. A shell must always target a named machine.
+
+class _FakeClient:
+    def __init__(self, machines):
+        self._m = machines
+
+    def list_machines(self):
+        return self._m
+
+
+def _mac(mid, name, status="online", chip="Apple M4"):
+    return {"machine_id": mid, "name": name, "status": status, "info": {"chip": chip}}
+
+
+def test_single_online_mac_needs_no_guess():
+    from herds.cli import _pick_machine_for_shell
+
+    c = _FakeClient([_mac("mac_only", "Studio"), _mac("mac_off", "Old", "offline")])
+    assert _pick_machine_for_shell(c) == "mac_only"
+
+
+def test_several_online_macs_refuses_to_pick(capsys):
+    """Silently landing on a load-balanced Mac is how you rm -rf the wrong one."""
+    import typer
+
+    from herds.cli import _pick_machine_for_shell
+
+    c = _FakeClient([_mac("mac_a", "MacBook"), _mac("mac_b", "Mini")])
+    with pytest.raises(typer.Exit) as e:
+        _pick_machine_for_shell(c)
+    assert e.value.exit_code == 2
+    out = capsys.readouterr()
+    combined = out.out + out.err
+    assert "more than one Mac" in combined
+    assert "mac_a" in combined and "mac_b" in combined, "must list the candidates"
+
+
+def test_no_online_mac_says_what_to_do(capsys):
+    import typer
+
+    from herds.cli import _pick_machine_for_shell
+
+    with pytest.raises(typer.Exit) as e:
+        _pick_machine_for_shell(_FakeClient([_mac("m", "X", "offline")]))
+    assert e.value.exit_code == 1
+    combined = "".join(capsys.readouterr())
+    assert "herds host" in combined or "herds connect" in combined
+
+
+def test_offline_macs_are_never_candidates():
+    from herds.cli import _pick_machine_for_shell
+
+    c = _FakeClient([_mac("on", "Up"), _mac("off1", "D1", "offline"),
+                     _mac("off2", "D2", "offline")])
+    assert _pick_machine_for_shell(c) == "on"
+
+
+def test_attached_shell_announces_which_mac(monkeypatch, capsys):
+    """The fix for 'which machine am I on?': say so before the first keystroke."""
+    from herds.sdk import _shell
+    from herds.sdk.mac import Mac
+
+    cap = {}
+    m = _fake_mac(monkeypatch, cap)
+    monkeypatch.setattr(_shell, "interact", lambda s, **k: 0)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+
+    m.shell()
+    out = capsys.readouterr().out
+    assert "TheMac" in out and "mac_test" in out, "must name the machine and its id"
+    assert "Ctrl-]" in out
+    assert "detached" in out, "must say when it lets go"
+    assert cap.get("closed") is True

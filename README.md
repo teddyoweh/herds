@@ -375,6 +375,16 @@ if you want one anyway).
 Called without a terminal — a script, a notebook — it returns the `Session`
 instead of taking over, so it stays programmable.
 
+**It always tells you which Mac.** `herds.mac()` resolves to the *idlest* Mac,
+which is right for fanning work out with `run()`/`map()` and wrong for a
+terminal — two invocations could land on two different machines. So a shell
+pins its target first and prints it, and `herds ssh` with several Macs online
+lists them and stops rather than guessing:
+
+```
+─ herds · Teddys Mac mini (mac_ed74b9b0) · Ctrl-] to detach ─
+```
+
 ### Moving big files — pull, don't push
 
 ```python

@@ -843,8 +843,11 @@ def ssh_cmd(
     """
     from ..sdk.mac import Mac
 
-    m = Mac(machine, client=_client())
-    console.print(f"[dim]connecting to [bold]{m.name}[/bold] — Ctrl-] to detach[/dim]")
+    client = _client()
+    if machine in ("default", "mac", "_"):
+        machine = _pick_machine_for_shell(client)
+
+    m = Mac(machine, client=client)
     try:
         m.shell(command or "", real=not sandboxed)
     except KeyboardInterrupt:
@@ -852,6 +855,35 @@ def ssh_cmd(
     except Exception as exc:  # noqa: BLE001
         err.print(f"[red]{exc}[/red]")
         raise typer.Exit(1)
+
+
+def _pick_machine_for_shell(client) -> str:
+    """Resolve which Mac to open a terminal on — never by guessing.
+
+    `herds.mac()` picks the *idlest* Mac, which is the right default for fanning
+    work out and the wrong one for a shell: two runs could land on two different
+    machines and you'd have no idea which one you were typing into. With exactly
+    one Mac online there's nothing to guess; with several, say so and stop.
+    """
+    online = [m for m in client.list_machines() if m.get("status") == "online"]
+    if not online:
+        err.print("[red]No Mac is online.[/red] Run [bold]herds host[/bold] on one, "
+                  "or [bold]herds connect[/bold] to join one.")
+        raise typer.Exit(1)
+    if len(online) == 1:
+        return online[0]["machine_id"]
+
+    err.print("[yellow]You have more than one Mac online — name the one you want.[/yellow]\n")
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Name")
+    table.add_column("ID", style="cyan")
+    table.add_column("Chip", style="dim")
+    for mm in online:
+        info = mm.get("info") or {}
+        table.add_row(mm.get("name", "?"), mm["machine_id"], info.get("chip") or "—")
+    console.print(table)
+    console.print("\n  [bold]herds ssh <name-or-id>[/bold]")
+    raise typer.Exit(2)
 
 
 @app.command()

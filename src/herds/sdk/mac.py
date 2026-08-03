@@ -243,6 +243,13 @@ class Mac:
         """
         from . import _shell
 
+        # Pin the target BEFORE opening anything. `herds.mac()` resolves to the
+        # idlest Mac, which is right for fanning work out and wrong for a
+        # terminal: run it twice and you'd get two different machines, with
+        # nothing on screen saying which one you're typing into.
+        target = self.name
+        target_id = self.machine_id
+
         rows, cols = _shell.terminal_size()
         base_env = {"TERM": os.environ.get("TERM", "xterm-256color"),
                     "LINES": str(rows), "COLUMNS": str(cols)}
@@ -265,10 +272,17 @@ class Mac:
                 session.send(f" stty rows {r} cols {c} 2>/dev/null\n")
 
         _resize(rows, cols)
+        # Always say which Mac, on screen, before the first keystroke.
+        sys.stdout.write(
+            f"\x1b[2m─ herds · {target} ({target_id}) · Ctrl-] to detach ─\x1b[0m\r\n"
+        )
+        sys.stdout.flush()
         try:
             _shell.interact(session, on_resize=_resize)
         finally:
             session.close()
+            sys.stdout.write(f"\x1b[2m─ detached from {target} ─\x1b[0m\n")
+            sys.stdout.flush()
         return None
 
     def push(self, local: str, volume: str, remote: str = "", *, clean: bool = False,
