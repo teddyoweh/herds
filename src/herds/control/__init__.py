@@ -425,6 +425,9 @@ def create_app(db_path: Union[str, Path] = ":memory:") -> FastAPI:
         owner = owner_from_key(authorization)
         if machine_id in ("default", "mac", "_"):
             machine_id = _resolve_default_machine(store, hub, owner)
+        else:
+            # Name/prefix/tag too — a lookup, so offline machines still resolve.
+            machine_id = _match_machine(store, hub, machine_id, owner)
         m = store.get_machine(machine_id)
         if not m:
             raise HTTPException(404, "no such machine")
@@ -483,9 +486,12 @@ def create_app(db_path: Union[str, Path] = ":memory:") -> FastAPI:
     def _resolve_machine(machine_id: str, owner: str) -> str:
         if machine_id in ("default", "mac", "_"):
             machine_id = _resolve_default_machine(store, hub, owner)
+        else:
+            machine_id = _match_machine(store, hub, machine_id, owner)
         agent = hub.agent(machine_id)
         if agent is None:
-            raise HTTPException(409, f"machine {machine_id} is offline")
+            name = (store.get_machine(machine_id) or {}).get("name", machine_id)
+            raise HTTPException(409, f"{name} ({machine_id}) is offline")
         if REQUIRE_AUTH and agent.owner != owner:
             raise HTTPException(403, "machine not owned by caller")
         return machine_id
@@ -1516,6 +1522,59 @@ class TriggerBody(BaseModel):
     args: list = []
     kwargs: dict = {}
     machine_id: Optional[str] = None
+
+
+def _match_machine(store: Store, hub: Hub, ident: str, owner: str) -> str:
+    """Resolve a human-typed machine reference to a machine_id.
+
+    Only the exact ``mac_xxxxxxxx`` id used to work, so ``herds ssh "Mac mini"``
+    failed with "machine Mac mini is offline" — which is doubly wrong: the
+    machine was online, and the name was never the problem. People address
+    machines by name, so accept what they'd actually type: the id, the name, an
+    id prefix, a distinctive part of the name, or a tag.
+
+    Ambiguity is an error rather than a guess — silently picking one of two
+    matching Macs is exactly the confusion this is meant to remove.
+    """
+    ident = (ident or "").strip()
+    machines = store.list_machines(None if owner == DEFAULT_OWNER else owner)
+    if not machines:
+        raise HTTPException(404, "no machines registered")
+
+    by_id = {m["machine_id"]: m for m in machines}
+    if ident in by_id:
+        return ident
+
+    low = ident.lower()
+
+    def uniq(matches, how: str) -> Optional[str]:
+        seen = {m["machine_id"] for m in matches}
+        if len(seen) == 1:
+            return next(iter(seen))
+        if len(seen) > 1:
+            names = ", ".join(f"{m.get('name', '?')} ({m['machine_id']})"
+                              for m in sorted(matches, key=lambda x: x["machine_id"]))
+            raise HTTPException(409, f"{ident!r} matches {len(seen)} machines by {how}: {names}")
+        return None
+
+    # Exact name, then id prefix, then name substring, then tag — most precise
+    # first so an exact name always beats an accidental substring hit.
+    for how, matches in (
+        ("name", [m for m in machines if (m.get("name") or "").lower() == low]),
+        ("id prefix", [m for m in machines if m["machine_id"].lower().startswith(low)]),
+        ("name", [m for m in machines if low in (m.get("name") or "").lower()]),
+    ):
+        got = uniq(matches, how)
+        if got:
+            return got
+
+    tagged = [m for m in machines if low in {t.lower() for t in store.tags_for(m["machine_id"])}]
+    got = uniq(tagged, "tag")
+    if got:
+        return got
+
+    known = ", ".join(f"{m.get('name', '?')} ({m['machine_id']})" for m in machines[:8])
+    raise HTTPException(404, f"no machine matching {ident!r}. Known: {known}")
 
 
 def _resolve_default_machine(store: Store, hub: Hub, owner: str) -> str:

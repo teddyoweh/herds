@@ -385,6 +385,21 @@ lists them and stops rather than guessing:
 ─ herds · Teddys Mac mini (mac_ed74b9b0) · Ctrl-] to detach ─
 ```
 
+**Pick a Mac however you'd naturally refer to it** — id, name, id prefix, a
+distinctive part of the name, or a tag. Works for every command that takes a
+machine, not just `ssh`:
+
+```bash
+herds ssh mac_ed74b9b0        # exact id
+herds ssh "Teddys Mac mini"   # name (case-insensitive)
+herds ssh mini                # part of the name
+herds ssh ci                  # a tag  (herds tag <id> ci)
+herds run -m mini -- uname -a
+```
+
+If a reference matches more than one Mac it lists them and stops rather than
+guessing.
+
 ### Moving big files — pull, don't push
 
 ```python
