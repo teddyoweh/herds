@@ -1955,14 +1955,14 @@ const EXAMPLES: { label: string; blurb: string; file: string; body: React.ReactN
   },
   {
     label: "Fan out across the fleet",
-    blurb: "One call spreads the work over every Mac you own, in parallel.",
+    blurb: "Every online Mac pulls the next task as it frees up.",
     file: "suite.py",
     body: (
       <>
-        <div><PyV c="mac." /><PyF c="map" />(<PyS c={'"pytest {}"'} />, [<PyS c={'"tests/unit"'} />, <PyS c={'"tests/e2e"'} />])</div>
+        <div><PyV c="results" /> = <PyV c="herds." /><PyF c="fleet" />().<PyF c="map" />(<PyS c={'"pytest {}"'} />, <PyV c="TEST_DIRS" />)</div>
         <div className="h-3" />
-        <div><PyC c="# {} is the format slot; 8 in flight by default" /></div>
-        <div><PyV c="mac." /><PyF c="map" />(<PyS c={'"./bench {}"'} />, <PyV c="inputs" />, <PyV c="max_workers" />=<PyN c="8" />)</div>
+        <div><PyC c="# {} ← each item. N Macs, N× throughput —" /></div>
+        <div><PyC c="# work-stealing, so none gets overloaded." /></div>
       </>
     ),
   },
@@ -1972,7 +1972,7 @@ const EXAMPLES: { label: string; blurb: string; file: string; body: React.ReactN
     file: "preview.py",
     body: (
       <>
-        <div><PyK c="with" /> <PyV c="mac." /><PyF c="sandbox" />(<PyV c="image" />=<PyS c={'"xcode:26"'} />) <PyK c="as" /> <PyV c="sbx" />:</div>
+        <div><PyK c="with" /> <PyV c="herds." /><PyF c="mac" />().<PyF c="sandbox" />(<PyV c="image" />=<PyS c={'"xcode:26"'} />) <PyK c="as" /> <PyV c="sbx" />:</div>
         <div>{"    "}<PyV c="sbx." /><PyF c="put" />(<PyS c={'"./my-project"'} />)</div>
         <div>{"    "}<PyV c="sbx." /><PyF c="spawn" />(<PyS c={'"npm run dev"'} />, <PyV c="keep_alive" />=<PyK c="True" />)</div>
         <div>{"    "}<PyV c="url" /> = <PyV c="sbx." /><PyF c="expose" />(<PyN c="3000" />)  <PyC c="# → public link" /></div>
@@ -1985,9 +1985,9 @@ const EXAMPLES: { label: string; blurb: string; file: string; body: React.ReactN
     file: "agent.py",
     body: (
       <>
-        <div><PyV c="mac." /><PyF c="agent" />(<PyS c={'"fix the failing tests and open a PR"'} />,</div>
-        <div>{"          "}<PyV c="proxy" />=<PyS c={'"https://proxy.you.com"'} />,</div>
-        <div>{"          "}<PyV c="secret" />=<PyS c={'"proxyagent"'} />)  <PyC c="# streamed" /></div>
+        <div><PyV c="herds." /><PyF c="mac" />().<PyF c="agent" />(<PyS c={'"fix the failing tests and open a PR"'} />,</div>
+        <div>{"                 "}<PyV c="proxy" />=<PyS c={'"https://proxy.you.com"'} />,</div>
+        <div>{"                 "}<PyV c="secret" />=<PyS c={'"proxyagent"'} />)</div>
       </>
     ),
   },
@@ -1997,8 +1997,9 @@ function ExampleCard({ e }: { e: (typeof EXAMPLES)[number] }) {
   return (
     <motion.div variants={fadeUp} className="flex h-full flex-col">
       {/* Fixed header height so the terminals line up across the row even when
-          a blurb wraps to a second line at some viewport width. */}
-      <div className="mb-3 md:min-h-[4.25rem]">
+          a blurb wraps to a second line at some viewport width. Sized for two
+          lines — one-line blurbs just leave headroom, which beats a ragged row. */}
+      <div className="mb-3 md:min-h-[5.25rem]">
         <h3 className="text-[15px] font-semibold tracking-tight text-stone-900">{e.label}</h3>
         <p className="mt-1.5 max-w-[46ch] text-[13.5px] leading-relaxed text-stone-500">{e.blurb}</p>
       </div>

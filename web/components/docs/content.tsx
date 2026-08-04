@@ -332,14 +332,69 @@ mac.run("npm ci", workdir="app", env={"CI": "1"}, timeout=600)`}</Code>
     print(text, end="")`}</Code>
 
     <H2>map()</H2>
-    <P>Run one command across many inputs in parallel — Modal-style fan-out. Returns a list of Results.</P>
+    <P>
+      Run one command across many inputs in parallel <strong className="font-semibold text-stone-800">on this Mac</strong> —
+      Modal-style fan-out. Up to <Co>max_workers</Co> at a time (8 by default). Returns a list of Results, in input order.
+    </P>
     <Code lang="python">{`mac.map("pytest {}", ["tests/unit", "tests/e2e"])        # {} is the format slot
 mac.map(lambda v: f"swift build -c {v}", ["debug", "release"])
 mac.map("./bench {}", inputs, max_workers=8)`}</Code>
+    <Callout type="note" title="One Mac, not the fleet">
+      <Co>mac.map()</Co> parallelises across <em>inputs</em> on a single machine. To spread the same work across every
+      Mac you own, use <Co>herds.fleet().map()</Co> — see <A href="#" onClick={(e) => { e.preventDefault(); go("fleet"); }}>the fleet</A>.
+    </Callout>
 
     <Callout type="tip">
       Pushing a whole codebase before you run it? Use <A href="#" onClick={(e) => { e.preventDefault(); go("volumes"); }}>volumes</A> or a{" "}
       <A href="#" onClick={(e) => { e.preventDefault(); go("sandboxes"); }}>sandbox</A>.
+    </Callout>
+  </>
+);
+
+const FleetPage = ({ go }: { go: Go }) => (
+  <>
+    <Lead>
+      <Co>herds.fleet()</Co> is every online Mac you own, addressed as one. Where <Co>mac.map()</Co> parallelises across
+      inputs on a single machine, the fleet spreads the same work over all of them.
+    </Lead>
+
+    <H2>map()</H2>
+    <P>
+      Run one command across many inputs, distributed over every online Mac. Returns a list of Results in input order,
+      and raises on the first task that fails.
+    </P>
+    <Code lang="python">{`import herds
+
+results = herds.fleet().map("pytest {}", ALL_TEST_DIRS)   # N Macs → N× throughput`}</Code>
+    <P>
+      Scheduling is <strong className="font-semibold text-stone-800">work-stealing</strong>, not fixed round-robin. Each
+      Mac runs up to <Co>per_mac</Co> tasks at a time (4 by default) and pulls the next item the moment it&rsquo;s free,
+      so idler or faster Macs naturally do more and none gets overloaded.
+    </P>
+    <Params
+      rows={[
+        { name: "command", type: "str | callable", required: true, desc: <>A format string (<Co>{"{}"}</Co> ← item) or a callable (item → command).</> },
+        { name: "items", type: "iterable", required: true, desc: "One task per item." },
+        { name: "per_mac", type: "int", desc: "Concurrent tasks per Mac. Default 4." },
+      ]}
+    />
+
+    <H2>macs()</H2>
+    <P>The online Macs in the pool, as <Co>Mac</Co> objects — handy when you want to address them individually.</P>
+    <Code lang="python">{`for mac in herds.fleet().macs():
+    print(mac.name, mac.run("sw_vers -productVersion").stdout.strip())`}</Code>
+
+    <H2>agent()</H2>
+    <P>
+      Run the <em>same</em> agent task on every online Mac in parallel, keyless. Returns{" "}
+      <Co>{"{machine_name: Result}"}</Co>. Pass <Co>on_output=fn(name, stream, text)</Co> for live output tagged by
+      machine.
+    </P>
+    <Code lang="python">{`results = herds.fleet().agent("upgrade dependencies", proxy=PROXY, secret="proxyagent")`}</Code>
+    <Callout type="note" title="Online only">
+      A fleet call targets Macs that are connected right now. If none are, it raises rather than silently doing
+      nothing — run <Co>herds host</Co> on at least one Mac. See{" "}
+      <A href="#" onClick={(e) => { e.preventDefault(); go("agents"); }}>agents</A> for the keyless proxy setup.
     </Callout>
   </>
 );
@@ -1111,6 +1166,7 @@ export const PAGES: DocPage[] = [
   { id: "authentication", group: "Core concepts", title: "Authentication", description: "Tokens, scopes, and keys.", Body: Authentication },
 
   { id: "commands", group: "Python SDK", title: "Running commands", description: "run, stream, and map.", Body: Commands },
+  { id: "fleet", group: "Python SDK", title: "The fleet", description: "Every Mac you own, addressed as one.", Body: FleetPage },
   { id: "sandboxes", group: "Python SDK", title: "Sandboxes", description: "Isolated, persistent workspaces.", Body: Sandboxes },
   { id: "sessions", group: "Python SDK", title: "Sessions", description: "Long-lived processes you drive turn by turn.", Body: Sessions },
   { id: "agents", group: "Python SDK", title: "Agents (keyless)", description: "Run Claude Code / Codex on a Mac — no key on the machine.", Body: Agents },
