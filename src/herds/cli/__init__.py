@@ -53,6 +53,39 @@ def _control_http(url: Optional[str], tok: Optional[str]):
     return HerdsClient(control_plane=url, api_key=tok)._http
 
 
+def _detail(r) -> str:
+    """Why a control-plane call failed — see ``sdk.client.error_detail``."""
+    from ..sdk.client import error_detail
+    return error_detail(r)
+
+
+def _adopt_control_plane(a: "config.Auth") -> None:
+    """Point the saved control plane at the account we just signed in to.
+
+    Signing in is what decides which control plane this Mac talks to, but the
+    URL lives in config.json while the account lives in auth.json. Without this,
+    a config left over from an earlier account (or an old dev host) survives the
+    sign-in and every later command talks to an endpoint the user no longer has
+    — reported as a confusing 502 from the relay, not as "you're signed out".
+
+    HERDS_CONTROL_PLANE still wins: a self-hoster who pins it means it.
+    """
+    import os
+
+    if os.environ.get("HERDS_CONTROL_PLANE"):
+        return
+    url = a.url or (f"https://{a.account}.relay.herds.run" if a.account else None)
+    if not url:
+        return
+    cfg = config.Config.load()
+    if cfg.control_plane.rstrip("/") == url.rstrip("/"):
+        return
+    old = cfg.control_plane
+    cfg.control_plane = url.rstrip("/")
+    cfg.save()
+    console.print(f"[dim]Control plane → [cyan]{cfg.control_plane}[/cyan] (was {old}).[/dim]")
+
+
 @token_app.command("new")
 def token_new(
     label: str = typer.Argument("agent", help="A name for this token."),
@@ -63,7 +96,7 @@ def token_new(
     """Mint a scoped, revocable token — give it to an agent, revoke it anytime."""
     r = _control_http(url, token).post("/v1/keys", json={"label": label, "scope": scope})
     if r.status_code >= 400:
-        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        err.print(f"[red]✗[/red] {_detail(r)}")
         raise typer.Exit(1)
     d = r.json()
     console.print(Panel.fit(
@@ -81,7 +114,7 @@ def token_ls(
     """List your tokens (masked) and their scopes."""
     r = _control_http(url, token).get("/v1/keys")
     if r.status_code >= 400:
-        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        err.print(f"[red]✗[/red] {_detail(r)}")
         raise typer.Exit(1)
     keys = r.json().get("keys", [])
     if not keys:
@@ -105,7 +138,7 @@ def token_revoke(
     """Revoke a token by its visible prefix (from `herds token ls`)."""
     r = _control_http(url, token).delete(f"/v1/keys/{prefix.split('…')[0]}")
     if r.status_code >= 400:
-        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        err.print(f"[red]✗[/red] {_detail(r)}")
         raise typer.Exit(1)
     console.print(f"[green]✓[/green] revoked [cyan]{prefix}[/cyan]")
 
@@ -123,7 +156,7 @@ def schedule_add(
     r = _control_http(url, token).post(
         "/v1/schedules", json={"cron": cron, "command": cmd, "machine_id": machine})
     if r.status_code >= 400:
-        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        err.print(f"[red]✗[/red] {_detail(r)}")
         raise typer.Exit(1)
     d = r.json()
     console.print(f"[green]✓[/green] scheduled [cyan]{d['id']}[/cyan]  [dim]{d['cron']}[/dim]  {d['command']}")
@@ -137,7 +170,7 @@ def schedule_ls(
     """List recurring schedules."""
     r = _control_http(url, token).get("/v1/schedules")
     if r.status_code >= 400:
-        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        err.print(f"[red]✗[/red] {_detail(r)}")
         raise typer.Exit(1)
     rows = r.json().get("schedules", [])
     if not rows:
@@ -162,7 +195,7 @@ def schedule_rm(
     """Remove a schedule by id."""
     r = _control_http(url, token).delete(f"/v1/schedules/{schedule_id}")
     if r.status_code >= 400:
-        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        err.print(f"[red]✗[/red] {_detail(r)}")
         raise typer.Exit(1)
     console.print(f"[green]✓[/green] removed [cyan]{schedule_id}[/cyan]")
 
@@ -175,7 +208,7 @@ def app_ls(
     """List your apps."""
     r = _control_http(url, token).get("/v1/apps")
     if r.status_code >= 400:
-        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        err.print(f"[red]✗[/red] {_detail(r)}")
         raise typer.Exit(1)
     rows = r.json().get("apps", [])
     if not rows:
@@ -202,7 +235,7 @@ def app_view(
     """Show an app: its functions and recent runs."""
     r = _control_http(url, token).get(f"/v1/apps/{name}")
     if r.status_code >= 400:
-        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        err.print(f"[red]✗[/red] {_detail(r)}")
         raise typer.Exit(1)
     d = r.json()
     a = d["app"]
@@ -234,7 +267,7 @@ def app_rm(
     """Delete an app (its runs/sandboxes are unaffected, just ungrouped)."""
     r = _control_http(url, token).delete(f"/v1/apps/{name}")
     if r.status_code >= 400:
-        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        err.print(f"[red]✗[/red] {_detail(r)}")
         raise typer.Exit(1)
     console.print(f"[green]✓[/green] deleted [cyan]{name}[/cyan]")
 
@@ -249,7 +282,7 @@ def tag_add(
     """Tag a Mac for routing — herds.mac(tag='xcode-26') picks the idlest match."""
     r = _control_http(url, token).post(f"/v1/machines/{machine_id}/tags", json={"tags": tags})
     if r.status_code >= 400:
-        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        err.print(f"[red]✗[/red] {_detail(r)}")
         raise typer.Exit(1)
     console.print(f"[green]✓[/green] [cyan]{machine_id}[/cyan] tags: {', '.join(r.json()['tags']) or '—'}")
 
@@ -262,7 +295,7 @@ def tags_ls(
     """List your Macs with their tags, status, and live CPU."""
     r = _control_http(url, token).get("/v1/machines")
     if r.status_code >= 400:
-        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        err.print(f"[red]✗[/red] {_detail(r)}")
         raise typer.Exit(1)
     rows = r.json().get("machines", [])
     if not rows:
@@ -291,7 +324,7 @@ def tag_rm(
     """Remove a tag from a Mac."""
     r = _control_http(url, token).delete(f"/v1/machines/{machine_id}/tags/{tag}")
     if r.status_code >= 400:
-        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        err.print(f"[red]✗[/red] {_detail(r)}")
         raise typer.Exit(1)
     console.print(f"[green]✓[/green] removed [cyan]{tag}[/cyan] from {machine_id}")
 
@@ -487,10 +520,12 @@ def auth(
             raise typer.Exit(1)
         a.token, a.account, a.url = token, info["account"], info.get("url")
         a.save()
+        _adopt_control_plane(a)
         _print_signed_in(a)
         return
 
     if a.signed_in and not name:
+        _adopt_control_plane(a)  # heal a config left pointing at an old endpoint
         console.print(f"[green]✓ Signed in[/green] as [bold]{a.account}[/bold] — run [bold]herds host[/bold].")
         console.print("[dim]Use [bold]herds auth --name <new>[/bold] to switch accounts.[/dim]")
         return
@@ -504,6 +539,7 @@ def auth(
         info = provision_account(a.relay, name or "")
         a.token, a.account, a.url = info["token"], info["account"], info.get("url")
         a.save()
+        _adopt_control_plane(a)
         _print_signed_in(a)
         return
 
@@ -535,6 +571,7 @@ def auth(
             if status == "approved":
                 a.token, a.account, a.url = res["token"], res["account"], res.get("url")
                 a.save()
+                _adopt_control_plane(a)
                 break
             if status == "expired":
                 console.print("[red]✗ This sign-in request expired. Run [bold]herds auth[/bold] again.[/red]")
@@ -926,7 +963,7 @@ def disconnect(
     if r.status_code == 404:
         err.print(f"[yellow]No such machine:[/yellow] {machine} [dim](already removed?)[/dim]")
     elif r.status_code >= 400:
-        err.print(f"[red]✗[/red] {r.json().get('detail', r.text)}")
+        err.print(f"[red]✗[/red] {_detail(r)}")
         raise typer.Exit(1)
     else:
         d = r.json()
@@ -1149,8 +1186,7 @@ def logs(machine: Optional[str] = typer.Option(None, "--machine", "-m")):
         # Use the SDK client so the API key is sent (the host enforces auth).
         r = _client()._http.get("/v1/jobs", params=params, timeout=10)
         if r.status_code >= 400:
-            detail = r.json().get("detail", r.text) if r.headers.get("content-type", "").startswith("application/json") else r.text
-            raise RuntimeError(detail)
+            raise RuntimeError(_detail(r))
         jobs = r.json().get("jobs", [])
     except Exception as exc:  # noqa: BLE001
         err.print(f"[red]Could not reach control plane:[/red] {exc}")

@@ -54,6 +54,24 @@ def _system_path() -> str:
     return os.pathsep.join(parts)
 
 
+def _adopt_api_key(token: str) -> None:
+    """Give the SDK/CLI on this Mac the key to the control plane it's serving.
+
+    The host token was only ever written to host.json (for the dashboard link)
+    and the store's api_keys, so `herds tags` on the very machine hosting the
+    control plane answered "missing API key" while the working credential sat on
+    disk two files away.
+
+    Only ever fills a blank: a key set by hand, or by `herds auth` against
+    someone else's control plane, is not ours to replace.
+    """
+    creds = config.Credentials.load()
+    if creds.api_key:
+        return
+    creds.api_key = token
+    creds.save()
+
+
 def _persistent_token() -> str:
     """A stable host token that survives restarts (so the link+token never change)."""
     f = config.HERDS_HOME / "host_token"
@@ -567,6 +585,7 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
     auth = config.Auth.load()
     store = Store(db_path)
     store.put_api_key(token, "host", "host")
+    _adopt_api_key(token)
     # Bridge: the account token (`herds auth`) also unlocks this Mac's dashboard, so the
     # platform dashboard's "Open my Mac dashboard" opens already signed in for the owner.
     if auth.signed_in and auth.token:

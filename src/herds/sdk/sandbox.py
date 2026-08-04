@@ -78,7 +78,7 @@ class Sandbox:
         """
         import base64
         from pathlib import Path
-        from .client import HerdsError
+        from .client import HerdsError, error_detail
         from .volume import _DEFAULT_IGNORE, _tar_dir
 
         if self._terminated:
@@ -96,8 +96,7 @@ class Sandbox:
                     "content_b64": base64.b64encode(src.read_bytes()).decode()}
         r = self._client._http.put(f"/v1/sandboxes/{self.id}/put", json=body, timeout=300)
         if r.status_code >= 400:
-            raise HerdsError(r.json().get("detail", r.text)
-                             if r.headers.get("content-type", "").startswith("application/json") else r.text)
+            raise HerdsError(error_detail(r))
         return r.json()
 
     def _request(self, command, workdir, env, timeout, network) -> ExecRequest:
@@ -278,15 +277,14 @@ class Sandbox:
         :class:`Image` bound to that base (``Image.from_id(image_id)``) — pass it
         as a new sandbox's ``image`` to restore the snapshot before anything runs.
         """
-        from .client import HerdsError
+        from .client import HerdsError, error_detail
 
         if self._terminated:
             raise RuntimeError(f"sandbox {self.id} has been terminated")
         body = {"base": name} if name else {}
         r = self._client._http.post(f"/v1/sandboxes/{self.id}/snapshot", json=body, timeout=300)
         if r.status_code >= 400:
-            raise HerdsError(r.json().get("detail", r.text)
-                             if r.headers.get("content-type", "").startswith("application/json") else r.text)
+            raise HerdsError(error_detail(r))
         return Image.from_id(r.json()["image_id"])
 
     def terminate(self) -> None:

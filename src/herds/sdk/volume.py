@@ -127,7 +127,7 @@ class Volume:
             herds.Volume.from_name("repo").put("./my-project")          # → volume root
             herds.Volume.from_name("data").put("model.bin", "weights/") # one file
         """
-        from .client import HerdsClient, HerdsError, default_client
+        from .client import HerdsClient, HerdsError, default_client, error_detail
 
         c = client or (HerdsClient(control_plane=url, api_key=token) if (url or token) else default_client())
         mid = _resolve_machine(c, machine)
@@ -150,7 +150,7 @@ class Volume:
 
         r = c._http.put(f"/v1/volumes/{self.name}/put", json=body, timeout=300)
         if r.status_code >= 400:
-            raise HerdsError(r.json().get("detail", r.text) if r.headers.get("content-type", "").startswith("application/json") else r.text)
+            raise HerdsError(error_detail(r))
         return r.json()
 
     def get(
@@ -171,14 +171,14 @@ class Volume:
             data = herds.Volume.from_name("data").get("weights/model.bin")
             herds.Volume.from_name("repo").get("out/report.pdf", "./report.pdf")
         """
-        from .client import HerdsClient, HerdsError, default_client
+        from .client import HerdsClient, HerdsError, default_client, error_detail
 
         c = client or (HerdsClient(control_plane=url, api_key=token) if (url or token) else default_client())
         mid = _resolve_machine(c, machine)
         r = c._http.get(f"/v1/volumes/{self.name}/get",
                         params={"machine_id": mid, "path": remote}, timeout=300)
         if r.status_code >= 400:
-            raise HerdsError(r.json().get("detail", r.text) if r.headers.get("content-type", "").startswith("application/json") else r.text)
+            raise HerdsError(error_detail(r))
         payload = r.json()
         if payload.get("error"):
             raise HerdsError(payload["error"])
@@ -200,14 +200,14 @@ class Volume:
     ) -> list:
         """List a directory in this volume; returns the entry dicts
         (``name``/``dir``/``size``/``mtime_ms``)."""
-        from .client import HerdsClient, HerdsError, default_client
+        from .client import HerdsClient, HerdsError, default_client, error_detail
 
         c = client or (HerdsClient(control_plane=url, api_key=token) if (url or token) else default_client())
         mid = _resolve_machine(c, machine)
         r = c._http.get(f"/v1/volumes/{self.name}/files",
                         params={"machine_id": mid, "path": path}, timeout=60)
         if r.status_code >= 400:
-            raise HerdsError(r.json().get("detail", r.text) if r.headers.get("content-type", "").startswith("application/json") else r.text)
+            raise HerdsError(error_detail(r))
         payload = r.json()
         if payload.get("error"):
             raise HerdsError(payload["error"])
@@ -223,14 +223,14 @@ class Volume:
         client=None,
     ) -> dict:
         """Delete a file or directory (recursively) from this volume on the Mac."""
-        from .client import HerdsClient, HerdsError, default_client
+        from .client import HerdsClient, HerdsError, default_client, error_detail
 
         c = client or (HerdsClient(control_plane=url, api_key=token) if (url or token) else default_client())
         mid = _resolve_machine(c, machine)
         r = c._http.request("DELETE", f"/v1/volumes/{self.name}/file",
                             params={"machine_id": mid, "path": path}, timeout=60)
         if r.status_code >= 400:
-            raise HerdsError(r.json().get("detail", r.text) if r.headers.get("content-type", "").startswith("application/json") else r.text)
+            raise HerdsError(error_detail(r))
         payload = r.json()
         if payload.get("error"):
             raise HerdsError(payload["error"])

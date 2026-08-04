@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from .client import HerdsClient, HerdsError, default_client
+from .client import HerdsClient, HerdsError, default_client, error_detail
 
 
 @dataclass(frozen=True)
@@ -32,7 +32,7 @@ class Secret:
         c = client or default_client()
         r = c._http.post("/v1/secrets", json={"name": name, "values": values})
         if r.status_code >= 400:
-            raise HerdsError(r.json().get("detail", r.text))
+            raise HerdsError(error_detail(r))
         return Secret(name=name)
 
     @staticmethod

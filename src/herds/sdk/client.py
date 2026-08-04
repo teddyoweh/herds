@@ -54,6 +54,29 @@ class HerdsError(RuntimeError):
     pass
 
 
+def error_detail(r) -> str:
+    """The human-readable reason a control-plane call failed.
+
+    Errors don't always come from the control plane itself: a relay in front of
+    it answers a down host with plain text, and a proxy can hand back an HTML
+    page. Parsing those as JSON used to raise inside the error path, burying the
+    real status behind a JSONDecodeError. Content-type is only a hint, so this
+    trusts the parse, not the header.
+    """
+    try:
+        body = r.json()
+    except Exception:  # noqa: BLE001 — not JSON (relay/proxy error page, empty body)
+        body = None
+    if isinstance(body, dict):
+        detail = body.get("detail") or body.get("error") or body.get("message")
+        if detail:
+            return str(detail)
+    text = (r.text or "").strip()
+    if not text:
+        return f"HTTP {r.status_code}"
+    return text if len(text) <= 400 else text[:400] + "…"
+
+
 class TcpTunnel:
     """A raw, bidirectional byte pipe to a sandbox-local TCP port.
 
@@ -109,12 +132,7 @@ class TcpTunnel:
 def _raise_http(r) -> None:
     """Raise a clear HerdsError from a failed response — never crash on a
     non-JSON body (e.g. the relay's plain-text 502 when no Mac is connected)."""
-    try:
-        data = r.json()
-        detail = data.get("detail") if isinstance(data, dict) else None
-    except Exception:  # noqa: BLE001 — body wasn't JSON
-        detail = None
-    text = detail or (r.text or "").strip() or f"HTTP {r.status_code}"
+    text = error_detail(r)
     if r.status_code in (502, 503, 504) or "no herds host" in text.lower():
         raise HerdsError("No Mac is connected to this account — run `herds host` on your Mac.")
     if r.status_code in (401, 403):

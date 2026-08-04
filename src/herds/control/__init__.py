@@ -56,6 +56,11 @@ REQUIRE_AUTH = os.environ.get("HERDS_REQUIRE_AUTH") == "1"
 # https://<name>.ports.example.com. Needs a wildcard tunnel route (Cloudflare
 # named tunnel). Without it, links fall back to the universal /p/<id>/<port>/ path.
 PORTS_DOMAIN = os.environ.get("HERDS_PORTS_DOMAIN", "").strip().lower()
+# A machine heartbeats (METRICS_REPORT) every 5s. If it is not on a live socket
+# AND has missed this much, call it offline however the row was last written —
+# a control plane that restarts inherits rows still marked ONLINE, and without
+# this they'd claim to be up forever.
+STALE_AFTER_MS = 60_000
 
 
 def _slugify(s: str) -> str:
@@ -320,6 +325,10 @@ def create_app(db_path: Union[str, Path] = ":memory:") -> FastAPI:
                     _t, _cpu, _mem = config.now_ms(), frame.data.get("cpu", 0.0), frame.data.get("mem", 0.0)
                     hub.record_metric(machine_id, _t, _cpu, _mem)
                     store.record_metric_sample(machine_id, _t, _cpu, _mem)
+                    # A metrics frame IS the heartbeat (every 5s). Without this,
+                    # last_seen_ms froze at the moment the agent connected, so a
+                    # Mac online for hours looked last-seen-hours-ago.
+                    store.set_machine_status(machine_id, MachineStatus.ONLINE, _t)
                     if "battery_pct" in frame.data:  # live-only battery cache (no DB)
                         hub.battery[machine_id] = (
                             frame.data.get("battery_pct"), frame.data.get("battery_charging"),
@@ -405,13 +414,28 @@ def create_app(db_path: Union[str, Path] = ":memory:") -> FastAPI:
 
     # -- SDK: machines ------------------------------------------------------ #
 
+    def _live_status(m: dict) -> str:
+        """A machine's status now — a live socket beats whatever sqlite says.
+
+        Being on ``hub.agents`` is proof it's up. Otherwise the stored status is
+        only trustworthy while it's fresh: a control plane that restarted, or
+        one whose agent vanished without a clean close, still holds rows marked
+        ONLINE. Those go offline once the heartbeat goes quiet.
+        """
+        if m["machine_id"] in hub.agents:
+            return "online"
+        if m.get("status") != "online":
+            return m.get("status") or "offline"
+        seen = m.get("last_seen_ms") or 0
+        return "online" if config.now_ms() - seen < STALE_AFTER_MS else "offline"
+
     @app.get("/v1/machines")
     def list_machines(authorization: Optional[str] = Header(None)):
         owner = owner_from_key(authorization)
         machines = store.list_machines(None if owner == DEFAULT_OWNER else owner)
         # Reflect live connection status (sqlite may lag a disconnect) + latest CPU/mem.
         for m in machines:
-            m["status"] = "online" if m["machine_id"] in hub.agents else m["status"]
+            m["status"] = _live_status(m)
             latest = store.latest_metric(m["machine_id"]) if m["status"] == "online" else None
             m["live_cpu"] = round(latest[0], 1) if latest else None
             m["live_mem"] = round(latest[1], 1) if latest else None
@@ -431,7 +455,7 @@ def create_app(db_path: Union[str, Path] = ":memory:") -> FastAPI:
         m = store.get_machine(machine_id)
         if not m:
             raise HTTPException(404, "no such machine")
-        m["status"] = "online" if machine_id in hub.agents else m["status"]
+        m["status"] = _live_status(m)
         return m
 
     @app.post("/v1/machines/{machine_id}/tags")
