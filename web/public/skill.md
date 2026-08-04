@@ -26,6 +26,17 @@ herds.mac().run("uname -msr")          # runs on that Mac, from anywhere
 
 To connect your OWN Mac instead: `pip install herds && herds auth && herds host`.
 
+## Pick which Mac
+
+```python
+herds.mac()                      # the idlest online Mac
+herds.mac("mini")                # by name, id, or a prefix of either
+herds.mac(tag="xcode-26")        # idlest Mac carrying that tag (or chip)
+herds.mac(url="https://you.relay.herds.run", token="hx_…")   # a specific host
+```
+
+Ambiguous names are reported, never guessed. Tags are set with `herds tag <id> <tag>`.
+
 ## Run commands
 
 ```python
@@ -34,22 +45,55 @@ print(mac.run("sw_vers").stdout)
 mac.run("xcodebuild -scheme App test", check=True)        # real Xcode; raises on failure
 for stream, line in mac.stream("swift build"):             # stream output live
     print(line)
-mac.map("pytest {}", ["tests/unit", "tests/e2e"])          # fan out across inputs, in parallel
+mac.map("pytest {}", ["tests/unit", "tests/e2e"])          # parallel across inputs, ON THIS MAC
 ```
 
 A `Result` has `.stdout`, `.stderr`, `.exit_code`, `.ok`. One Mac handles many
 concurrent commands, so a fleet of agents can share it.
 
+## Use every Mac at once
+
+`mac.map` parallelises across inputs on **one** machine. To spread the same work
+over **all** your Macs, use the fleet:
+
+```python
+herds.fleet().map("pytest {}", ALL_TEST_DIRS)    # N Macs → N× throughput
+herds.fleet().macs()                              # the online Macs, as Mac objects
+herds.fleet().agent("upgrade deps", proxy=PROXY, secret="proxyagent")  # same task, every Mac
+```
+
+Work-stealing, not round-robin: each Mac takes up to `per_mac` tasks (4 by default)
+and pulls the next the moment it's free, so idler Macs do more and none is swamped.
+A fleet call targets Macs connected *right now*, and raises if none are.
+
 ## Ship a codebase, then run it
 
 ```python
-herds.Volume.from_name("repo").put("./my-project")         # tar + extract on the Mac (junk pruned)
+mac.push("./my-project", "repo")                  # → a named volume on the Mac
 mac.run("python3 app/main.py", volumes={"app": herds.Volume.from_name("repo")})
-
-sbx = herds.Sandbox.create()
-sbx.put("./my-project")                                     # …or straight into a sandbox
-sbx.exec("python3 main.py")
 ```
+
+`push` has the Mac pull the payload **directly from your machine** (LAN/tailnet)
+instead of streaming every byte through the relay, which sustains only ~0.5 MB/s
+and is shared by the whole fleet. Pass `direct=False` to force the relay path.
+For a one-off workspace, `sbx.put("./my-project")` ships straight into a sandbox.
+
+## Long-running processes you feed turn by turn
+
+```python
+s = mac.session("python3 -i")     # a RESIDENT process, not one command
+s.send("import platform; print(platform.machine())\n")
+for stream, text in s.stream():   # output streams back live
+    print(text)
+s.close()
+```
+
+Use a session when you need state to persist between inputs (a REPL, a debugger,
+an interactive installer). Use `mac.run` for anything that just starts and ends.
+
+`mac.shell()` is the *human* front door — it takes over your terminal with a real
+pty (Ctrl-] detaches), or from the CLI, `herds ssh <machine>`. In a script or
+notebook, with no terminal to attach to, it hands back a `Session` instead.
 
 ## Mac-native control (only a real Mac can do this)
 
@@ -120,10 +164,15 @@ build.remote("release")                                     # ships source, runs
 
 ```
 herds run -- <cmd>      run a command on a Mac (streams output)
+herds ssh [machine]     interactive terminal on a Mac (Ctrl-] detaches)
 herds machines          list your connected Macs
+herds tags              list Macs with their tags, status, and live CPU
 herds host              self-host control plane + dashboard + public link
-herds connect <link>    join another Mac to your pool
+herds connect <token>   join THIS Mac to a fleet (the token carries its link)
 ```
+
+Every command that takes a machine accepts an id, a name, a prefix of either, or
+a tag — `-m mini`, `-m ci`, `-m mac_ed74`.
 
 ## When to reach for Herds
 
@@ -131,5 +180,6 @@ herds connect <link>    join another Mac to your pool
   AppleScript / automation, testing native Mac apps.
 - You want to **run a server** in a sandbox and get a **public URL**.
 - You need a **persistent workspace** that survives across steps.
+- You have **several Macs** and want the work spread across all of them.
 
 Docs: https://herds.run · Repo: https://github.com/teddyoweh/herds
