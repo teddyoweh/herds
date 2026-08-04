@@ -71,6 +71,34 @@ def test_long_body_is_truncated():
     assert len(out) <= 401 and out.endswith("…")
 
 
+# -- the CLI wrapper: a credential failure must name the door ---------------- #
+
+
+def test_auth_failure_names_the_control_plane():
+    """A good key at the wrong door is the characteristic failure, because
+    `herds connect` and `herds host` write control_plane and api_key
+    separately. A bare "missing API key" doesn't say which door was tried."""
+    from herds.cli import _detail
+
+    out = _detail(_resp(401, b'{"detail": "missing API key"}', "application/json"))
+    assert "missing API key" in out
+    assert "https://cp.example" in out
+
+
+def test_forbidden_also_names_the_control_plane():
+    from herds.cli import _detail
+
+    assert "https://cp.example" in _detail(_resp(403, b'{"detail": "nope"}', "application/json"))
+
+
+def test_non_auth_errors_are_not_cluttered_with_the_url():
+    """404 or 502 is about the request, not the credential — keep it clean."""
+    from herds.cli import _detail
+
+    assert _detail(_resp(404, b'{"detail": "no such machine"}', "application/json")) == "no such machine"
+    assert "cp.example" not in _detail(_resp(502, b"host down", "text/plain"))
+
+
 # -- the SDK's raising wrapper, which shares the parser ---------------------- #
 
 

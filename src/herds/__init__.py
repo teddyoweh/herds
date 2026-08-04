@@ -40,7 +40,7 @@ try:  # single source of truth is pyproject; read it back off the install
 
     __version__ = _pkg_version("herds")
 except (ImportError, PackageNotFoundError):  # running from a source tree
-    __version__ = "0.7.2"
+    __version__ = "0.7.3"
 
 __all__ = [
     "App",

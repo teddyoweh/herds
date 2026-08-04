@@ -54,19 +54,71 @@ def _control_http(url: Optional[str], tok: Optional[str]):
 
 
 def _detail(r) -> str:
-    """Why a control-plane call failed — see ``sdk.client.error_detail``."""
+    """Why a control-plane call failed, and — when it's a credential problem —
+    *which* control plane rejected us.
+
+    One Mac has a single control_plane and a single api_key, and different
+    commands write them (`herds connect` the first, `herds host` the second). So
+    the characteristic failure is a good key at the wrong door, and "missing API
+    key" alone doesn't say which door was tried.
+    """
     from ..sdk.client import error_detail
-    return error_detail(r)
+
+    text = error_detail(r)
+    if r.status_code in (401, 403):
+        try:
+            u = r.request.url
+            text = f"{text} (control plane: {u.scheme}://{u.netloc.decode()})"
+        except Exception:  # noqa: BLE001 — no request bound; the reason still stands
+            pass
+    return text
 
 
-def _adopt_control_plane(a: "config.Auth") -> None:
-    """Point the saved control plane at the account we just signed in to.
+def _adopt_connect_credentials(token: str, target: Optional[str]) -> None:
+    """Record the credentials for a fleet this Mac just joined.
 
-    Signing in is what decides which control plane this Mac talks to, but the
-    URL lives in config.json while the account lives in auth.json. Without this,
-    a config left over from an earlier account (or an old dev host) survives the
-    sign-in and every later command talks to an endpoint the user no longer has
-    — reported as a confusing 502 from the relay, not as "you're signed out".
+    ``token`` is the daemon's device token *and* a valid API key on that host —
+    `herds host` registers the very same string via ``put_api_key`` — so the
+    CLI/SDK here can query the fleet it joined. Only the device token used to be
+    saved, which left two failures: a Mac added the documented way could not run
+    `herds tags` at all ("missing API key"), and a Mac that had previously hosted
+    kept its own key while control_plane moved — a good key at the wrong door.
+
+    control_plane and api_key are one pair. When the door moves the key moves
+    with it; when only a token is supplied, an existing key is left alone.
+    """
+    creds = config.Credentials.load()
+    creds.device_token = token
+    creds.api_key = token if target else (creds.api_key or token)
+    creds.save()
+
+
+def _control_plane_alive(url: str) -> bool:
+    """Is anything answering as a Herds control plane at ``url``?"""
+    import httpx
+
+    try:
+        r = httpx.get(f"{url.rstrip('/')}/healthz", timeout=3.0)
+    except Exception:  # noqa: BLE001 — DNS, refused, TLS, timeout: all "no"
+        return False
+    return r.status_code < 400
+
+
+def _adopt_control_plane(a: "config.Auth", *, force: bool = False) -> None:
+    """Point the saved control plane at the account we just signed in to — but
+    only when the one we have is broken.
+
+    Signing in decides the *account*; it does not, on its own, decide which
+    fleet this Mac's CLI talks to. Those are separate roles sharing one slot: a
+    Mac can serve its own control plane and also have joined someone else's with
+    `herds connect`. Repointing unconditionally would silently pull the CLI off
+    a fleet the user deliberately joined, while their daemon kept reporting to
+    it — config and running state disagreeing, with no message that says so.
+
+    So this only ever repoints *away from something that isn't answering*, which
+    is the case it was written for: a config left on an old dev host that the
+    relay now 502s. ``force`` (``herds auth --repoint``) is the escape hatch for
+    "I know it's alive, take me back to my own account anyway".
 
     HERDS_CONTROL_PLANE still wins: a self-hoster who pins it means it.
     """
@@ -78,9 +130,15 @@ def _adopt_control_plane(a: "config.Auth") -> None:
     if not url:
         return
     cfg = config.Config.load()
-    if cfg.control_plane.rstrip("/") == url.rstrip("/"):
-        return
     old = cfg.control_plane
+    if old.rstrip("/") == url.rstrip("/"):
+        return
+    if not force and _control_plane_alive(old):
+        console.print(
+            f"[dim]Still pointed at [cyan]{old}[/cyan], which is up — leaving it.\n"
+            f"Use [bold]herds auth --repoint[/bold] to switch to {url}.[/dim]"
+        )
+        return
     cfg.control_plane = url.rstrip("/")
     cfg.save()
     console.print(f"[dim]Control plane → [cyan]{cfg.control_plane}[/cyan] (was {old}).[/dim]")
@@ -503,6 +561,7 @@ def auth(
     token: Optional[str] = typer.Option(None, "--token", help="Account token (hx_…) — sign in headless, no browser."),
     name: Optional[str] = typer.Option(None, "--name", help="Preferred subdomain when provisioning."),
     no_browser: bool = typer.Option(False, "--no-browser", help="Print the link + code instead of opening a browser."),
+    repoint: bool = typer.Option(False, "--repoint", help="Point this Mac's CLI back at your own account, even if the control plane it's on is up."),
 ):
     """Sign in to Herds — opens your browser to approve, then syncs the token back."""
     import time as _t
@@ -520,12 +579,12 @@ def auth(
             raise typer.Exit(1)
         a.token, a.account, a.url = token, info["account"], info.get("url")
         a.save()
-        _adopt_control_plane(a)
+        _adopt_control_plane(a, force=repoint)
         _print_signed_in(a)
         return
 
     if a.signed_in and not name:
-        _adopt_control_plane(a)  # heal a config left pointing at an old endpoint
+        _adopt_control_plane(a, force=repoint)  # heal a config left pointing at an old endpoint
         console.print(f"[green]✓ Signed in[/green] as [bold]{a.account}[/bold] — run [bold]herds host[/bold].")
         console.print("[dim]Use [bold]herds auth --name <new>[/bold] to switch accounts.[/dim]")
         return
@@ -539,7 +598,7 @@ def auth(
         info = provision_account(a.relay, name or "")
         a.token, a.account, a.url = info["token"], info["account"], info.get("url")
         a.save()
-        _adopt_control_plane(a)
+        _adopt_control_plane(a, force=repoint)
         _print_signed_in(a)
         return
 
@@ -571,7 +630,7 @@ def auth(
             if status == "approved":
                 a.token, a.account, a.url = res["token"], res["account"], res.get("url")
                 a.save()
-                _adopt_control_plane(a)
+                _adopt_control_plane(a, force=repoint)
                 break
             if status == "expired":
                 console.print("[red]✗ This sign-in request expired. Run [bold]herds auth[/bold] again.[/red]")
@@ -1020,9 +1079,7 @@ def connect(
     if target:
         cfg.control_plane = target
     if token:
-        creds0 = config.Credentials.load()
-        creds0.device_token = token
-        creds0.save()
+        _adopt_connect_credentials(token, target)
     if not cfg.machine_id:
         cfg.machine_id = machine_mod.new_machine_id()
     info = machine_mod.gather(cfg.machine_id)
