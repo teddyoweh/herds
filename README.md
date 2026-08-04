@@ -69,10 +69,16 @@ is the cloud.
 **Three commands — from nothing to a Mac you can drive from anywhere:**
 
 ```bash
-pip install herds      # 1 · install        (or: uv tool install herds)
+uv tool install herds  # 1 · install        (or: pipx install herds)
 herds auth             # 2 · sign in        — opens your browser, syncs a token back
 herds host             # 3 · go live        — your Mac is now an API
 ```
+
+> `uv tool install` / `pipx` put `herds` on your PATH regardless of which Python
+> you have. `pip install herds` also works — use it when you want the SDK inside
+> a project's environment — but it only puts the command on your PATH if that
+> environment's `bin` is there. If `herds` isn't found after a `pip install`,
+> run `python3 -m herds version`: it always works, and prints the directory to add.
 
 ```
 ✓ Herds host is live (background · pid 64265)

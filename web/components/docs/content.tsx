@@ -192,9 +192,27 @@ const Installation = () => (
     </UL>
 
     <H2>Install</H2>
-    <Code lang="bash">{`pip install herds          # into the current environment
-uv tool install herds      # or as a standalone CLI tool
-curl -fsSL herds.run/install | sh   # bootstrap script`}</Code>
+    <P>
+      For the <strong className="font-semibold text-stone-800">CLI</strong> — hosting a Mac, joining a fleet, running
+      commands — install it as a standalone tool. That puts <Co>herds</Co> on your PATH no matter which Python you have:
+    </P>
+    <Code lang="bash">{`uv tool install herds                # recommended (or: pipx install herds)
+curl -fsSL herds.run/install | sh    # does the above, and joins a fleet if you pass a token`}</Code>
+    <P>
+      For the <strong className="font-semibold text-stone-800">SDK</strong> — importing <Co>herds</Co> in your own
+      project — install it into that project&rsquo;s environment:
+    </P>
+    <Code lang="bash">{`pip install herds        # into the current venv / environment`}</Code>
+
+    <Callout type="note" title="`herds: command not found` after pip install">
+      <Co>pip install</Co> puts the <Co>herds</Co> script in the environment that did the install. In a venv that&rsquo;s
+      the venv (and it works while that venv is active); with <Co>pip install --user</Co> on macOS it&rsquo;s{" "}
+      <Co>~/.local/bin</Co> or <Co>~/Library/Python/3.x/bin</Co>, which aren&rsquo;t on a default PATH — so the install
+      succeeds and the command still isn&rsquo;t found.
+      <Code lang="bash">{`python3 -m herds version   # always works, and prints where the script went`}</Code>
+      Run that and it tells you the directory to add to your PATH. <Co>uv tool install</Co> and <Co>pipx</Co> avoid the
+      problem entirely.
+    </Callout>
 
     <H2>Verify</H2>
     <Code lang="bash">{`herds version
