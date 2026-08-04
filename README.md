@@ -115,6 +115,12 @@ curl -fsSL herds.run/install | sh -s -- hx_…@you.herds.run   # a fresh Mac: in
 herds connect hx_…@you.herds.run                             # already has herds? just connect
 ```
 
+Connecting points this Mac at that fleet: it saves the token as both the daemon's
+device token and the CLI/SDK's API key, so `herds tags` here queries the fleet it
+just joined. One Mac talks to one control plane at a time — `herds status` shows
+which. A later `herds auth` won't move it unless that control plane has stopped
+answering; use `herds auth --repoint` to switch back to your own account.
+
 **Drive it** — from Python, the CLI, or the web dashboard:
 
 ```python
@@ -638,6 +644,7 @@ run history — all polling the same API the SDK and CLI use.
 
 ```
 herds auth               sign in (free) — get a stable, branded link
+herds auth --repoint     point this Mac's CLI back at your own account
 herds host               self-host: control plane + dashboard + public link
                          (runs in the background; the Mac joins its own fleet)
 herds host status|stop|logs  manage the background host  ·  --foreground to attach

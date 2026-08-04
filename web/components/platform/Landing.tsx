@@ -1134,7 +1134,7 @@ function CodeCard() {
           <span className="text-stone-400">{"# hand an agent a real Mac\n"}</span>
           <span className="text-signal-600">{"mac"}</span>{" = herds."}<span className="text-stone-800">{"mac"}</span>{"()\n\n"}
           <span className="text-signal-600">{"build"}</span>{" = mac."}<span className="text-stone-800">{"run"}</span>{'("xcodebuild -scheme App")\n'}
-          <span className="text-stone-800">{"url"}</span>{"   = mac."}<span className="text-stone-800">{"expose"}</span>{"(3000)  "}<span className="text-stone-400">{"# → public link"}</span>{"\n\n"}
+          <span className="text-stone-800">{"url"}</span>{"   = mac."}<span className="text-stone-800">{"sandbox"}</span>{"()."}<span className="text-stone-800">{"expose"}</span>{"(3000)  "}<span className="text-stone-400">{"# → public link"}</span>{"\n\n"}
           <span className="text-stone-800">{"agent"}</span>{".verify("}<span className="text-stone-800">{"url"}</span>{", screenshot="}<span className="text-signal-600">{"True"}</span>{")"}
         </code>
       </pre>
@@ -1672,97 +1672,6 @@ function Footer() {
   );
 }
 
-/* ------------------------------------------------------------------ *
- * Cinematic full-bleed — the breadth of real Mac software (auto-cycling list)
- * ------------------------------------------------------------------ */
-
-const APPS = ["Xcode", "Final Cut Pro", "Logic Pro", "Blender", "iOS Simulator", "Safari & WebKit", "Homebrew", "Playwright"];
-
-const REEL_ITEM_H = 64; // px per row in the slider
-const REEL_VISIBLE = 5; // rows in view
-
-/* One row of the reel. Opacity peaks as the row crosses the center line and
-   fades toward the top/bottom edges — driven off the shared scroll value so
-   the emphasis tracks the motion, not a discrete active index. */
-function ReelItem({ label, index, mv, viewCenter }: { label: string; index: number; mv: ReturnType<typeof useMotionValue<number>>; viewCenter: number }) {
-  const center = useTransform(mv, (v) => index * REEL_ITEM_H + v + REEL_ITEM_H / 2);
-  const opacity = useTransform(center, [viewCenter - REEL_ITEM_H * 1.7, viewCenter, viewCenter + REEL_ITEM_H * 1.7], [0.14, 1, 0.14]);
-  return (
-    <motion.div style={{ height: REEL_ITEM_H, opacity }} className="ed flex items-center whitespace-nowrap text-[30px] leading-none text-stone-900 sm:text-[40px]">
-      {label}
-    </motion.div>
-  );
-}
-
-/* An upward-stepping reel of app names: it advances one row at a time, settling
-   on each app with a hold before moving up to the next. Two copies make the
-   loop seamless; a fixed signal dot marks the center line each app settles on. */
-function AppReel() {
-  const viewH = REEL_ITEM_H * REEL_VISIBLE;
-  const viewCenter = viewH / 2;
-  const n = APPS.length;
-  const base = viewCenter - REEL_ITEM_H / 2; // y that centers row 0
-  const mv = useMotionValue(base);
-  const idx = useRef(0);
-  useEffect(() => {
-    let cancelled = false;
-    let hold: ReturnType<typeof setTimeout>;
-    let controls: ReturnType<typeof animate> | undefined;
-    const step = () => {
-      if (cancelled) return;
-      const next = idx.current + 1;
-      controls = animate(mv, base - next * REEL_ITEM_H, {
-        duration: 0.5,
-        ease: [0.5, 0, 0.2, 1],
-        onComplete: () => {
-          idx.current = next;
-          if (next >= n) {
-            // seamless wrap: jump back by one full list — the rows line up
-            idx.current = next - n;
-            mv.set(mv.get() + n * REEL_ITEM_H);
-          }
-          hold = setTimeout(step, 1100);
-        },
-      });
-    };
-    hold = setTimeout(step, 1100);
-    return () => { cancelled = true; clearTimeout(hold); controls?.stop(); };
-  }, [mv, n, base]);
-  // enough copies to keep the viewport full at every offset in the loop
-  const items = [...APPS, ...APPS, ...APPS.slice(0, REEL_VISIBLE)];
-  return (
-    <div className="relative" style={{ height: viewH }}>
-      <span className="pointer-events-none absolute right-1 top-1/2 z-10 block h-2 w-2 -translate-y-1/2 rounded-full bg-signal-500 shadow-[0_0_12px_3px_rgba(27,189,134,0.45)]" />
-      <div
-        className="relative overflow-hidden"
-        style={{ height: viewH, maskImage: "linear-gradient(to bottom, transparent, black 24%, black 76%, transparent)", WebkitMaskImage: "linear-gradient(to bottom, transparent, black 24%, black 76%, transparent)" }}
-      >
-        <motion.div style={{ y: mv }}>
-          {items.map((a, i) => (
-            <ReelItem key={i} label={a} index={i} mv={mv} viewCenter={viewCenter} />
-          ))}
-        </motion.div>
-      </div>
-    </div>
-  );
-}
-
-function RunsEverything() {
-  return (
-    <section className="relative w-full overflow-hidden bg-white">
-      <div className="relative mx-auto grid max-w-[1080px] grid-cols-1 items-center gap-12 px-6 py-28 sm:py-36 md:grid-cols-[1fr_300px] md:gap-16">
-        <div>
-          <div className="text-[12px] font-medium uppercase tracking-[0.18em] text-signal-600">Real macOS</div>
-          <h2 className="ed mt-4 text-[26px] leading-[1.1] text-stone-900 sm:whitespace-nowrap sm:text-[36px]">It runs the apps a real Mac runs</h2>
-          <p className="mt-6 max-w-[40rem] text-[15.5px] leading-relaxed text-stone-500">
-            If it installs on a Mac, it runs on Herds.
-          </p>
-        </div>
-        <AppReel />
-      </div>
-    </section>
-  );
-}
 
 /* ------------------------------------------------------------------ *
  * One Mac, a hundred sandboxes — a single mini partitions into many
@@ -1950,7 +1859,8 @@ function GetStarted() {
           <div className="h-3" />
           <div><span className="text-stone-100">mac</span> = herds.<span className="text-[#82aaff]">mac</span>(tag=<span className="text-[#e5c07b]">&quot;xcode&quot;</span>) <span className="text-stone-600"># idlest match</span></div>
           <div><span className="text-stone-100">mac</span>.<span className="text-[#82aaff]">run</span>(<span className="text-[#e5c07b]">&quot;xcodebuild -scheme App&quot;</span>)</div>
-          <div><span className="text-stone-100">url</span> = <span className="text-stone-100">mac</span>.<span className="text-[#82aaff]">expose</span>(<span className="text-[#6cb6ff]">3000</span>) <span className="text-stone-600"># → public URL</span></div>
+          <div><span className="text-stone-100">sbx</span> = <span className="text-stone-100">mac</span>.<span className="text-[#82aaff]">sandbox</span>()</div>
+          <div><span className="text-stone-100">url</span> = <span className="text-stone-100">sbx</span>.<span className="text-[#82aaff]">expose</span>(<span className="text-[#6cb6ff]">3000</span>) <span className="text-stone-600"># → public URL</span></div>
         </StepCard>
       </motion.div>
 
@@ -2014,6 +1924,118 @@ function AppleNative() {
  * Page — editorial scrollytelling, 10+ sections
  * ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ *
+ * Code examples — four things you can actually write, verified against
+ * the SDK surface (herds.mac / Mac.run / Mac.map / Mac.sandbox+Sandbox.
+ * expose / Mac.agent). Keep these honest: a snippet that AttributeErrors
+ * is worse than no snippet at all.
+ * ------------------------------------------------------------------ */
+
+/* Syntax tokens, matching the StepCard palette so the two read as one system. */
+function PyK({ c }: { c: string }) { return <span className="text-[#c792ea]">{c}</span>; }   // keyword
+function PyF({ c }: { c: string }) { return <span className="text-[#82aaff]">{c}</span>; }   // call
+function PyS({ c }: { c: string }) { return <span className="text-[#e5c07b]">{c}</span>; }   // string
+function PyN({ c }: { c: string }) { return <span className="text-[#6cb6ff]">{c}</span>; }   // number
+function PyC({ c }: { c: string }) { return <span className="text-stone-600">{c}</span>; }   // comment
+function PyV({ c }: { c: string }) { return <span className="text-stone-100">{c}</span>; }   // plain
+
+const EXAMPLES: { label: string; blurb: string; file: string; body: React.ReactNode }[] = [
+  {
+    label: "Run it on a real Mac",
+    blurb: "Pick the idlest Mac in your fleet and run anything a Mac can run.",
+    file: "build.py",
+    body: (
+      <>
+        <div><PyK c="import" /> <PyV c="herds" /></div>
+        <div className="h-3" />
+        <div><PyV c="mac" /> = <PyV c="herds." /><PyF c="mac" />()  <PyC c="# idlest Mac in the fleet" /></div>
+        <div><PyV c="mac." /><PyF c="run" />(<PyS c={'"xcodebuild -scheme App test"'} />, <PyV c="check" />=<PyK c="True" />)</div>
+      </>
+    ),
+  },
+  {
+    label: "Fan out across the fleet",
+    blurb: "One call spreads the work over every Mac you own, in parallel.",
+    file: "suite.py",
+    body: (
+      <>
+        <div><PyV c="mac." /><PyF c="map" />(<PyS c={'"pytest {}"'} />, [<PyS c={'"tests/unit"'} />, <PyS c={'"tests/e2e"'} />])</div>
+        <div className="h-3" />
+        <div><PyC c="# {} is the format slot; 8 in flight by default" /></div>
+        <div><PyV c="mac." /><PyF c="map" />(<PyS c={'"./bench {}"'} />, <PyV c="inputs" />, <PyV c="max_workers" />=<PyN c="8" />)</div>
+      </>
+    ),
+  },
+  {
+    label: "Serve it on a public URL",
+    blurb: "A sandbox is an isolated workspace. Ship code in, expose a port out.",
+    file: "preview.py",
+    body: (
+      <>
+        <div><PyK c="with" /> <PyV c="mac." /><PyF c="sandbox" />(<PyV c="image" />=<PyS c={'"xcode:26"'} />) <PyK c="as" /> <PyV c="sbx" />:</div>
+        <div>{"    "}<PyV c="sbx." /><PyF c="put" />(<PyS c={'"./my-project"'} />)</div>
+        <div>{"    "}<PyV c="sbx." /><PyF c="spawn" />(<PyS c={'"npm run dev"'} />, <PyV c="keep_alive" />=<PyK c="True" />)</div>
+        <div>{"    "}<PyV c="url" /> = <PyV c="sbx." /><PyF c="expose" />(<PyN c="3000" />)  <PyC c="# → public link" /></div>
+      </>
+    ),
+  },
+  {
+    label: "Hand it to an agent",
+    blurb: "Give a coding agent a whole Mac. Keyless — no key lands on it.",
+    file: "agent.py",
+    body: (
+      <>
+        <div><PyV c="mac." /><PyF c="agent" />(<PyS c={'"fix the failing tests and open a PR"'} />,</div>
+        <div>{"          "}<PyV c="proxy" />=<PyS c={'"https://proxy.you.com"'} />,</div>
+        <div>{"          "}<PyV c="secret" />=<PyS c={'"proxyagent"'} />)  <PyC c="# streamed" /></div>
+      </>
+    ),
+  },
+];
+
+function ExampleCard({ e }: { e: (typeof EXAMPLES)[number] }) {
+  return (
+    <motion.div variants={fadeUp} className="flex h-full flex-col">
+      {/* Fixed header height so the terminals line up across the row even when
+          a blurb wraps to a second line at some viewport width. */}
+      <div className="mb-3 md:min-h-[4.25rem]">
+        <h3 className="text-[15px] font-semibold tracking-tight text-stone-900">{e.label}</h3>
+        <p className="mt-1.5 max-w-[46ch] text-[13.5px] leading-relaxed text-stone-500">{e.blurb}</p>
+      </div>
+      <div className="flex flex-1 flex-col overflow-hidden rounded-2xl bg-[#0d1117] shadow-[0_18px_50px_-22px_rgba(13,17,23,0.6)]">
+        <div className="flex items-center gap-1.5 border-b border-white/[0.06] bg-white/[0.04] px-3.5 py-2.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" /><span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" /><span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
+          <span className="mx-auto font-mono text-[10.5px] text-stone-500">{e.file}</span>
+        </div>
+        <pre className="min-h-[150px] flex-1 overflow-x-auto px-5 py-4 font-mono text-[12px] leading-[2] text-stone-200">{e.body}</pre>
+      </div>
+    </motion.div>
+  );
+}
+
+function CodeExamples() {
+  return (
+    <Section>
+      <Reveal className="mx-auto max-w-2xl text-center">
+        <div className="text-[12px] font-medium uppercase tracking-[0.16em] text-signal-600">Write it</div>
+        <h2 className="ed mt-3 text-[32px] leading-[1.05] text-stone-900 sm:text-[44px]">If it installs on a Mac, it runs on Herds</h2>
+        <p className="mx-auto mt-4 max-w-xl text-[15.5px] leading-relaxed text-stone-500">
+          Xcode, Final Cut, Blender, the iOS Simulator, real Safari — the whole Mac, driven from Python. No new runtime to learn.
+        </p>
+      </Reveal>
+      <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} className="mt-12 grid grid-cols-1 items-stretch gap-x-6 gap-y-9 md:grid-cols-2">
+        {EXAMPLES.map((e) => <ExampleCard key={e.label} e={e} />)}
+      </motion.div>
+      <Reveal className="mt-10 text-center" delay={0.05}>
+        <Link href="/docs" className="inline-flex items-center gap-2 rounded-full bg-stone-900 px-5 py-2.5 text-[13px] font-medium text-white transition hover:bg-stone-800">
+          Read the docs
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 11 11 5M6 5h5v5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </Link>
+      </Reveal>
+    </Section>
+  );
+}
+
 export function Landing() {
   return (
     <div className="min-h-screen bg-white font-sans text-stone-900 antialiased">
@@ -2023,7 +2045,7 @@ export function Landing() {
 
         <Capabilities />
 
-        <RunsEverything />
+        <CodeExamples />
 
         <AppleNative />
 

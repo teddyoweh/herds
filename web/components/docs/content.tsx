@@ -745,11 +745,30 @@ const CLI = () => (
 
     <H2>Account &amp; hosting</H2>
     <Code lang="bash">{`herds auth [--token hx_…] [--name <subdomain>]   # sign in, get account + link
+herds auth --repoint                              # point this Mac's CLI back at your account
 herds host [--port 8787] [--no-tunnel] [--quick] # control plane + dashboard + link
 herds host setup                                  # walkthrough: Tailscale Funnel
 herds connect <token>                              # join THIS Mac (token carries its link)
 herds disconnect [id]                              # remove a Mac from the fleet
 herds open                                          # open the dashboard in a browser`}</Code>
+
+    <H3>Which fleet am I talking to?</H3>
+    <P>
+      A Mac can serve its own control plane <em>and</em> have joined someone else&rsquo;s. One machine points at one
+      control plane at a time — <Co>herds status</Co> shows which, and <Co>herds connect</Co> moves it.
+    </P>
+    <P>
+      Signing in doesn&rsquo;t move it on its own. <Co>herds auth</Co> only repoints when the control plane you&rsquo;re
+      on has stopped answering, so joining a colleague&rsquo;s fleet survives a later sign-in. Use{" "}
+      <Co>herds auth --repoint</Co> to switch back to your own account deliberately. <Co>HERDS_CONTROL_PLANE</Co>{" "}
+      overrides both.
+    </P>
+    <Callout type="note" title="The connect token is also your API key">
+      <Co>herds connect</Co> saves the token as this Mac&rsquo;s API key as well as its device token, so the CLI and SDK
+      here can query the fleet it just joined. Because the two move together, a Mac that has hosted and then joined
+      elsewhere won&rsquo;t be left holding its old key against the new control plane. If a call fails with{" "}
+      <Co>401</Co>, the message names the control plane that rejected it.
+    </Callout>
 
     <H2>Running commands</H2>
     <Code lang="bash">{`herds ssh [machine]         # interactive terminal (real pty · Ctrl-] detaches)
