@@ -383,20 +383,33 @@ def _free_port(start: int, tries: int = 64) -> int:
     return start
 
 
-def _already_hosting_panel(st: dict) -> None:
-    """This Mac is already a live host — show its link instead of starting a duplicate."""
+def _already_hosting_panel(st: dict, child: bool = False) -> None:
+    """This Mac is already live — show its link instead of starting a duplicate."""
     public_url = st.get("public_url") or f"http://127.0.0.1:{st.get('port')}"
     token = st.get("token", "")
     provider = st.get("provider", "Herds")
+    join = config.join_token(token, public_url) if token else ""
     open_url = f"{public_url}/?token={token}" if token else public_url
-    console.print(Panel.fit(
-        f"[green]✓ This Mac is already hosting[/green] [dim](pid {st.get('pid')} · port {st.get('port')})[/dim]\n\n"
-        f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]  [dim]via {provider}[/dim]\n\n"
-        f"[bold]Host token[/bold]\n  [yellow]{token}[/yellow] [dim](stable)[/dim]\n\n"
-        f"[dim]Already live — not starting another. To restart, run [bold]herds host --restart[/bold]\n"
-        f"(or stop the running one first).[/dim]",
-        title="herds host", border_style="green",
-    ))
+    if child:
+        console.print(Panel.fit(
+            f"[green]✓ This machine is already live and drivable[/green] "
+            f"[dim](pid {st.get('pid')} · port {st.get('port')})[/dim]\n\n"
+            f"[bold]Take this anywhere and drive it[/bold]\n"
+            f"  [yellow]herds use {join}[/yellow]\n\n"
+            f"[dim]Not starting another. Restart with [bold]herds child --restart[/bold], "
+            f"or stop it with [bold]herds host stop[/bold].[/dim]\n\n"
+            f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]  [dim]via {provider}[/dim]",
+            title="herds child", border_style="green",
+        ))
+    else:
+        console.print(Panel.fit(
+            f"[green]✓ This Mac is already hosting[/green] [dim](pid {st.get('pid')} · port {st.get('port')})[/dim]\n\n"
+            f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]  [dim]via {provider}[/dim]\n\n"
+            f"[bold]Host token[/bold]\n  [yellow]{token}[/yellow] [dim](stable)[/dim]\n\n"
+            f"[dim]Already live — not starting another. To restart, run [bold]herds host --restart[/bold]\n"
+            f"(or stop the running one first).[/dim]",
+            title="herds host", border_style="green",
+        ))
     console.print("\n  [bold green]→ Open your dashboard[/bold green] [dim](opens already signed in)[/dim]")
     console.print(f"    [link={open_url}][cyan]{open_url}[/cyan][/link]\n", soft_wrap=True)
 
@@ -443,7 +456,7 @@ def start_host_background(port: int = 8787, tunnel: bool = True,
 
     existing = _existing_host()
     if existing and not force:
-        _already_hosting_panel(existing)
+        _already_hosting_panel(existing, child=child)
         return
     if existing and force:
         stop_host(quiet=True)
@@ -459,7 +472,8 @@ def start_host_background(port: int = 8787, tunnel: bool = True,
         extra.append("--restart")
 
     log = _host_log_path()
-    console.print("[dim]Starting the host in the background…[/dim]")
+    console.print("[dim]Starting in the background…[/dim]" if child
+                  else "[dim]Starting the host in the background…[/dim]")
     with open(log, "ab", buffering=0) as fh:
         proc = subprocess.Popen(
             _relaunch_cmd(extra, verb="child" if child else "host"),
@@ -474,12 +488,12 @@ def start_host_background(port: int = 8787, tunnel: bool = True,
     with console.status("[dim]waiting for the link to come up…[/dim]", spinner="dots"):
         while time.monotonic() < deadline:
             if proc.poll() is not None:
-                err.print(f"[red]The host exited while starting up.[/red] Log: [dim]{log}[/dim]")
+                err.print(f"[red]It exited while starting up.[/red] Log: [dim]{log}[/dim]")
                 _tail_log(log)
                 raise SystemExit(1)
             st = _existing_host()
             if st:
-                _running_panel(st, log)
+                _running_panel(st, log, child=child)
                 return
             time.sleep(1.0)
 
@@ -496,24 +510,39 @@ def _tail_log(log: Path, n: int = 15) -> None:
         err.print("[dim]" + "\n".join(lines) + "[/dim]")
 
 
-def _running_panel(st: dict, log: Optional[Path] = None) -> None:
+def _running_panel(st: dict, log: Optional[Path] = None, child: bool = False) -> None:
     public_url = st.get("public_url") or f"http://127.0.0.1:{st.get('port')}"
     token = st.get("token", "")
     provider = st.get("provider", "Herds")
     join = config.join_token(token, public_url) if token else ""
     open_url = f"{public_url}/?token={token}" if token else public_url
-    console.print(Panel.fit(
-        f"[green]✓ Herds host is live[/green] [dim](background · pid {st.get('pid')})[/dim]\n\n"
-        f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]  [dim]via {provider}[/dim]\n\n"
-        f"[bold]Connect token[/bold] [dim](carries its own link — this is all you paste)[/dim]\n"
-        f"  [yellow]{join}[/yellow]\n\n"
-        f"[bold]Add another Mac[/bold] [dim](even a fresh one — installs + joins)[/dim]\n"
-        f"  [cyan]curl -fsSL herds.run/install | sh -s -- {join}[/cyan]\n\n"
-        f"[dim]It keeps running after you close this terminal.\n"
-        f"  status  [bold]herds host status[/bold]   ·   stop  [bold]herds host stop[/bold]"
-        + (f"\n  logs    [bold]{log}[/bold]" if log else "") + "[/dim]",
-        title="herds host", border_style="green",
-    ))
+    if child:
+        # Detaching is the default, so this — not the foreground panel — is what
+        # `herds child` actually shows. It has to answer the same one question.
+        console.print(Panel.fit(
+            f"[green]✓ This machine is live and drivable[/green] [dim](background · pid {st.get('pid')})[/dim]\n\n"
+            f"[bold]Take this anywhere and drive it[/bold]\n"
+            f"  [yellow]herds use {join}[/yellow]\n\n"
+            f"[dim]Anyone with that token can run commands here.\n"
+            f"It keeps running after you close this terminal.\n"
+            f"  status  [bold]herds host status[/bold]   ·   stop  [bold]herds host stop[/bold]"
+            + (f"\n  logs    [bold]{log}[/bold]" if log else "") + "[/dim]\n\n"
+            f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]  [dim]via {provider}[/dim]",
+            title="herds child", border_style="green",
+        ))
+    else:
+        console.print(Panel.fit(
+            f"[green]✓ Herds host is live[/green] [dim](background · pid {st.get('pid')})[/dim]\n\n"
+            f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]  [dim]via {provider}[/dim]\n\n"
+            f"[bold]Connect token[/bold] [dim](carries its own link — this is all you paste)[/dim]\n"
+            f"  [yellow]{join}[/yellow]\n\n"
+            f"[bold]Add another Mac[/bold] [dim](even a fresh one — installs + joins)[/dim]\n"
+            f"  [cyan]curl -fsSL herds.run/install | sh -s -- {join}[/cyan]\n\n"
+            f"[dim]It keeps running after you close this terminal.\n"
+            f"  status  [bold]herds host status[/bold]   ·   stop  [bold]herds host stop[/bold]"
+            + (f"\n  logs    [bold]{log}[/bold]" if log else "") + "[/dim]",
+            title="herds host", border_style="green",
+        ))
     console.print("\n  [bold green]→ Open your dashboard[/bold green] [dim](opens already signed in)[/dim]")
     console.print(f"    [link={open_url}][cyan]{open_url}[/cyan][/link]\n", soft_wrap=True)
 
@@ -573,7 +602,7 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
     # Already hosting on this Mac? Don't spin up a duplicate — point at the live one.
     existing = _existing_host()
     if existing and not force:
-        _already_hosting_panel(existing)
+        _already_hosting_panel(existing, child=child)
         return
     if existing and force:
         pid = existing.get("pid")
@@ -595,7 +624,7 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
     # target port is already a live Herds control plane, don't duplicate it.
     if not force and _healthz_ok(port):
         _already_hosting_panel({"port": port, "public_url": f"http://127.0.0.1:{port}",
-                                "token": _persistent_token(), "provider": "local"})
+                                "token": _persistent_token(), "provider": "local"}, child=child)
         return
 
     chosen = _free_port(port)
