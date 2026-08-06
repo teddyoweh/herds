@@ -128,3 +128,57 @@ def test_the_background_relaunch_reinvokes_child(monkeypatch):
     panel written to the log is the host one and the framing is lost for good."""
     assert host._relaunch_cmd([], verb="child")[-2:] == ["child", "--foreground"]
     assert host._relaunch_cmd([], verb="host")[-2:] == ["host", "--foreground"]
+
+
+# -- one command, two names ------------------------------------------------- #
+#
+# `child` and `host` ran identical code and differed only in the words they
+# printed. Two names for one action is worse than either alone, so `child` is
+# the name and `host` stays mounted for scripts and LaunchAgents that predate it.
+
+
+def _names(app):
+    import typer.main
+    return {c.name for c in typer.main.get_command(app).commands.values()}
+
+
+def test_both_names_are_registered():
+    from herds.cli import app
+    assert {"child", "host"} <= _names(app)
+
+
+def test_host_is_hidden_but_child_is_not():
+    import typer.main
+    from herds.cli import app
+    cmds = typer.main.get_command(app).commands
+    assert cmds["host"].hidden is True, "the old name shouldn't be advertised"
+    assert cmds["child"].hidden is False, "the real name must be discoverable"
+
+
+def test_the_two_names_are_one_implementation():
+    """Not copies that can drift — one Typer group mounted twice.
+
+    Typer builds a separate Click wrapper per mount, so the wrappers aren't
+    identical objects; what matters is that both come from the same source
+    group, which is what makes drift impossible rather than merely unlikely.
+    """
+    from herds import cli as cli_mod
+    assert cli_mod.child_app is cli_mod.host_app
+
+
+def test_both_names_expose_the_same_subcommands():
+    import typer.main
+    from herds.cli import app
+    cmds = typer.main.get_command(app).commands
+    assert set(cmds["host"].commands) == set(cmds["child"].commands)
+    for sub in cmds["child"].commands:
+        assert (cmds["host"].commands[sub].callback.__name__
+                == cmds["child"].commands[sub].callback.__name__)
+
+
+def test_management_subcommands_exist_under_child():
+    """`herds child` tells you to run `herds child stop`; that must exist."""
+    import typer.main
+    from herds.cli import app
+    subs = set(typer.main.get_command(app).commands["child"].commands)
+    assert {"status", "stop", "logs"} <= subs

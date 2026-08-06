@@ -120,3 +120,27 @@ def test_shell_is_not_presented_as_an_agent_call():
 ])
 def test_covers_shipped_feature(needle, feature):
     assert needle in SKILL_MD, f"skill doesn't mention {feature}"
+
+
+# -- the README is documentation too ---------------------------------------- #
+#
+# `mac.expose(3000)` — a method that has never existed — sat in the README while
+# the same call was found and fixed on the landing page, and again while the
+# skill was audited. Two passes missed it because nothing checked this file.
+
+README = REPO / "README.md"
+
+
+def test_readme_does_not_call_mac_expose():
+    text = README.read_text()
+    assert not re.search(r"\bmac\.expose\(", text), \
+        "README calls mac.expose() — expose is a Sandbox method"
+
+
+def test_readme_python_calls_resolve():
+    """Every `mac.<method>(` / `herds.<name>(` the README shows must exist."""
+    text = README.read_text()
+    for attr in sorted(set(re.findall(r"\bmac\.([a-z_]+)\(", text))):
+        assert hasattr(Mac, attr), f"README calls mac.{attr}(), which doesn't exist"
+    for attr in sorted(set(re.findall(r"\bherds\.([a-z_]+)\(", text))):
+        assert hasattr(herds, attr), f"README calls herds.{attr}(), which doesn't exist"

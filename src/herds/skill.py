@@ -32,7 +32,7 @@ herds.mac().run("uname -msr")          # runs on that Mac, from anywhere
 ```
 (Or set `HERDS_CONTROL_PLANE` + `HERDS_API_KEY` in the env — same effect.)
 
-To connect your OWN Mac instead: `pip install herds && herds auth && herds host`.
+To make your OWN Mac drivable instead: `pip install herds && herds child`.
 
 ## Given nothing? (make a machine drivable)
 
@@ -43,7 +43,11 @@ herds child                # prints: herds use herds_sk_…@studio.relay.herds.r
 ```
 
 Then from anywhere: `herds use <that token>` and you're driving it. Hold several
-fleets at once and switch by name — `herds contexts`, `herds use work`. From Python:
+fleets at once and switch by name — `herds contexts`, `herds use work`.
+
+There is no separate "host" command to learn: a machine running `herds child` is
+already a control plane other Macs can join with `herds connect <token>`.
+(`herds host` is the old name for `herds child` and still works.) From Python:
 
 ```python
 herds.use("studio")        # this process drives that fleet
@@ -130,7 +134,7 @@ mac.ui.type("hello"); mac.ui.key("return"); mac.ui.hotkey("cmd", "s")  # keyboar
 ```
 
 `screenshot` / `mac.ui.*` need Screen Recording / Accessibility granted to the
-process running `herds host` (System Settings → Privacy & Security).
+process running `herds child` (System Settings → Privacy & Security).
 
 ## Drive real apps (the moat)
 
@@ -191,7 +195,7 @@ herds run -- <cmd>      run a command on a Mac (streams output)
 herds ssh [machine]     interactive terminal on a Mac (Ctrl-] detaches)
 herds machines          list your connected Macs
 herds tags              list Macs with their tags, status, and live CPU
-herds host              self-host control plane + dashboard + public link
+herds child             make THIS machine drivable (herds host = old name)
 herds connect <token>   join THIS Mac to a fleet (the token carries its link)
 ```
 

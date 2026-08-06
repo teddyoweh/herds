@@ -397,7 +397,7 @@ def _already_hosting_panel(st: dict, child: bool = False) -> None:
             f"[bold]Take this anywhere and drive it[/bold]\n"
             f"  [yellow]herds use {join}[/yellow]\n\n"
             f"[dim]Not starting another. Restart with [bold]herds child --restart[/bold], "
-            f"or stop it with [bold]herds host stop[/bold].[/dim]\n\n"
+            f"or stop it with [bold]herds child stop[/bold].[/dim]\n\n"
             f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]  [dim]via {provider}[/dim]",
             title="herds child", border_style="green",
         ))
@@ -476,7 +476,7 @@ def start_host_background(port: int = 8787, tunnel: bool = True,
                   else "[dim]Starting the host in the background…[/dim]")
     with open(log, "ab", buffering=0) as fh:
         proc = subprocess.Popen(
-            _relaunch_cmd(extra, verb="child" if child else "host"),
+            _relaunch_cmd(extra, verb="child"),
             stdout=fh, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
             start_new_session=True,   # detach: survives this terminal closing
             env={**os.environ, "HERDS_HOME": str(config.HERDS_HOME)},
@@ -525,7 +525,7 @@ def _running_panel(st: dict, log: Optional[Path] = None, child: bool = False) ->
             f"  [yellow]herds use {join}[/yellow]\n\n"
             f"[dim]Anyone with that token can run commands here.\n"
             f"It keeps running after you close this terminal.\n"
-            f"  status  [bold]herds host status[/bold]   ·   stop  [bold]herds host stop[/bold]"
+            f"  status  [bold]herds child status[/bold]   ·   stop  [bold]herds child stop[/bold]"
             + (f"\n  logs    [bold]{log}[/bold]" if log else "") + "[/dim]\n\n"
             f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]  [dim]via {provider}[/dim]",
             title="herds child", border_style="green",

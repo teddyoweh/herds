@@ -131,8 +131,8 @@ herds host          # control plane + dashboard + public link
 herds connect herds_sk_…@you.herds.run
 curl -fsSL herds.run/install | sh -s -- herds_sk_…@you.herds.run`}</Code>
     <P>
-      <Co>child</Co> and <Co>host</Co> are the same machinery: <Co>child</Co> is a machine offering itself up,{" "}
-      <Co>host</Co> is the hub a fleet joins.
+      There&rsquo;s no separate &ldquo;host&rdquo; command to learn: a machine running <Co>herds child</Co> is
+      already a control plane other Macs can join. <Co>herds host</Co> is the old name for it.
     </P>
 
     <H2>Were you handed a Mac?</H2>
@@ -476,11 +476,13 @@ const Fleets = ({ go }: { go: Go }) => (
 
   Take this anywhere and drive it
     herds use herds_sk_…@studio.relay.herds.run`}</Code>
-    <Callout type="note" title="child vs host">
-      Same machinery, different framing. <Co>herds child</Co> is the <em>role</em> — offer this machine up.{" "}
-      <Co>herds host</Co> is the <em>infrastructure</em> — be the hub other Macs join with{" "}
-      <A href="#" onClick={(e) => { e.preventDefault(); go("cli"); }}><Co>herds connect</Co></A>. A child is a host
-      that expects to be driven rather than joined.
+    <Callout type="note" title="What it starts">
+      Three things: a small control plane holding <em>this machine&rsquo;s</em> jobs, sandboxes and keys in{" "}
+      <Co>~/.herds/host.db</Co>; the daemon that runs your commands; and one outbound link so the token works from
+      anywhere. No inbound port is opened. Manage it with <Co>herds child status</Co> / <Co>stop</Co> /{" "}
+      <Co>logs</Co>.
+      <br /><br />
+      <Co>herds host</Co> is the old name for this command and still works — they were always the same code.
     </Callout>
 
     <H2>Drive it from anywhere</H2>
@@ -937,6 +939,7 @@ const CLI = ({ go }: { go: Go }) => (
 
     <H2>Be drivable, and drive</H2>
     <Code lang="bash">{`herds child [--name <name>]        # make THIS machine drivable; prints one token
+herds child status | stop | logs   # manage it (herds host is the old name)
 herds use <token>                  # drive that fleet from here (adds + switches)
 herds use <name>                   # switch to a fleet you already have
 herds contexts                     # list the fleets this machine can drive
@@ -949,8 +952,7 @@ herds forget <name>                # drop a fleet's credentials locally`}</Code>
     <H2>Account &amp; hosting</H2>
     <Code lang="bash">{`herds auth [--token hx_…] [--name <subdomain>]   # sign in, get account + link
 herds auth --repoint                              # point this Mac's CLI back at your account
-herds host [--port 8787] [--no-tunnel] [--quick] # control plane + dashboard + link
-herds host setup                                  # walkthrough: Tailscale Funnel
+herds child setup                                 # walkthrough: Tailscale Funnel
 herds connect <token>                              # join THIS Mac (token carries its link)
 herds disconnect [id]                              # remove a Mac from the fleet
 herds open                                          # open the dashboard in a browser`}</Code>

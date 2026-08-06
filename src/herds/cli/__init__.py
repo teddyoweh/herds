@@ -478,8 +478,17 @@ def serve(
     serve_control(host=host, port=port)
 
 
-host_app = typer.Typer(help="Self-host Herds with a secure public link.", invoke_without_command=True)
-app.add_typer(host_app, name="host")
+# One group, two names. `child` and `host` ran identical code and differed only
+# in the words they printed — two names for one action, which is worse than
+# either alone. `child` is the name now; `host` stays mounted (hidden) so
+# existing scripts, LaunchAgents and muscle memory keep working.
+child_app = typer.Typer(
+    help="Make THIS machine drivable, and print one token that drives it.",
+    invoke_without_command=True,
+)
+app.add_typer(child_app, name="child")
+app.add_typer(child_app, name="host", hidden=True)
+host_app = child_app          # the status/stop/logs subcommands hang off this
 
 
 def _probe_fleet(control_plane: str, api_key: Optional[str]):
@@ -579,13 +588,16 @@ def forget(name: str = typer.Argument(..., help="The fleet to remove locally."))
                   + (f" — now driving [bold]{ctxs.current}[/bold]" if ctxs.current else ""))
 
 
-@app.command("child")
-def child(
+@host_app.callback()
+def _child_main(
+    ctx: typer.Context,
     name: Optional[str] = typer.Option(None, "--name", "-n", help="Preferred name for this machine's link (the relay picks the final one)."),
     port: int = typer.Option(8787, help="Control plane port (auto-bumps if busy)."),
     no_tunnel: bool = typer.Option(False, "--no-tunnel", help="LAN only — no public link."),
+    quick: bool = typer.Option(False, "--quick", help="Temporary Cloudflare quick tunnel (changes each run; less reliable)."),
     restart: bool = typer.Option(False, "--restart", "--force", help="Start fresh even if this machine is already live."),
-    foreground: bool = typer.Option(False, "--foreground", "-f", help="Stay attached to this terminal."),
+    foreground: bool = typer.Option(False, "--foreground", "-f", help="Stay attached to this terminal instead of detaching."),
+    background: bool = typer.Option(False, "--background", "-b", help="Force detaching, even when output isn't a terminal."),
 ):
     """Make THIS machine drivable, and print one token that drives it.
 
@@ -594,62 +606,44 @@ def child(
 
         herds use herds_sk_…@studio.relay.herds.run
 
-    `herds host` is the same machinery framed as infrastructure (be the hub for
-    a fleet). This is framed as the role: offer this machine up.
-    """
-    from ..host import ensure_account, run_host, should_detach, start_host_background
+    Three things run: a small control plane holding this machine's jobs,
+    sandboxes and keys; the daemon that executes commands; and one outbound
+    link so the token works from anywhere. No inbound port is opened.
 
-    try:
-        a = ensure_account(name or "")
-    except Exception as exc:  # noqa: BLE001 — relay unreachable / offline
-        err.print(f"[red]✗ Couldn't reach the Herds relay:[/red] {exc}")
-        err.print("[dim]Use [bold]herds child --no-tunnel[/bold] to run LAN-only.[/dim]")
-        raise typer.Exit(1)
-    if name and a.account and a.account != name:
-        console.print(f"[dim]Name [bold]{name}[/bold] was taken — you're [bold]{a.account}[/bold].[/dim]")
+    Runs in the background by default and survives closing the terminal —
+    `herds child status`, `herds child stop`, `herds child logs`.
 
-    if should_detach(foreground, False, sys.stdout.isatty()):
-        start_host_background(port=port, tunnel=not no_tunnel, quick=False, force=restart, child=True)
-    else:
-        run_host(port=port, tunnel=not no_tunnel, quick=False, force=restart, child=True)
-
-
-@host_app.callback()
-def _host_main(
-    ctx: typer.Context,
-    port: int = typer.Option(8787, help="Control plane port (auto-bumps if busy)."),
-    no_tunnel: bool = typer.Option(False, "--no-tunnel", help="Serve locally only, no public link."),
-    quick: bool = typer.Option(False, "--quick", help="Temporary Cloudflare quick tunnel (changes each run; less reliable)."),
-    restart: bool = typer.Option(False, "--restart", "--force", help="Start a new host even if this Mac is already hosting."),
-    foreground: bool = typer.Option(False, "--foreground", "-f", help="Stay attached to this terminal instead of detaching."),
-    background: bool = typer.Option(False, "--background", "-b", help="Force detaching, even when output isn't a terminal."),
-):
-    """Self-host this Mac with a permanent Tailscale Funnel link.
-
-    Runs in the background by default: it prints the link and hands your prompt
-    back, and keeps running after you close the terminal. Manage it with
-    `herds host status` and `herds host stop`.
-
-    If this Mac is already hosting, shows the live link instead of starting a
-    duplicate. Run `herds host setup` first to enable Tailscale Funnel.
+    `herds host` is the old name for this and still works.
     """
     if ctx.invoked_subcommand is not None:
         return
-    from ..host import run_host, should_detach, start_host_background
+    from ..host import ensure_account, run_host, should_detach, start_host_background
 
     if foreground and background:
         err.print("[red]--foreground and --background are mutually exclusive.[/red]")
         raise typer.Exit(2)
 
+    # A link on our own relay needs an account, and the relay gives one out on
+    # request — so ask, rather than falling through to a Cloudflare tunnel.
+    if not no_tunnel and not quick:
+        try:
+            a = ensure_account(name or "")
+        except Exception as exc:  # noqa: BLE001 — relay unreachable / offline
+            err.print(f"[red]✗ Couldn't reach the Herds relay:[/red] {exc}")
+            err.print("[dim]Use [bold]herds child --no-tunnel[/bold] to run LAN-only.[/dim]")
+            raise typer.Exit(1)
+        if name and a.account and a.account != name:
+            console.print(f"[dim]Name [bold]{name}[/bold] was taken — you're [bold]{a.account}[/bold].[/dim]")
+
     if should_detach(foreground, background, sys.stdout.isatty()):
-        start_host_background(port=port, tunnel=not no_tunnel, quick=quick, force=restart)
+        start_host_background(port=port, tunnel=not no_tunnel, quick=quick, force=restart, child=True)
     else:
-        run_host(port=port, tunnel=not no_tunnel, quick=quick, force=restart)
+        run_host(port=port, tunnel=not no_tunnel, quick=quick, force=restart, child=True)
 
 
 @host_app.command("stop")
 def _host_stop():
-    """Stop the host running in the background on this Mac."""
+    """Stop this machine — it stops being drivable."""
     from ..host import stop_host
 
     stop_host()
@@ -657,7 +651,7 @@ def _host_stop():
 
 @host_app.command("status")
 def _host_status():
-    """Show whether this Mac is hosting, and on which link."""
+    """Show whether this machine is live, and on which link."""
     from ..host import host_status
 
     host_status()
@@ -668,7 +662,7 @@ def _host_logs(
     follow: bool = typer.Option(False, "--follow", "-F", help="Stream new output as it arrives."),
     lines: int = typer.Option(40, "--lines", "-n", help="How many trailing lines to show."),
 ):
-    """Show the background host's log."""
+    """Show the log from the background process."""
     from ..host import _host_log_path
 
     log = _host_log_path()

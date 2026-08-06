@@ -87,7 +87,7 @@ Hold as many fleets as you like and switch by name: `herds contexts`, `herds use
 ```bash
 uv tool install herds  # 1 · install        (or: pipx install herds)
 herds auth             # 2 · sign in        — opens your browser, syncs a token back
-herds host             # 3 · go live        — your Mac is now an API
+herds child            # 3 · go live        — your Mac is now an API
 ```
 
 > `uv tool install` / `pipx` put `herds` on your PATH regardless of which Python
@@ -102,19 +102,19 @@ herds host             # 3 · go live        — your Mac is now an API
   Connect token  herds_sk_…@you.herds.run    ← one paste adds another Mac
 
   It keeps running after you close this terminal.
-    status  herds host status   ·   stop  herds host stop
+    status  herds child status   ·   stop  herds child stop
 → opening your dashboard, already signed in …
 ```
 
 That's it. Your Mac is online at a **permanent, branded link** — no Cloudflare,
 no Tailscale, no port forwarding. `herds auth` opens your browser to approve and
 syncs the token back; the dashboard opens already signed in. (No account?
-`herds host` still works with a temporary tunnel.)
+`herds child` provisions one for you — no signup.)
 
-`herds host` **returns your prompt** and keeps serving after you close the
-terminal — check on it with `herds host status`, tail it with `herds host logs`,
-and stop it with `herds host stop`. Use `--foreground` to stay attached instead
-(that's what the `herds install` LaunchAgent uses). The Mac you host from
+`herds child` **returns your prompt** and keeps serving after you close the
+terminal — check on it with `herds child status`, tail it with `herds child logs`,
+and stop it with `herds child stop`. (`herds host` is the old name and still works.) Use `--foreground` to stay attached instead
+(that's what the `herds install` LaunchAgent uses). The Mac you run it on
 **joins its own fleet as a node**, so `herds.mac()` can target it like any other.
 
 ### Requirements
@@ -122,7 +122,7 @@ and stop it with `herds host stop`. Use `--foreground` to stay attached instead
 | | |
 |---|---|
 | **Python** | **3.9 – 3.14.** Every release is tested on all six. |
-| **The Mac you host** | macOS (Apple Silicon or Intel) — this is the runtime. |
+| **The Mac you run it on** | macOS (Apple Silicon or Intel) — this is the runtime. |
 | **The machine you drive from** | Anything that runs Python. The SDK is a thin HTTP/WebSocket client, so your CI, your Linux box, or another Mac all work. |
 
 The SDK deliberately holds the floor at 3.9 so it drops into older CI images and
@@ -150,7 +150,7 @@ import herds
 
 mac = herds.mac()                              # the idlest Mac in your fleet
 print(mac.run("xcodebuild -version").stdout)   # real Xcode, real macOS
-url = mac.expose(3000)                          # any local port → a public URL
+url = mac.sandbox().expose(3000)                # any sandbox port → a public URL
 ```
 
 Prefer the web? Sign up at **[herds.run](https://herds.run)** and manage
@@ -666,14 +666,13 @@ run history — all polling the same API the SDK and CLI use.
 
 ```
 herds child              make THIS machine drivable — prints one token, no signup
+herds child status|stop|logs  manage it  ·  `herds host` is the old name
 herds use <token|name>   drive a fleet (add one, or switch to one you have)
 herds contexts           list the fleets this machine can drive
 herds forget <name>      drop a fleet's credentials locally
 herds auth               sign in (free) — get a stable, branded link
 herds auth --repoint     point this Mac's CLI back at your own account
-herds host               self-host: control plane + dashboard + public link
                          (runs in the background; the Mac joins its own fleet)
-herds host status|stop|logs  manage the background host  ·  --foreground to attach
 herds skill [--install]  print/install the agent skill (SKILL.md) for Claude Code
 herds mcp                MCP server — expose this Mac as tools for ANY agent
 herds doctor             check macOS permissions for driving real apps
