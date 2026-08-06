@@ -36,6 +36,10 @@ def test_child_panels_never_say_host(label, fn, capsys):
 
     assert "hosting" not in out, f"{label} panel tells a child it's hosting"
     assert "herds child" in out, f"{label} panel isn't titled as child"
+    # Every command a child panel suggests must be one `herds child` has. This
+    # is the check that was missing: the restart hint was fixed and the *stop*
+    # hint in the same sentence kept sending people to `herds host stop`.
+    assert "herds host" not in out, f"{label} panel points at a `herds host` command"
 
 
 @pytest.mark.parametrize("label,fn", PANELS, ids=[p[0] for p in PANELS])

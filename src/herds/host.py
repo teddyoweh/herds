@@ -497,8 +497,8 @@ def start_host_background(port: int = 8787, tunnel: bool = True,
                 return
             time.sleep(1.0)
 
-    err.print(f"[yellow]The host is still starting after {int(wait)}s.[/yellow] "
-              f"It may come up shortly — check [bold]herds host status[/bold] or the log:\n  [dim]{log}[/dim]")
+    err.print(f"[yellow]Still starting after {int(wait)}s.[/yellow] It may come up shortly — check "
+              f"[bold]herds {'child' if child else 'host'} status[/bold] or the log:\n  [dim]{log}[/dim]")
 
 
 def _tail_log(log: Path, n: int = 15) -> None:
@@ -739,7 +739,7 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
             f"[bold]Take this anywhere and drive it[/bold]\n"
             f"  [yellow]herds use {join}[/yellow]\n\n"
             f"[dim]Anyone with that token can run commands here. "
-            f"Revoke it with [bold]herds host stop[/bold].[/dim]\n\n"
+            f"Revoke it with [bold]herds child stop[/bold].[/dim]\n\n"
             f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]\n  {link_note}",
             title="herds child", border_style="green",
         ))
