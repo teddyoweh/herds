@@ -54,6 +54,30 @@ def _system_path() -> str:
     return os.pathsep.join(parts)
 
 
+def ensure_account(want: str = "") -> "config.Auth":
+    """An account for this machine, provisioning one if there isn't one yet.
+
+    The relay hands out an account and a subdomain on request — `/relay/provision`
+    takes no auth, and `herds auth` already falls back to it when the browser
+    flow isn't available. But `run_host` gated the relay on ``auth.signed_in``,
+    so a machine that had never signed in fell through to a Cloudflare quick
+    tunnel: a third-party dependency, a URL that changes every run, and a
+    binary to install — for a link our own relay will issue for free.
+
+    So: no signup, no browser, our infra. ``want`` asks for a specific
+    subdomain; the relay decides (and dedupes) the final name.
+    """
+    a = config.Auth.load()
+    if a.signed_in:
+        return a
+    from .relay import provision_account
+
+    info = provision_account(a.relay, want or "")
+    a.token, a.account, a.url = info["token"], info["account"], info.get("url")
+    a.save()
+    return a
+
+
 def _adopt_api_key(token: str) -> None:
     """Give the SDK/CLI on this Mac the key to the control plane it's serving.
 
@@ -395,7 +419,7 @@ def should_detach(foreground: bool, background: bool, isatty: bool) -> bool:
     return isatty
 
 
-def _relaunch_cmd(extra: list) -> list:
+def _relaunch_cmd(extra: list, verb: str = "host") -> list:
     """The command that re-runs *this* herds in the foreground, for the detached child.
 
     Re-executes the running interpreter rather than whatever ``herds`` happens to
@@ -403,12 +427,12 @@ def _relaunch_cmd(extra: list) -> list:
     same virtualenv — the user just invoked.
     """
     return [sys.executable, "-c", "from herds.cli import app; app()",
-            "host", "--foreground", *extra]
+            verb, "--foreground", *extra]
 
 
 def start_host_background(port: int = 8787, tunnel: bool = True,
                           quick: bool = False, force: bool = False,
-                          wait: float = 150.0) -> None:
+                          wait: float = 150.0, child: bool = False) -> None:
     """Start the host detached, wait until it's actually serving, then print the link.
 
     The child is fully re-parented (``start_new_session``) so it outlives this
@@ -438,7 +462,7 @@ def start_host_background(port: int = 8787, tunnel: bool = True,
     console.print("[dim]Starting the host in the background…[/dim]")
     with open(log, "ab", buffering=0) as fh:
         proc = subprocess.Popen(
-            _relaunch_cmd(extra),
+            _relaunch_cmd(extra, verb="child" if child else "host"),
             stdout=fh, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
             start_new_session=True,   # detach: survives this terminal closing
             env={**os.environ, "HERDS_HOME": str(config.HERDS_HOME)},
@@ -543,7 +567,7 @@ def host_status() -> None:
 
 
 def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
-             quick: bool = False, force: bool = False) -> None:
+             quick: bool = False, force: bool = False, child: bool = False) -> None:
     config.ensure_dirs()
 
     # Already hosting on this Mac? Don't spin up a duplicate — point at the live one.
@@ -678,15 +702,28 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
 
     join = config.join_token(token, public_url)
     open_url = f"{public_url}/?token={token}"
-    console.print(Panel.fit(
-        f"[green]✓ Herds host is live[/green]\n\n"
-        f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]\n  {link_note}\n\n"
-        f"[bold]Connect token[/bold] [dim](carries its own link — this is all you paste)[/dim]\n"
-        f"  [yellow]{join}[/yellow]\n\n"
-        f"[bold]Add another Mac[/bold] [dim](even a fresh one — installs + joins)[/dim]\n"
-        f"  [cyan]curl -fsSL herds.run/install | sh -s -- {join}[/cyan]",
-        title="herds host", border_style="green",
-    ))
+    if child:
+        # `herds child` answers one question — "how do I drive this machine?" —
+        # so the token leads and everything else is secondary.
+        console.print(Panel.fit(
+            f"[green]✓ This machine is live and drivable[/green]\n\n"
+            f"[bold]Take this anywhere and drive it[/bold]\n"
+            f"  [yellow]herds use {join}[/yellow]\n\n"
+            f"[dim]Anyone with that token can run commands here. "
+            f"Revoke it with [bold]herds host stop[/bold].[/dim]\n\n"
+            f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]\n  {link_note}",
+            title="herds child", border_style="green",
+        ))
+    else:
+        console.print(Panel.fit(
+            f"[green]✓ Herds host is live[/green]\n\n"
+            f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]\n  {link_note}\n\n"
+            f"[bold]Connect token[/bold] [dim](carries its own link — this is all you paste)[/dim]\n"
+            f"  [yellow]{join}[/yellow]\n\n"
+            f"[bold]Add another Mac[/bold] [dim](even a fresh one — installs + joins)[/dim]\n"
+            f"  [cyan]curl -fsSL herds.run/install | sh -s -- {join}[/cyan]",
+            title="herds host", border_style="green",
+        ))
     # The magic link signs the dashboard in on open. Printed outside the panel so it
     # never gets truncated, and as an OSC-8 hyperlink so it's clickable where supported.
     console.print("\n  [bold green]→ Open your dashboard[/bold green] [dim](opens already signed in)[/dim]")

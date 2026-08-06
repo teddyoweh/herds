@@ -354,7 +354,8 @@ def default_client() -> HerdsClient:
     return _default_client
 
 
-def configure(url: Optional[str] = None, token: Optional[str] = None) -> HerdsClient:
+def configure(url: Optional[str] = None, token: Optional[str] = None,
+              context: Optional[str] = None) -> HerdsClient:
     """Point the SDK at a Mac for this process — the agent-friendly one-liner::
 
         import herds
@@ -363,7 +364,44 @@ def configure(url: Optional[str] = None, token: Optional[str] = None) -> HerdsCl
 
     Equivalent to setting ``HERDS_CONTROL_PLANE`` / ``HERDS_API_KEY``. Either
     argument may be omitted to keep the env/credentials default.
+
+    ``context`` selects a fleet you've already added with ``herds use`` — by
+    name, without repeating its URL or key::
+
+        herds.configure(context="studio")
     """
     global _default_client
+    if context is not None:
+        url, token = _context_pair(context)
     _default_client = HerdsClient(control_plane=url, api_key=token)
     return _default_client
+
+
+def _context_pair(name: str):
+    """(control_plane, api_key) for a named fleet — they only travel together."""
+    ctxs = config.Contexts.load()
+    ctx = ctxs.items.get(name)
+    if ctx is None:
+        known = ", ".join(sorted(ctxs.items)) or "none"
+        raise HerdsError(f"no fleet called {name!r} on this machine (have: {known}). "
+                         f"Add one with `herds use <token>`.")
+    return ctx.control_plane, ctx.api_key
+
+
+def contexts() -> list:
+    """The fleets this machine can drive, active one first."""
+    ctxs = config.Contexts.load()
+    return [{"name": n, "control_plane": c.control_plane, "active": n == ctxs.current}
+            for n, c in sorted(ctxs.items.items(), key=lambda kv: kv[0] != ctxs.current)]
+
+
+def use(name: str) -> HerdsClient:
+    """Drive a named fleet for the rest of this process::
+
+        herds.use("studio")
+        herds.mac().run("uname -msr")
+
+    Process-local: unlike `herds use` on the command line, this doesn't change
+    which fleet the rest of the machine is pointed at.
+    """
+    return configure(context=name)

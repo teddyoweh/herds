@@ -482,6 +482,138 @@ host_app = typer.Typer(help="Self-host Herds with a secure public link.", invoke
 app.add_typer(host_app, name="host")
 
 
+def _probe_fleet(control_plane: str, api_key: Optional[str]):
+    """(machines, error) for a fleet — so `herds use` can confirm what you got."""
+    try:
+        r = _control_http(control_plane, api_key).get("/v1/machines", timeout=15)
+    except Exception as exc:  # noqa: BLE001 — unreachable is an answer, not a crash
+        return None, str(exc)
+    if r.status_code >= 400:
+        return None, _detail(r)
+    try:
+        return r.json().get("machines", []), None
+    except Exception:  # noqa: BLE001
+        return None, "control plane returned something that isn't a fleet"
+
+
+@app.command("use")
+def use(
+    target: Optional[str] = typer.Argument(None, help="A token (herds_sk_…@host) to add, or the name of a fleet you already have."),
+    name: Optional[str] = typer.Option(None, "--as", help="Name this fleet locally (default: from its link)."),
+):
+    """Drive a fleet — add one from a token, or switch to one you already have.
+
+    A control plane and the key that opens it are one pair; `use` moves both or
+    neither, so you can hold several fleets at once and switch by name:
+
+        herds use herds_sk_…@studio.relay.herds.run    # add it, and switch to it
+        herds use studio                               # switch back later
+        herds use                                      # list what you have
+    """
+    ctxs = config.Contexts.load()
+
+    if not target:
+        _print_contexts(ctxs)
+        return
+
+    tok, url = config.split_token(target)
+    if url:                                   # a credential: register it
+        label = name or config.context_name_for(url)
+        machines, error = _probe_fleet(url, tok)
+        if error:
+            err.print(f"[red]✗ Couldn't drive that fleet:[/red] {error}")
+            raise typer.Exit(1)
+        ctxs.add(label, url, tok)
+        ctxs.activate(label)
+        n = len(machines or [])
+        online = sum(1 for m in (machines or []) if m.get("status") == "online")
+        console.print(
+            f"[green]✓ Driving [bold]{label}[/bold][/green] — "
+            f"{n} machine{'s' if n != 1 else ''}"
+            + (f", {online} online" if n else "")
+            + f"\n[dim]{url}[/dim]"
+        )
+        return
+
+    # A bare word: a fleet we already know.
+    if target not in ctxs.items:
+        err.print(f"[red]✗ No fleet called [bold]{target}[/bold].[/red]")
+        _print_contexts(ctxs)
+        raise typer.Exit(1)
+    ctx = ctxs.activate(target)
+    console.print(f"[green]✓ Driving [bold]{target}[/bold][/green]\n[dim]{ctx.control_plane}[/dim]")
+
+
+def _print_contexts(ctxs: "config.Contexts") -> None:
+    if not ctxs.items:
+        console.print("[dim]No fleets yet. Run [bold]herds child[/bold] on a machine you want to "
+                      "drive, then paste its token here with [bold]herds use <token>[/bold].[/dim]")
+        return
+    table = Table(title="Fleets you can drive")
+    table.add_column("", width=1)
+    table.add_column("Name", style="cyan")
+    table.add_column("Control plane", style="dim")
+    for n, c in sorted(ctxs.items.items()):
+        table.add_row("→" if n == ctxs.current else "", n, c.control_plane)
+    console.print(table)
+    console.print("[dim]Switch with [bold]herds use <name>[/bold].[/dim]")
+
+
+@app.command("contexts")
+def contexts_ls():
+    """List the fleets this machine can drive (the active one is marked)."""
+    _print_contexts(config.Contexts.load())
+
+
+@app.command("forget")
+def forget(name: str = typer.Argument(..., help="The fleet to remove locally.")):
+    """Forget a fleet's credentials on this machine (doesn't touch the fleet)."""
+    ctxs = config.Contexts.load()
+    if not ctxs.remove(name):
+        err.print(f"[red]✗ No fleet called [bold]{name}[/bold].[/red]")
+        raise typer.Exit(1)
+    ctxs.save()
+    if ctxs.current:
+        ctxs.activate(ctxs.current)
+    console.print(f"[green]✓[/green] forgot [cyan]{name}[/cyan]"
+                  + (f" — now driving [bold]{ctxs.current}[/bold]" if ctxs.current else ""))
+
+
+@app.command("child")
+def child(
+    name: Optional[str] = typer.Option(None, "--name", "-n", help="Preferred name for this machine's link (the relay picks the final one)."),
+    port: int = typer.Option(8787, help="Control plane port (auto-bumps if busy)."),
+    no_tunnel: bool = typer.Option(False, "--no-tunnel", help="LAN only — no public link."),
+    restart: bool = typer.Option(False, "--restart", "--force", help="Start fresh even if this machine is already live."),
+    foreground: bool = typer.Option(False, "--foreground", "-f", help="Stay attached to this terminal."),
+):
+    """Make THIS machine drivable, and print one token that drives it.
+
+    One command, no account, no signup: it provisions a link on the Herds relay,
+    goes live, and hands you a credential to paste anywhere —
+
+        herds use herds_sk_…@studio.relay.herds.run
+
+    `herds host` is the same machinery framed as infrastructure (be the hub for
+    a fleet). This is framed as the role: offer this machine up.
+    """
+    from ..host import ensure_account, run_host, should_detach, start_host_background
+
+    try:
+        a = ensure_account(name or "")
+    except Exception as exc:  # noqa: BLE001 — relay unreachable / offline
+        err.print(f"[red]✗ Couldn't reach the Herds relay:[/red] {exc}")
+        err.print("[dim]Use [bold]herds child --no-tunnel[/bold] to run LAN-only.[/dim]")
+        raise typer.Exit(1)
+    if name and a.account and a.account != name:
+        console.print(f"[dim]Name [bold]{name}[/bold] was taken — you're [bold]{a.account}[/bold].[/dim]")
+
+    if should_detach(foreground, False, sys.stdout.isatty()):
+        start_host_background(port=port, tunnel=not no_tunnel, quick=False, force=restart, child=True)
+    else:
+        run_host(port=port, tunnel=not no_tunnel, quick=False, force=restart, child=True)
+
+
 @host_app.callback()
 def _host_main(
     ctx: typer.Context,

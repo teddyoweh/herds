@@ -31,6 +31,7 @@ RUN_DIR = HERDS_HOME / "run"
 DEFAULT_CONTROL_PLANE = os.environ.get("HERDS_CONTROL_PLANE", "http://127.0.0.1:8787")
 
 AUTH_PATH = HERDS_HOME / "auth.json"
+CONTEXTS_PATH = HERDS_HOME / "contexts.json"
 # The relay is invisible infra — baked in, overridable only for our own testing.
 # Use a *.relay.herds.run subdomain (not the apex): fresh subdomains always resolve
 # straight to the relay box; the apex can get stale-cached to the wildcard.
@@ -261,3 +262,134 @@ class Auth:
             os.chmod(AUTH_PATH, 0o600)
         except OSError:
             pass
+
+
+# --------------------------------------------------------------------------- #
+# Contexts (many fleets, one active) — set by `herds use`
+# --------------------------------------------------------------------------- #
+#
+# A machine can reach more than one fleet: your own Macs, a colleague's, a CI
+# pool. The control-plane URL and the API key that opens it are *one pair* — a
+# key is only meaningful at the door it was issued for. Keeping them in two
+# single-valued files is what let them drift apart, which surfaced as a good key
+# at the wrong door: "missing API key", or a bare 401 naming neither.
+#
+# So contexts.json is the registry, and the *active* entry is projected into
+# config.json + credentials.json. Everything that already reads those — the
+# daemon, HerdsClient, `herds host` — keeps working untouched, and switching
+# fleets moves both halves or neither.
+
+
+@dataclass
+class Context:
+    """One fleet you can drive: where it is, and the key that opens it."""
+
+    name: str
+    control_plane: str
+    api_key: Optional[str] = None
+    added_ms: int = 0
+
+    def to_json(self) -> dict:
+        return {"control_plane": self.control_plane, "api_key": self.api_key,
+                "added_ms": self.added_ms}
+
+
+@dataclass
+class Contexts:
+    current: Optional[str] = None
+    items: dict = field(default_factory=dict)   # name -> Context
+
+    # -- load / save -------------------------------------------------------- #
+
+    @classmethod
+    def load(cls) -> "Contexts":
+        if not CONTEXTS_PATH.exists():
+            return cls._adopt_existing()
+        try:
+            raw = json.loads(CONTEXTS_PATH.read_text())
+        except (OSError, ValueError):
+            return cls._adopt_existing()
+        items = {
+            name: Context(name=name, control_plane=v.get("control_plane", ""),
+                          api_key=v.get("api_key"), added_ms=v.get("added_ms", 0))
+            for name, v in (raw.get("contexts") or {}).items()
+            if v.get("control_plane")
+        }
+        return cls(current=raw.get("current"), items=items)
+
+    @classmethod
+    def _adopt_existing(cls) -> "Contexts":
+        """A machine set up before contexts existed still has exactly one fleet.
+
+        Treat its config.json + credentials.json as an unnamed context rather
+        than pretending it has none — otherwise `herds contexts` would report
+        nothing on a machine that is very much driving something.
+        """
+        cfg = Config.load()
+        if not cfg.control_plane or cfg.control_plane == DEFAULT_CONTROL_PLANE:
+            return cls()
+        name = context_name_for(cfg.control_plane)
+        creds = Credentials.load()
+        return cls(current=name, items={
+            name: Context(name=name, control_plane=cfg.control_plane, api_key=creds.api_key)
+        })
+
+    def save(self) -> None:
+        ensure_dirs()
+        CONTEXTS_PATH.write_text(json.dumps(
+            {"current": self.current,
+             "contexts": {n: c.to_json() for n, c in self.items.items()}},
+            indent=2,
+        ))
+        try:
+            os.chmod(CONTEXTS_PATH, 0o600)   # holds API keys
+        except OSError:
+            pass
+
+    # -- registry ----------------------------------------------------------- #
+
+    @property
+    def active(self) -> Optional[Context]:
+        return self.items.get(self.current or "")
+
+    def add(self, name: str, control_plane: str, api_key: Optional[str]) -> Context:
+        ctx = Context(name=name, control_plane=control_plane.rstrip("/"),
+                      api_key=api_key, added_ms=now_ms())
+        self.items[name] = ctx
+        return ctx
+
+    def remove(self, name: str) -> bool:
+        if name not in self.items:
+            return False
+        del self.items[name]
+        if self.current == name:
+            self.current = next(iter(self.items), None)
+        return True
+
+    def activate(self, name: str) -> Context:
+        """Select a fleet and project it into the files everything else reads."""
+        ctx = self.items[name]
+        self.current = name
+        self.save()
+        cfg = Config.load()
+        cfg.control_plane = ctx.control_plane
+        cfg.save()
+        creds = Credentials.load()
+        creds.api_key = ctx.api_key      # the pair moves together, always
+        creds.save()
+        return ctx
+
+
+def context_name_for(url: str) -> str:
+    """A short, stable name for a fleet, derived from its URL.
+
+    The relay already hands every account a unique subdomain, so the first label
+    is unique by construction — no registry, no collisions to resolve.
+    """
+    host = (url or "").split("://")[-1].split("/")[0].split(":")[0]
+    if not host:
+        return "default"
+    if host in ("127.0.0.1", "localhost", "::1"):
+        return "local"
+    label = host.split(".")[0]
+    return label or host

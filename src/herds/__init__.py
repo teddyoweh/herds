@@ -29,6 +29,8 @@ from .sdk import (
     TcpTunnel,
     Volume,
     configure,
+    contexts,
+    use,
     mac,
     machines,
     fleet,
@@ -40,7 +42,7 @@ try:  # single source of truth is pyproject; read it back off the install
 
     __version__ = _pkg_version("herds")
 except (ImportError, PackageNotFoundError):  # running from a source tree
-    __version__ = "0.7.6"
+    __version__ = "0.8.0"
 
 __all__ = [
     "App",
@@ -58,6 +60,8 @@ __all__ = [
     "TcpTunnel",
     "Volume",
     "configure",
+    "contexts",
+    "use",
     "mac",
     "machines",
     "fleet",

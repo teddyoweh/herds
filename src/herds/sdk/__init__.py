@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from .app import App, Function, RemoteExecutionError
-from .client import CommandError, HerdsClient, HerdsError, Result, TcpTunnel, configure
+from .client import (CommandError, HerdsClient, HerdsError, Result, TcpTunnel,
+                     configure, contexts, use)
 from .image import Image
 from .mac import Mac, mac, machines, fleet, Fleet
 from .sandbox import Sandbox, Session
@@ -25,6 +26,8 @@ __all__ = [
     "fleet",
     "Fleet",
     "configure",
+    "contexts",
+    "use",
     "Sandbox",
     "Session",
     "Secret",

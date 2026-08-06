@@ -46,6 +46,7 @@ def test_web_copy_matches_the_packaged_skill():
 # (object, attribute) pairs the skill demonstrates.
 CALLS = [
     (herds, "mac"), (herds, "fleet"), (herds, "configure"),
+    (herds, "use"), (herds, "contexts"),
     (herds, "Sandbox"), (herds, "Volume"), (herds, "App"), (herds, "Image"),
     (Mac, "run"), (Mac, "stream"), (Mac, "map"), (Mac, "push"), (Mac, "session"),
     (Mac, "shell"), (Mac, "screenshot"), (Mac, "write"), (Mac, "read_text"),
@@ -113,6 +114,9 @@ def test_shell_is_not_presented_as_an_agent_call():
     ("mac.session(", "sessions"),
     ('herds.mac(tag=', "tag routing"),
     ("herds ssh", "interactive shell CLI"),
+    ("herds child", "making a machine drivable"),
+    ("herds use ", "driving a fleet"),
+    ("herds.use(", "selecting a fleet from Python"),
 ])
 def test_covers_shipped_feature(needle, feature):
     assert needle in SKILL_MD, f"skill doesn't mention {feature}"

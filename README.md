@@ -66,7 +66,23 @@ is the cloud.
 
 ## Quickstart
 
-**Three commands — from nothing to a Mac you can drive from anywhere:**
+**Two commands — one machine drivable, from anywhere:**
+
+```bash
+# on the machine you want to drive — no account, no signup
+herds child
+→ herds use herds_sk_…@studio.relay.herds.run
+
+# anywhere else
+herds use herds_sk_…@studio.relay.herds.run
+herds run -- uname -msr
+```
+
+Hold as many fleets as you like and switch by name: `herds contexts`, `herds use work`.
+
+---
+
+**Or run a whole fleet — from nothing to a Mac you can drive from anywhere:**
 
 ```bash
 uv tool install herds  # 1 · install        (or: pipx install herds)
@@ -649,6 +665,10 @@ run history — all polling the same API the SDK and CLI use.
 ## The CLI
 
 ```
+herds child              make THIS machine drivable — prints one token, no signup
+herds use <token|name>   drive a fleet (add one, or switch to one you have)
+herds contexts           list the fleets this machine can drive
+herds forget <name>      drop a fleet's credentials locally
 herds auth               sign in (free) — get a stable, branded link
 herds auth --repoint     point this Mac's CLI back at your own account
 herds host               self-host: control plane + dashboard + public link

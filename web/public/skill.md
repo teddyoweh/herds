@@ -26,6 +26,22 @@ herds.mac().run("uname -msr")          # runs on that Mac, from anywhere
 
 To connect your OWN Mac instead: `pip install herds && herds auth && herds host`.
 
+## Given nothing? (make a machine drivable)
+
+On the machine you want to drive — no account, no signup:
+
+```bash
+herds child                # prints: herds use herds_sk_…@studio.relay.herds.run
+```
+
+Then from anywhere: `herds use <that token>` and you're driving it. Hold several
+fleets at once and switch by name — `herds contexts`, `herds use work`. From Python:
+
+```python
+herds.use("studio")        # this process drives that fleet
+herds.contexts()           # [{"name": "studio", "active": True, …}]
+```
+
 ## Pick which Mac
 
 ```python

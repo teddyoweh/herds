@@ -417,6 +417,84 @@ results = herds.fleet().map("pytest {}", ALL_TEST_DIRS)   # N Macs → N× throu
   </>
 );
 
+const Fleets = ({ go }: { go: Go }) => (
+  <>
+    <Lead>
+      One command makes a machine drivable. One token drives it from anywhere. If you can reach more than one
+      fleet — your Macs, a colleague&rsquo;s, a CI pool — you hold them all and switch by name.
+    </Lead>
+
+    <H2>Make a machine drivable</H2>
+    <P>
+      On the machine you want to drive, <Co>herds child</Co>. No account, no signup: it provisions a link on the
+      Herds relay, goes live, and prints one credential that carries its own address.
+    </P>
+    <Code lang="bash">{`herds child --name studio
+
+✓ This machine is live and drivable
+
+  Take this anywhere and drive it
+    herds use herds_sk_…@studio.relay.herds.run`}</Code>
+    <Callout type="note" title="child vs host">
+      Same machinery, different framing. <Co>herds child</Co> is the <em>role</em> — offer this machine up.{" "}
+      <Co>herds host</Co> is the <em>infrastructure</em> — be the hub other Macs join with{" "}
+      <A href="#" onClick={(e) => { e.preventDefault(); go("cli"); }}><Co>herds connect</Co></A>. A child is a host
+      that expects to be driven rather than joined.
+    </Callout>
+
+    <H2>Drive it from anywhere</H2>
+    <Code lang="bash">{`herds use herds_sk_…@studio.relay.herds.run
+✓ Driving studio — 1 machine, 1 online
+
+herds machines
+herds run -- uname -msr`}</Code>
+    <P>
+      <Co>use</Co> checks the fleet before it stores anything, then tells you what you got — a credential that
+      doesn&rsquo;t work is never written to disk, so a fleet can&rsquo;t sit in your list quietly 401-ing.
+    </P>
+
+    <H2>Several fleets at once</H2>
+    <Code lang="bash">{`herds use herds_sk_…@studio.relay.herds.run    # add
+herds use herds_sk_…@work.relay.herds.run --as work
+
+herds contexts
+  →  studio   https://studio.relay.herds.run
+     work     https://work.relay.herds.run
+
+herds use work        # switch — no token needed again
+herds forget work     # drop it locally (the fleet is untouched)`}</Code>
+    <P>
+      Names come from the link. The relay gives every account its own subdomain, so the first label is unique by
+      construction — nothing to register and no collisions to resolve. <Co>--as</Co> overrides it.
+    </P>
+
+    <H2>From Python</H2>
+    <Code lang="python">{`import herds
+
+herds.use("studio")                 # for the rest of this process
+herds.mac().run("xcodebuild test")
+
+herds.contexts()                    # [{'name': 'studio', 'active': True, …}]
+herds.configure(context="work")     # same thing, explicit`}</Code>
+    <Callout type="tip" title="Process-local">
+      <Co>herds.use()</Co> in a script points <em>that process</em> at a fleet. It doesn&rsquo;t change what the rest
+      of the machine drives, so a job targeting one fleet can&rsquo;t surprise the next shell command.
+    </Callout>
+
+    <H2>Where it&rsquo;s kept</H2>
+    <P>
+      <Co>~/.herds/contexts.json</Co> (mode 600 — it holds API keys). The active fleet is mirrored into{" "}
+      <Co>config.json</Co> and <Co>credentials.json</Co>, which is what the daemon and SDK read.
+    </P>
+    <Callout type="note" title="A URL and its key are one credential">
+      They only mean anything together: a key is valid at the door it was issued for. Switching moves both halves or
+      neither — which is what stops the &ldquo;good key, wrong door&rdquo; 401 you&rsquo;d otherwise get after
+      pointing a machine somewhere new. A machine set up before contexts existed is adopted as one automatically;
+      there&rsquo;s nothing to migrate.
+    </Callout>
+  </>
+);
+
 const Sandboxes = ({ go }: { go: Go }) => (
   <>
     <Lead>A sandbox is an isolated, persistent workspace on a Mac — its own directory, HOME, and TMPDIR. Ship code in, run servers, expose ports.</Lead>
@@ -812,9 +890,20 @@ except herds.CommandError as e:
 
 /* ============================ CLI ======================================= */
 
-const CLI = () => (
+const CLI = ({ go }: { go: Go }) => (
   <>
     <Lead>The <Co>herds</Co> CLI covers the whole lifecycle — sign in, host a Mac, run commands, and manage volumes, images, and tokens.</Lead>
+
+    <H2>Be drivable, and drive</H2>
+    <Code lang="bash">{`herds child [--name <name>]        # make THIS machine drivable; prints one token
+herds use <token>                  # drive that fleet from here (adds + switches)
+herds use <name>                   # switch to a fleet you already have
+herds contexts                     # list the fleets this machine can drive
+herds forget <name>                # drop a fleet's credentials locally`}</Code>
+    <P>
+      See <A href="#" onClick={(e) => { e.preventDefault(); go("fleets"); }}>Fleets you can drive</A> for the whole
+      flow, including holding several at once.
+    </P>
 
     <H2>Account &amp; hosting</H2>
     <Code lang="bash">{`herds auth [--token hx_…] [--name <subdomain>]   # sign in, get account + link
@@ -1185,6 +1274,7 @@ export const PAGES: DocPage[] = [
 
   { id: "commands", group: "Python SDK", title: "Running commands", description: "run, stream, and map.", Body: Commands },
   { id: "fleet", group: "Python SDK", title: "The fleet", description: "Every Mac you own, addressed as one.", Body: FleetPage },
+  { id: "fleets", group: "Getting started", title: "Fleets you can drive", description: "herds child, herds use, and holding several at once.", Body: Fleets },
   { id: "sandboxes", group: "Python SDK", title: "Sandboxes", description: "Isolated, persistent workspaces.", Body: Sandboxes },
   { id: "sessions", group: "Python SDK", title: "Sessions", description: "Long-lived processes you drive turn by turn.", Body: Sessions },
   { id: "agents", group: "Python SDK", title: "Agents (keyless)", description: "Run Claude Code / Codex on a Mac — no key on the machine.", Body: Agents },

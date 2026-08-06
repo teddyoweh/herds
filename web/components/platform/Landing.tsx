@@ -1941,6 +1941,33 @@ function PyV({ c }: { c: string }) { return <span className="text-stone-100">{c}
 
 const EXAMPLES: { label: string; blurb: string; file: string; body: React.ReactNode }[] = [
   {
+    label: "Make a machine drivable",
+    blurb: "One command on the machine. No account, no signup, no port forwarding.",
+    file: "on the Mac — zsh",
+    body: (
+      <>
+        <div><PyC c="$" /> <PyV c="herds child" /></div>
+        <div className="h-3" />
+        <div><PyC c="✓ This machine is live and drivable" /></div>
+        <div className="h-3" />
+        <div><PyV c="herds use " /><PyS c="herds_sk_…@studio.relay.herds.run" /></div>
+      </>
+    ),
+  },
+  {
+    label: "Drive it from anywhere",
+    blurb: "Paste that token on any machine — Mac, Linux, Windows. Then run things.",
+    file: "anywhere else — zsh",
+    body: (
+      <>
+        <div><PyC c="$" /> <PyV c="herds use " /><PyS c="herds_sk_…@studio.relay.herds.run" /></div>
+        <div><PyC c="✓ Driving studio — 1 machine, 1 online" /></div>
+        <div className="h-3" />
+        <div><PyC c="$" /> <PyV c="herds run -- " /><PyS c="xcodebuild -scheme App test" /></div>
+      </>
+    ),
+  },
+  {
     label: "Run it on a real Mac",
     blurb: "Pick the idlest Mac in your fleet and run anything a Mac can run.",
     file: "build.py",
