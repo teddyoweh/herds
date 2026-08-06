@@ -1833,26 +1833,26 @@ function GetStarted() {
     <Section>
       <Reveal className="mx-auto max-w-2xl text-center">
         <div className="text-[12px] font-medium uppercase tracking-[0.16em] text-signal-600">Set it up</div>
-        <h2 className="ed mt-3 text-[32px] leading-[1.05] text-stone-900 sm:text-[44px]">From nothing to a hundred Macs</h2>
-        <p className="mx-auto mt-4 max-w-xl text-[15.5px] leading-relaxed text-stone-500">Install once, sign in, and host. Every Mac you own joins with a single line — then drive the whole fleet from Python or watch it live in the browser.</p>
+        <h2 className="ed mt-3 text-[32px] leading-[1.05] text-stone-900 sm:text-[44px]">Two commands, then a hundred Macs</h2>
+        <p className="mx-auto mt-4 max-w-xl text-[15.5px] leading-relaxed text-stone-500">One command makes a Mac drivable and prints a token. One command anywhere else drives it. Growing into a fleet is the same two commands, more times.</p>
       </Reveal>
       <motion.div variants={stagger} initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} className="mt-12 grid grid-cols-1 items-stretch gap-5 lg:grid-cols-3">
-        <StepCard step="01" label="Install & sign in" chrome="your Mac — zsh">
+        <StepCard step="01" label="On the Mac — go live" chrome="your Mac — zsh">
           <Cmd c="curl -fsSL herds.run/install | sh" />
-          <Out>installed herds 0.1</Out>
+          <Out>installed herds</Out>
           <div className="h-2" />
-          <Cmd c="herds auth" />
-          <Out>→ approve in your browser…</Out>
-          <Out>signed in as you@team.com</Out>
+          <Cmd c="herds child" />
+          <Out>✓ live and drivable</Out>
+          <Out><span className="text-stone-300">herds_sk_…@studio.relay.herds.run</span></Out>
         </StepCard>
-        <StepCard step="02" label="Host, then add any Mac" chrome="zsh">
-          <Cmt c="# on your main Mac — go live" />
-          <Cmd c="herds host" />
-          <Out>M3 Max · live at <span className="text-stone-300">you.herds.run</span></Out>
+        <StepCard step="02" label="Anywhere else — drive it" chrome="your laptop / PC — zsh">
+          <Cmt c="# no account, no signup" />
+          <Cmd c="herds use herds_sk_…@studio…" />
+          <Out>✓ Driving studio — 1 machine</Out>
           <div className="h-3" />
-          <Cmt c="# on any other Mac that has herds" />
-          <Cmd c="herds connect hx_…@you.herds.run" />
-          <Out>Mac mini joined the fleet</Out>
+          <Cmt c="# several? switch by name" />
+          <Cmd c="herds use work" />
+          <Out>✓ Driving work — 11 machines</Out>
         </StepCard>
         <StepCard step="03" label="Drive it — Python or web" chrome="agent.py">
           <div><span className="text-[#c792ea]">import</span> <span className="text-stone-100">herds</span></div>

@@ -30,6 +30,18 @@ const Introduction = ({ go }: { go: Go }) => (
       forwarding), connects to a tiny control plane, and from then on you run commands on it from a Python SDK or the CLI.
     </P>
 
+    <H2>Two commands</H2>
+    <P>
+      One on the machine you want to drive, one wherever you want to drive it from. No account, no signup, no inbound
+      ports.
+    </P>
+    <Code lang="bash">{`herds child                                   # on the Mac — prints one token
+herds use herds_sk_…@studio.relay.herds.run   # anywhere else — now you're driving it`}</Code>
+    <P>
+      Several Macs that should answer as one pool instead? That&rsquo;s{" "}
+      <Co>herds host</Co> — see <A href="#" onClick={(e) => { e.preventDefault(); go("fleets"); }}>Fleets you can drive</A>.
+    </P>
+
     <Callout type="tip" title="The mental model">
       A <Co>Mac</Co> is a machine you control. A <Co>Sandbox</Co> is an isolated, persistent workspace on it. A <Co>Volume</Co> is a
       named directory that survives across runs. You <Co>run</Co> commands, <Co>expose</Co> ports as public URLs, and ship code with{" "}
@@ -50,6 +62,7 @@ const Introduction = ({ go }: { go: Go }) => (
     <H2>Start here</H2>
     <CardGrid>
       <Card title="Quickstart" desc="From pip install to your first command on a Mac, in under a minute." onClick={() => go("quickstart")} />
+      <Card title="Fleets you can drive" desc="herds child, herds use, and holding several fleets at once." onClick={() => go("fleets")} />
       <Card title="How it works" desc="The daemon, the control plane, and the relay — and why there are no inbound ports." onClick={() => go("how-it-works")} />
       <Card title="Running commands" desc="run, stream, and map — the core of the Python SDK." onClick={() => go("commands")} />
       <Card title="Sandboxes" desc="Isolated, persistent workspaces with public URLs." onClick={() => go("sandboxes")} />
@@ -61,45 +74,73 @@ const Introduction = ({ go }: { go: Go }) => (
 
 const Quickstart = ({ go }: { go: Go }) => (
   <>
-    <Lead>Three commands and your Mac is an API you can drive from anywhere — install, sign in, go live.</Lead>
+    <Lead>
+      Two commands: one on the Mac you want to drive, one wherever you want to drive it from.
+    </Lead>
 
     <H2>1 · Install</H2>
-    <Code lang="bash">{`pip install herds        # or:  uv tool install herds`}</Code>
+    <Code lang="bash">{`uv tool install herds    # recommended (or: pipx install herds)
+pip install herds        # into a project's environment, for the SDK`}</Code>
     <P>
-      Herds needs Python 3.9 or newer. The package ships both the <Co>herds</Co> Python SDK and the <Co>herds</Co> command-line tool.
+      Herds needs Python 3.9 or newer, and ships both the <Co>herds</Co> Python SDK and the <Co>herds</Co>{" "}
+      command-line tool. See <A href="#" onClick={(e) => { e.preventDefault(); go("installation"); }}>Installation</A>{" "}
+      if <Co>herds</Co> isn&rsquo;t found afterwards.
     </P>
 
-    <H2>2 · Sign in &amp; go live</H2>
-    <P>On the Mac you want to make callable:</P>
-    <Code lang="bash">{`herds auth          # sign in — opens your browser to approve, syncs a token back
-herds host          # your Mac goes live: control plane + dashboard + public link`}</Code>
-    <Code lang="text">{`✓ Herds host is live
-  Dashboard      https://you.herds.run     ← permanent, branded link · zero setup
-  Connect token  herds_sk_…@you.herds.run  ← one paste adds another Mac
-→ opening your dashboard, already signed in …`}</Code>
+    <H2>2 · On the Mac: make it drivable</H2>
+    <Code lang="bash">{`herds child`}</Code>
+    <Code lang="text">{`✓ This machine is live and drivable
+
+  Take this anywhere and drive it
+    herds use herds_sk_…@studio.relay.herds.run`}</Code>
     <P>
-      <Co>herds auth</Co> mints your account token and a permanent subdomain like <Co>you.herds.run</Co>; <Co>herds host</Co> starts a
-      local control plane, registers this Mac, and opens a public link — without opening a single inbound port.
+      No account and no signup — it provisions a link on the Herds relay, starts a local control plane, registers this
+      Mac, and prints one credential that carries its own address. No inbound port is opened: the Mac dials out.
     </P>
 
-    <H2>3 · Run your first command</H2>
+    <H2>3 · Anywhere else: drive it</H2>
+    <P>Any machine — another Mac, a Linux box, a Windows PC:</P>
+    <Code lang="bash">{`herds use herds_sk_…@studio.relay.herds.run
+✓ Driving studio — 1 machine, 1 online
+
+herds run -- uname -msr
+herds machines`}</Code>
+    <P>
+      …and from Python, with nothing further to configure:
+    </P>
     <Code lang="python">{`import herds
 
 mac = herds.mac()                       # the idlest Mac in your fleet
 print(mac.run("sw_vers").stdout)
 mac.run("xcodebuild -scheme App test", check=True)   # real Xcode; raises on non-zero exit`}</Code>
+    <Callout type="tip" title="More than one fleet">
+      <Co>herds use</Co> holds as many as you like and switches by name —{" "}
+      <Co>herds contexts</Co>, <Co>herds use work</Co>. See{" "}
+      <A href="#" onClick={(e) => { e.preventDefault(); go("fleets"); }}>Fleets you can drive</A>.
+    </Callout>
 
-    <H2>Add more Macs</H2>
-    <P>Any other Mac joins the same fleet with one line:</P>
-    <Code lang="bash">{`curl -fsSL herds.run/install | sh -s -- hx_…@you.herds.run   # fresh Mac: installs + joins
-herds connect hx_…@you.herds.run                             # already has herds? just connect`}</Code>
+    <H2>Running a fleet instead</H2>
+    <P>
+      Several Macs that should answer as one pool? Sign in for a permanent, branded link, host from one Mac, and join
+      the rest — they all show up in a single fleet.
+    </P>
+    <Code lang="bash">{`herds auth          # free account + a permanent subdomain like you.herds.run
+herds host          # control plane + dashboard + public link
+
+# on every other Mac (a fresh one installs and joins in the same line)
+herds connect herds_sk_…@you.herds.run
+curl -fsSL herds.run/install | sh -s -- herds_sk_…@you.herds.run`}</Code>
+    <P>
+      <Co>child</Co> and <Co>host</Co> are the same machinery: <Co>child</Co> is a machine offering itself up,{" "}
+      <Co>host</Co> is the hub a fleet joins.
+    </P>
 
     <H2>Were you handed a Mac?</H2>
     <P>
-      If someone gave you a Herds <strong className="font-semibold text-stone-800">URL + token</strong>, point the SDK at it — that&rsquo;s all you need:
+      If someone gave you a Herds token, <Co>herds use</Co> it — or point the SDK straight at it:
     </P>
     <Code lang="python">{`import herds
-herds.configure(url="https://you.herds.run", token="hx_…")   # or env: HERDS_CONTROL_PLANE / HERDS_API_KEY
+herds.configure(url="https://you.relay.herds.run", token="hx_…")   # or env: HERDS_CONTROL_PLANE / HERDS_API_KEY
 print(herds.mac().run("uname -msr").stdout)`}</Code>
 
     <Callout type="tip">
