@@ -62,9 +62,8 @@ def _warn_if_not_on_path() -> None:
     print(
         f"note: `herds` is installed at {script}\n"
         f"      but {d} is not on your PATH, so the bare `herds` command won't work.\n"
-        f"      Add it:   export PATH=\"{d}:$PATH\"   (put this in ~/.zshrc)\n"
-        f"      Or install it as a standalone tool, which handles PATH for you:\n"
-        f"                uv tool install herds      # or: pipx install herds\n",
+        f"      Fix it once:   python3 -m herds link\n"
+        f"      (links it into a directory your shell already searches)\n",
         file=sys.stderr,
     )
 

@@ -491,6 +491,56 @@ app.add_typer(child_app, name="host", hidden=True)
 host_app = child_app          # the status/stop/logs subcommands hang off this
 
 
+@app.command("link")
+def link_cmd(
+    dir: Optional[str] = typer.Option(None, "--dir", help="Link into this directory instead of the automatic choice."),
+    force: bool = typer.Option(False, "--force", help="Replace an existing `herds` at the destination."),
+    remove: bool = typer.Option(False, "--remove", help="Undo it."),
+):
+    """Put `herds` on your PATH, system-wide.
+
+    `pip install herds` puts the command in whichever environment did the
+    install — a venv, or `~/.local/bin` with `--user`, which isn't on a default
+    PATH. No package can change that: wheels have no install-time hook.
+
+    This links it somewhere your shell already looks, so `herds` works from any
+    directory and any shell. It's a symlink, so upgrading the package upgrades
+    what it points at.
+
+        python3 -m herds link     # works even when `herds` isn't found yet
+    """
+    from .. import link as linkmod
+
+    if remove:
+        r = linkmod.unlink(dir)
+        if not r["ok"]:
+            err.print(f"[red]✗[/red] {r.get('detail') or r['reason']}: [dim]{r.get('dest','')}[/dim]")
+            raise typer.Exit(1)
+        console.print(f"[green]✓[/green] removed [cyan]{r['dest']}[/cyan]")
+        return
+
+    r = linkmod.link(dir, force=force)
+    if not r["ok"]:
+        err.print(f"[red]✗[/red] {r.get('detail') or r['reason']}")
+        if r.get("reason") == "exists":
+            err.print("[dim]Use [bold]herds link --force[/bold] to replace it.[/dim]")
+        raise typer.Exit(1)
+
+    verb = "already linked" if r["already"] else "linked"
+    console.print(f"[green]✓[/green] {verb}: [cyan]{r['dest']}[/cyan] [dim]→ {r['script']}[/dim]")
+    if r["on_path"]:
+        if linkmod.resolves_to(r["dest"]):
+            console.print("[dim]`herds` now works from anywhere.[/dim]")
+        else:
+            # On PATH but not resolving yet: almost always the shell's command cache.
+            console.print("[dim]Open a new terminal (or run [bold]hash -r[/bold]) and `herds` will work.[/dim]")
+    else:
+        console.print(
+            f"[yellow]{r['dir']} isn't on your PATH yet.[/yellow]\n"
+            f"[dim]Add it:  [bold]echo 'export PATH=\"{r['dir']}:$PATH\"' >> {linkmod.shell_rc()}[/bold][/dim]"
+        )
+
+
 def _probe_fleet(control_plane: str, api_key: Optional[str]):
     """(machines, error) for a fleet — so `herds use` can confirm what you got."""
     try:

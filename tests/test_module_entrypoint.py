@@ -39,8 +39,10 @@ def test_warns_with_the_actual_directory_when_unreachable(monkeypatch, capsys, t
 
     err = capsys.readouterr().err
     assert str(tmp_path) in err, "didn't say where the script is"
-    assert "export PATH=" in err, "didn't give a fix"
-    assert "uv tool install herds" in err, "didn't offer the install that handles PATH"
+    # It used to print an export line for the user to run by hand. There's now a
+    # command that does it, and `python -m herds` is how you reach it when the
+    # bare command isn't found — so the hint has to name that, not homework.
+    assert "python3 -m herds link" in err, "didn't offer the one-command fix"
 
 
 def test_silent_when_no_script_can_be_found(monkeypatch, capsys):

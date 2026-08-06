@@ -249,10 +249,17 @@ curl -fsSL herds.run/install | sh    # does the above, and joins a fleet if you 
       <Co>pip install</Co> puts the <Co>herds</Co> script in the environment that did the install. In a venv that&rsquo;s
       the venv (and it works while that venv is active); with <Co>pip install --user</Co> on macOS it&rsquo;s{" "}
       <Co>~/.local/bin</Co> or <Co>~/Library/Python/3.x/bin</Co>, which aren&rsquo;t on a default PATH — so the install
-      succeeds and the command still isn&rsquo;t found.
-      <Code lang="bash">{`python3 -m herds version   # always works, and prints where the script went`}</Code>
-      Run that and it tells you the directory to add to your PATH. <Co>uv tool install</Co> and <Co>pipx</Co> avoid the
-      problem entirely.
+      succeeds and the command still isn&rsquo;t found. One command fixes it for good:
+      <Code lang="bash">{`python3 -m herds link      # symlinks herds into a directory your shell already searches
+herds link --remove        # undo it`}</Code>
+      <Co>python3 -m herds</Co> works whenever the import does, which is how you reach <Co>link</Co> when the bare
+      command isn&rsquo;t found yet. It&rsquo;s a symlink, so upgrading the package upgrades what it points at.
+    </Callout>
+    <Callout type="warn" title="Why pip can't just do this">
+      Wheels have no post-install hook — pip removed arbitrary install-time code execution deliberately, and only runs
+      setup.py hooks when it can&rsquo;t get a wheel. So no package can put itself on your PATH at install time.{" "}
+      <Co>uv tool install</Co> and <Co>pipx</Co> sidestep it by owning a directory that&rsquo;s already there;{" "}
+      <Co>herds link</Co> is the equivalent for a plain <Co>pip install</Co>.
     </Callout>
 
     <H2>Verify</H2>
@@ -940,6 +947,7 @@ const CLI = ({ go }: { go: Go }) => (
     <H2>Be drivable, and drive</H2>
     <Code lang="bash">{`herds child [--name <name>]        # make THIS machine drivable; prints one token
 herds child status | stop | logs   # manage it (herds host is the old name)
+herds link                         # put herds on your PATH after a pip install
 herds use <token>                  # drive that fleet from here (adds + switches)
 herds use <name>                   # switch to a fleet you already have
 herds contexts                     # list the fleets this machine can drive

@@ -25,6 +25,8 @@ herds.mac().run("uname -msr")          # runs on that Mac, from anywhere
 (Or set `HERDS_CONTROL_PLANE` + `HERDS_API_KEY` in the env — same effect.)
 
 To make your OWN Mac drivable instead: `pip install herds && herds child`.
+(If `herds` isn't found after a pip install, run `python3 -m herds link` once —
+pip puts the script in the installing environment, which may not be on PATH.)
 
 ## Given nothing? (make a machine drivable)
 

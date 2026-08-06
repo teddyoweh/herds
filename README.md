@@ -94,7 +94,9 @@ herds child            # 3 · go live        — your Mac is now an API
 > you have. `pip install herds` also works — use it when you want the SDK inside
 > a project's environment — but it only puts the command on your PATH if that
 > environment's `bin` is there. If `herds` isn't found after a `pip install`,
-> run `python3 -m herds version`: it always works, and prints the directory to add.
+> run `python3 -m herds link` — it symlinks `herds` into a directory your shell
+> already searches, and `python3 -m herds` works whenever the import does.
+> (No package can do this at install time: wheels have no post-install hook.)
 
 ```
 ✓ Herds host is live (background · pid 64265)
@@ -667,6 +669,7 @@ run history — all polling the same API the SDK and CLI use.
 ```
 herds child              make THIS machine drivable — prints one token, no signup
 herds child status|stop|logs  manage it  ·  `herds host` is the old name
+herds link               put `herds` on your PATH after a plain `pip install`
 herds use <token|name>   drive a fleet (add one, or switch to one you have)
 herds contexts           list the fleets this machine can drive
 herds forget <name>      drop a fleet's credentials locally
