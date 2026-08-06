@@ -321,14 +321,15 @@ function HeroFleet() {
             <span className="mx-auto pr-9 font-mono text-[11px] text-stone-500">herds — zsh</span>
           </div>
           <div className="px-5 py-5 font-mono text-[12.5px] leading-[2]">
-            <div><span className="text-signal-400">$</span> <Type text="herds host" delay={0.3} className="text-stone-100" /></div>
-            <TOut delay={1.0}><span className="text-signal-400">✓</span> This Mac · <span className="text-stone-300">M3 Max</span> · live at <span className="text-signal-400">you.herds.run</span></TOut>
+            <div><span className="text-signal-400">$</span> <Type text="herds child" delay={0.3} className="text-stone-100" /></div>
+            <TOut delay={1.0}><span className="text-signal-400">✓</span> live · <span className="text-stone-300">M3 Max</span> · <span className="text-signal-400">herds_sk_…@studio…</span></TOut>
             <div className="h-2.5" />
-            <div><span className="text-signal-400">$</span> <Type text="herds connect mac-mini.local" delay={1.5} className="text-stone-100" /></div>
-            <TOut delay={2.4}><span className="text-signal-400">✓</span> Mac mini joined the fleet</TOut>
+            <div><span className="text-stone-600"># anywhere else</span></div>
+            <div><span className="text-signal-400">$</span> <Type text="herds use herds_sk_…" delay={1.8} className="text-stone-100" /></div>
+            <TOut delay={2.7}><span className="text-signal-400">✓</span> Driving <span className="text-stone-300">studio</span> — 1 machine</TOut>
             <div className="h-2.5" />
-            <div><span className="text-signal-400">$</span> <Type text="herds connect studio.local" delay={3.0} className="text-stone-100" /></div>
-            <TOut delay={3.9}><span className="text-signal-400">✓</span> Mac Studio joined the fleet</TOut>
+            <div><span className="text-signal-400">$</span> <Type text="herds connect studio.local" delay={3.2} className="text-stone-100" /></div>
+            <TOut delay={4.0}><span className="text-signal-400">✓</span> Mac Studio joined the fleet</TOut>
             <div className="h-2.5" />
             <div style={{ opacity: 0, animation: "herdsFade .3s ease forwards", animationDelay: "4.5s" }}>
               <span className="text-signal-400">$</span> <Type text="herds run --all " delay={4.5} className="text-stone-100" /><span className="text-stone-500">&quot;xcodebuild&quot;</span>
@@ -349,15 +350,33 @@ function HeroFleet() {
   );
 }
 
-function CurlPill() {
+/* The whole product in two lines: one command makes a Mac drivable, one drives
+   it. The first row is real and copyable; the second shows what you do with
+   what the first prints, so the token is illustrative rather than clickable. */
+function HeroCommands() {
   const [copied, setCopied] = useState(false);
-  const cmd = "curl -fsSL herds.run/install | sh";
+  const cmd = "curl -fsSL herds.run/install | sh && herds child";
   return (
-    <button onClick={() => { navigator.clipboard?.writeText(cmd); setCopied(true); setTimeout(() => setCopied(false), 1400); }}
-      className="group inline-flex items-center gap-2.5 rounded-full bg-[#f3f2ee] px-4 py-2.5 font-mono text-[12.5px] text-stone-500 transition hover:bg-[#ececea]">
-      <span className="text-signal-600">$</span><span>{cmd}</span>
-      <span className={`text-[11px] ${copied ? "text-signal-600" : "text-stone-400 group-hover:text-stone-600"}`}>{copied ? "copied" : "copy"}</span>
-    </button>
+    <div className="inline-flex w-full max-w-[560px] flex-col overflow-hidden rounded-2xl bg-[#f3f2ee] text-left">
+      <button
+        onClick={() => { navigator.clipboard?.writeText(cmd); setCopied(true); setTimeout(() => setCopied(false), 1400); }}
+        className="group flex items-center gap-3 px-4 py-3 text-left transition hover:bg-[#ececea]"
+      >
+        <span className="hidden shrink-0 text-[10px] uppercase tracking-[0.14em] text-stone-400 sm:block">on the Mac</span>
+        <span className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-stone-600">
+          <span className="text-signal-600">$ </span>{cmd}
+        </span>
+        <span className={`shrink-0 text-[11px] ${copied ? "text-signal-600" : "text-stone-400 group-hover:text-stone-600"}`}>
+          {copied ? "copied" : "copy"}
+        </span>
+      </button>
+      <div className="flex items-center gap-3 border-t border-stone-900/[0.06] px-4 py-3">
+        <span className="hidden shrink-0 text-[10px] uppercase tracking-[0.14em] text-stone-400 sm:block">anywhere else</span>
+        <span className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-stone-500">
+          <span className="text-signal-600/60">$ </span>herds use herds_sk_…@studio.relay.herds.run
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -537,9 +556,9 @@ function Hero() {
         </motion.p>
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.34 }} className="mx-auto mt-9 max-w-[940px]">
           <HeroFleet />
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+          <div className="mt-5 flex flex-col items-center gap-4">
+            <HeroCommands />
             <Link href="/signup" className="inline-flex items-center rounded-full bg-signal-600 px-5 py-2.5 text-[14px] font-medium text-white transition-all hover:-translate-y-px hover:bg-signal-500">Start free</Link>
-            <CurlPill />
           </div>
         </motion.div>
       </div>
