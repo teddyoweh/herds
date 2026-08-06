@@ -34,6 +34,9 @@ def herds_home(tmp_path, monkeypatch):
     for name in ("VOLUMES_DIR", "SANDBOXES_DIR", "IMAGES_DIR", "LOGS_DIR", "RUN_DIR"):
         monkeypatch.setattr(config, name, tmp_path / name.lower())
     monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setattr(config, "CREDENTIALS_PATH", tmp_path / "credentials.json")
+    monkeypatch.delenv("HERDS_API_KEY", raising=False)
+    monkeypatch.delenv("HERDS_DEVICE_TOKEN", raising=False)
     monkeypatch.delenv("HERDS_CONTROL_PLANE", raising=False)
     # Never probe the real network: the answer would depend on whether the
     # developer happens to be hosting on 127.0.0.1:8787 right now.
@@ -175,6 +178,74 @@ def test_herds_auth_heals_config_when_already_signed_in(herds_home, monkeypatch)
 
     assert result.exit_code == 0, result.output
     assert config.Config.load().control_plane == "https://teddyoweh.relay.herds.run"
+
+
+# -- one command on a machine that only drives -------------------------------- #
+#
+# The whole point of `herds auth` on a PC (or any machine you don't lend to the
+# fleet): sign in, and drive. It pointed the control plane at the right fleet
+# and then failed every call with "missing API key" — while the working
+# credential sat in auth.json one file away. The account token is already a
+# valid key on every host you own; `herds host` registers it via
+# put_api_key(auth.token, …, "account"). Nothing ever wrote it locally.
+#
+# This is the third instance of one bug: `host` wrote its token but not the API
+# key, `connect` wrote the device token but not the API key, `auth` wrote
+# neither. control_plane and api_key are one pair — whoever moves one moves both.
+
+
+def test_signing_in_leaves_a_usable_api_key(herds_home):
+    _save_config(config.DEFAULT_CONTROL_PLANE)   # fresh machine, nothing hosted
+    assert config.Credentials.load().api_key is None
+
+    _adopt_control_plane(config.Auth(token="hx_acct", account="ada",
+                                     url="https://ada.relay.herds.run"))
+
+    creds = config.Credentials.load()
+    assert creds.api_key == "hx_acct", "signed in, pointed at the fleet, still can't call it"
+
+
+def test_the_key_moves_only_when_the_door_does(herds_home, alive):
+    """We left the control plane alone, so we leave the credential alone too —
+    otherwise a Mac driving someone else's fleet gets a key for a third."""
+    _save_config("https://bob.relay.herds.run")
+    creds = config.Credentials.load()
+    creds.api_key = "herds_sk_bob"
+    creds.save()
+
+    _adopt_control_plane(config.Auth(token="hx_acct", account="ada",
+                                     url="https://ada.relay.herds.run"))
+
+    assert config.Config.load().control_plane == "https://bob.relay.herds.run"
+    assert config.Credentials.load().api_key == "herds_sk_bob", "key moved without the door"
+
+
+def test_repoint_moves_both(herds_home, alive):
+    _save_config("https://bob.relay.herds.run")
+    creds = config.Credentials.load()
+    creds.api_key = "herds_sk_bob"
+    creds.save()
+
+    _adopt_control_plane(config.Auth(token="hx_acct", account="ada",
+                                     url="https://ada.relay.herds.run"), force=True)
+
+    assert config.Config.load().control_plane == "https://ada.relay.herds.run"
+    assert config.Credentials.load().api_key == "hx_acct"
+
+
+def test_device_token_is_untouched(herds_home):
+    """Adopting the drive credential must not disturb the worker credential."""
+    _save_config(config.DEFAULT_CONTROL_PLANE)
+    creds = config.Credentials.load()
+    creds.device_token = "hd_worker"
+    creds.save()
+
+    _adopt_control_plane(config.Auth(token="hx_acct", account="ada",
+                                     url="https://ada.relay.herds.run"))
+
+    after = config.Credentials.load()
+    assert after.device_token == "hd_worker"
+    assert after.api_key == "hx_acct"
 
 
 def test_other_config_fields_survive(herds_home):

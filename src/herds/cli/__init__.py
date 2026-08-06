@@ -141,6 +141,18 @@ def _adopt_control_plane(a: "config.Auth", *, force: bool = False) -> None:
         return
     cfg.control_plane = url.rstrip("/")
     cfg.save()
+    # The door moved, so the key moves with it. The account token is already a
+    # valid API key on every host you own — `herds host` registers it via
+    # put_api_key(auth.token, …, "account") — but nothing ever wrote it to
+    # credentials.json. So `herds auth` on a machine that isn't hosting (a PC,
+    # a laptop you only drive from) pointed at the right fleet and then failed
+    # every call with "missing API key", with the working credential sitting in
+    # auth.json one file away.
+    if a.token:
+        creds = config.Credentials.load()
+        if creds.api_key != a.token:
+            creds.api_key = a.token
+            creds.save()
     console.print(f"[dim]Control plane → [cyan]{cfg.control_plane}[/cyan] (was {old}).[/dim]")
 
 
@@ -551,7 +563,9 @@ def _print_signed_in(a: "config.Auth") -> None:
         f"[bold]Account[/bold]\n  {a.account}\n\n"
         f"[bold]Your link[/bold]  [dim](after `herds host`)[/dim]\n  [cyan]{a.url or f'https://{a.account}.relay.herds.run'}[/cyan]\n\n"
         f"[bold]Token[/bold]  [dim](use `herds auth --token …` on your other Macs)[/dim]\n  [yellow]{a.token}[/yellow]\n\n"
-        f"[dim]Now run [bold]herds host[/bold] — your Mac goes live at the link above.[/dim]",
+        f"[dim]Drive your fleet from here now: [bold]herds machines[/bold].\n"
+        f"On a Mac you want to *lend* to the fleet, run [bold]herds host[/bold] — "
+        f"it goes live at the link above.[/dim]",
         title="herds auth", border_style="green",
     ))
 
@@ -585,7 +599,7 @@ def auth(
 
     if a.signed_in and not name:
         _adopt_control_plane(a, force=repoint)  # heal a config left pointing at an old endpoint
-        console.print(f"[green]✓ Signed in[/green] as [bold]{a.account}[/bold] — run [bold]herds host[/bold].")
+        console.print(f"[green]✓ Signed in[/green] as [bold]{a.account}[/bold] — drive it with [bold]herds machines[/bold].")
         console.print("[dim]Use [bold]herds auth --name <new>[/bold] to switch accounts.[/dim]")
         return
 
