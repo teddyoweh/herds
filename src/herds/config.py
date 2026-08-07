@@ -60,6 +60,33 @@ def join_token(token: str, url: str) -> str:
     return f"{token}@{host}"
 
 
+# Characters phones and rich text substitute for the ASCII ones a token is made
+# of. A token travels by copy-paste — through Messages, Slack, a terminal that
+# wrapped it mid-string — and arrives subtly altered. `×` for `x` is the common
+# one (iOS autocorrect); the rest are smart quotes and dashes.
+_LOOKALIKES = {
+    "×": "x",   # × MULTIPLICATION SIGN
+    "–": "-", "—": "-", "−": "-",   # – — −
+    "‘": "'", "’": "'", "“": '"', "”": '"',
+    " ": "",    # non-breaking space
+    "​": "",    # zero-width space
+}
+
+
+def normalize_token(value: str):
+    """Repair a token mangled in transit. Returns ``(cleaned, was_changed)``.
+
+    Whitespace is stripped outright: a token has none, so any that shows up came
+    from wrapping — a panel that broke the line, or a phone keyboard. Being
+    forgiving here is the difference between "it works" and an SSL error from
+    three layers down that names none of this.
+    """
+    raw = value or ""
+    out = "".join(_LOOKALIKES.get(c, c) for c in raw)
+    out = "".join(out.split())        # drop every kind of whitespace
+    return out, out != raw.strip()
+
+
 def split_token(value: str):
     """Return ``(token, control_plane_url_or_None)`` for a connect credential.
 

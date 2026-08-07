@@ -244,3 +244,71 @@ def test_sdk_context_selects_the_right_pair(home, fleet_ok):
 
     assert c.control_plane == "https://a.relay.herds.run"
     assert c.api_key == "herds_sk_a", "picked a fleet but kept the other one's key"
+
+
+# -- tokens damaged in transit ---------------------------------------------- #
+#
+# A token travels by copy-paste — Messages, Slack, a terminal that wrapped it
+# mid-string — and arrives altered. A real one came back with × (U+00D7) where
+# x should be, courtesy of a phone keyboard, plus two spaces from the panel
+# wrapping the line. That failed with a UnicodeEncodeError from inside httpx,
+# which names none of what actually happened.
+
+
+@pytest.mark.parametrize("mangled,clean", [
+    # The real one, exactly as it was pasted back.
+    ("herds_sk_Fy0×BAH14QBggMIpj0or1QM×LS_rsZSg@m7d00b43. relay.herds. run",
+     "herds_sk_Fy0xBAH14QBggMIpj0or1QMxLS_rsZSg@m7d00b43.relay.herds.run"),
+    ("herds_sk_abc @ a.relay.herds.run", "herds_sk_abc@a.relay.herds.run"),
+    ("herds_sk_a–b@a.relay.herds.run", "herds_sk_a-b@a.relay.herds.run"),
+])
+def test_normalize_repairs_a_pasted_token(mangled, clean):
+    out, changed = config.normalize_token(mangled)
+    assert out == clean
+    assert changed is True, "repaired the token but didn't flag it"
+
+
+def test_surrounding_whitespace_is_trimmed_quietly():
+    """A trailing newline is how every paste arrives. Normalise it, but don't
+    announce a repair — that would cry wolf on every single use."""
+    out, changed = config.normalize_token("herds_sk_abc@a.relay.herds.run\n")
+    assert out == "herds_sk_abc@a.relay.herds.run"
+    assert changed is False
+
+
+def test_normalize_leaves_a_good_token_alone():
+    good = "herds_sk_Fy0xBAH14QBggMIpj0or1QMxLS_rsZSg@m7d00b43.relay.herds.run"
+    out, changed = config.normalize_token(good)
+    assert out == good and changed is False
+
+
+def test_use_accepts_a_mangled_token(home, fleet_ok):
+    """The whole point: paste what your phone gave you and it still works."""
+    r = runner.invoke(app, ["use", "herds_sk_a×b@a.relay.herds.run"])
+
+    assert r.exit_code == 0, r.output
+    assert config.Contexts.load().items["a"].api_key == "herds_sk_axb", \
+        "stored the token with the substituted character still in it"
+
+
+def test_use_says_it_repaired_the_token(home, fleet_ok):
+    out = runner.invoke(app, ["use", "herds_sk_a×b@a.relay.herds.run"]).output
+    assert "Cleaned up" in out, "silently altered what the user pasted"
+
+
+# -- unreachable fleets explain themselves ---------------------------------- #
+
+
+@pytest.mark.parametrize("exc,expect", [
+    (Exception("[SSL: TLSV1_ALERT_INTERNAL_ERROR] tlsv1 alert internal error (_ssl.c:1077)"),
+     "isn't serving yet"),
+    (Exception("[Errno 8] nodename nor servname provided"), "doesn't resolve"),
+    (Exception("[Errno 61] Connection refused"), "Couldn't reach"),
+])
+def test_reachability_errors_are_translated(exc, expect):
+    """The relay issues a cert when a machine connects, so a link whose machine
+    never came up fails in the TLS handshake. Surfacing `_ssl.c:1077` to someone
+    who just pasted a token explains nothing and blames the wrong thing."""
+    msg = cli_mod._reachability_hint(exc, "https://m7d00b43.relay.herds.run")
+    assert expect in msg
+    assert "_ssl.c" not in msg

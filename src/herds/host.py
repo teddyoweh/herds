@@ -394,8 +394,7 @@ def _already_hosting_panel(st: dict, child: bool = False) -> None:
         console.print(Panel.fit(
             f"[green]✓ This machine is already live and drivable[/green] "
             f"[dim](pid {st.get('pid')} · port {st.get('port')})[/dim]\n\n"
-            f"[bold]Take this anywhere and drive it[/bold]\n"
-            f"  [yellow]herds use {join}[/yellow]\n\n"
+            f"[bold]Take this anywhere and drive it[/bold] [dim](printed below — copies clean)[/dim]\n\n"
             f"[dim]Not starting another. Restart with [bold]herds child --restart[/bold], "
             f"or stop it with [bold]herds child stop[/bold].[/dim]\n\n"
             f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]  [dim]via {provider}[/dim]",
@@ -410,6 +409,9 @@ def _already_hosting_panel(st: dict, child: bool = False) -> None:
             f"(or stop the running one first).[/dim]",
             title="herds host", border_style="green",
         ))
+    if child and join:
+        console.print("\n  [bold green]→ Drive this machine from anywhere[/bold green]")
+        console.print(f"    [yellow]herds use {join}[/yellow]", soft_wrap=True)
     console.print("\n  [bold green]→ Open your dashboard[/bold green] [dim](opens already signed in)[/dim]")
     console.print(f"    [link={open_url}][cyan]{open_url}[/cyan][/link]\n", soft_wrap=True)
 
@@ -521,8 +523,7 @@ def _running_panel(st: dict, log: Optional[Path] = None, child: bool = False) ->
         # `herds child` actually shows. It has to answer the same one question.
         console.print(Panel.fit(
             f"[green]✓ This machine is live and drivable[/green] [dim](background · pid {st.get('pid')})[/dim]\n\n"
-            f"[bold]Take this anywhere and drive it[/bold]\n"
-            f"  [yellow]herds use {join}[/yellow]\n\n"
+            f"[bold]Take this anywhere and drive it[/bold] [dim](printed below — copies clean)[/dim]\n\n"
             f"[dim]Anyone with that token can run commands here.\n"
             f"It keeps running after you close this terminal.\n"
             f"  status  [bold]herds child status[/bold]   ·   stop  [bold]herds child stop[/bold]"
@@ -543,6 +544,9 @@ def _running_panel(st: dict, log: Optional[Path] = None, child: bool = False) ->
             + (f"\n  logs    [bold]{log}[/bold]" if log else "") + "[/dim]",
             title="herds host", border_style="green",
         ))
+    if child and join:
+        console.print("\n  [bold green]→ Drive this machine from anywhere[/bold green]")
+        console.print(f"    [yellow]herds use {join}[/yellow]", soft_wrap=True)
     console.print("\n  [bold green]→ Open your dashboard[/bold green] [dim](opens already signed in)[/dim]")
     console.print(f"    [link={open_url}][cyan]{open_url}[/cyan][/link]\n", soft_wrap=True)
 
@@ -736,8 +740,7 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
         # so the token leads and everything else is secondary.
         console.print(Panel.fit(
             f"[green]✓ This machine is live and drivable[/green]\n\n"
-            f"[bold]Take this anywhere and drive it[/bold]\n"
-            f"  [yellow]herds use {join}[/yellow]\n\n"
+            f"[bold]Take this anywhere and drive it[/bold] [dim](printed below — copies clean)[/dim]\n\n"
             f"[dim]Anyone with that token can run commands here. "
             f"Revoke it with [bold]herds child stop[/bold].[/dim]\n\n"
             f"[bold]Dashboard[/bold]\n  [cyan]{public_url}[/cyan]\n  {link_note}",
@@ -755,6 +758,9 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
         ))
     # The magic link signs the dashboard in on open. Printed outside the panel so it
     # never gets truncated, and as an OSC-8 hyperlink so it's clickable where supported.
+    if child and join:
+        console.print("\n  [bold green]→ Drive this machine from anywhere[/bold green]")
+        console.print(f"    [yellow]herds use {join}[/yellow]", soft_wrap=True)
     console.print("\n  [bold green]→ Open your dashboard[/bold green] [dim](opens already signed in)[/dim]")
     console.print(f"    [link={open_url}][cyan]{open_url}[/cyan][/link]\n", soft_wrap=True)
 

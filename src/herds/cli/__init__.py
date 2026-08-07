@@ -591,12 +591,34 @@ def link_cmd(
         )
 
 
+def _reachability_hint(exc: Exception, control_plane: str) -> str:
+    """Say what an unreachable fleet actually means.
+
+    The relay issues a certificate for a machine's subdomain when that machine
+    connects, so a link whose machine never came up (or has been gone a while)
+    fails during the TLS handshake — surfacing `_ssl.c:1077` to someone who just
+    pasted a token, which explains nothing and blames the wrong thing.
+    """
+    s = str(exc)
+    low = s.lower()
+    host = control_plane.split("://")[-1].split("/")[0]
+    if "ssl" in low or "certificate" in low or "tlsv1" in low:
+        return (f"{host} isn't serving yet — no certificate for it.\n"
+                f"  That link goes live when its machine connects. Run "
+                f"[bold]herds child[/bold] there, or check [bold]herds child status[/bold].")
+    if "name or service not known" in low or "nodename nor servname" in low or "getaddrinfo" in low:
+        return f"{host} doesn't resolve — check the link for a typo."
+    if "connection refused" in low or "connect" in low or "timed out" in low or "timeout" in low:
+        return f"Couldn't reach {host}. Is the machine online?"
+    return s
+
+
 def _probe_fleet(control_plane: str, api_key: Optional[str]):
     """(machines, error) for a fleet — so `herds use` can confirm what you got."""
     try:
         r = _control_http(control_plane, api_key).get("/v1/machines", timeout=15)
     except Exception as exc:  # noqa: BLE001 — unreachable is an answer, not a crash
-        return None, str(exc)
+        return None, _reachability_hint(exc, control_plane)
     if r.status_code >= 400:
         return None, _detail(r)
     try:
@@ -624,6 +646,13 @@ def use(
     if not target:
         _print_contexts(ctxs)
         return
+
+    # A token arrives by copy-paste and can pick up damage on the way: a phone
+    # substituting × for x, or spaces from a line that wrapped. Repair it and
+    # say so, rather than failing three layers down with an encoding error.
+    target, repaired = config.normalize_token(target)
+    if repaired:
+        console.print("[dim]Cleaned up the pasted token (stray spaces or substituted characters).[/dim]")
 
     tok, url = config.split_token(target)
     if url:                                   # a credential: register it
