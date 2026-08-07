@@ -90,13 +90,19 @@ herds auth             # 2 · sign in        — opens your browser, syncs a tok
 herds child            # 3 · go live        — your Mac is now an API
 ```
 
-> `uv tool install` / `pipx` put `herds` on your PATH regardless of which Python
-> you have. `pip install herds` also works — use it when you want the SDK inside
-> a project's environment — but it only puts the command on your PATH if that
-> environment's `bin` is there. If `herds` isn't found after a `pip install`,
-> run `python3 -m herds link` — it symlinks `herds` into a directory your shell
-> already searches, and `python3 -m herds` works whenever the import does.
-> (No package can do this at install time: wheels have no post-install hook.)
+> **The CLI is global, and belongs to no virtualenv.** `uv tool install` / `pipx`
+> give it its own managed environment and put it on your PATH regardless of
+> which Python you have — nothing to activate, and deleting a project can't take
+> `herds` with it. `curl herds.run/install | sh` does the same thing for you.
+>
+> `pip install herds` also works — use it when you want the SDK importable
+> inside a project — but it only puts the *command* on your PATH if that
+> environment's `bin` is there. If `herds` isn't found afterwards, run
+> `python3 -m herds link`: from a venv it installs a standalone copy (uv/pipx)
+> so the command outlives the project; otherwise it symlinks this install into a
+> directory your shell already searches. `python3 -m herds` works whenever the
+> import does. (No package can do this at install time: wheels have no
+> post-install hook.)
 
 ```
 ✓ Herds host is live (background · pid 64265)
@@ -669,7 +675,8 @@ run history — all polling the same API the SDK and CLI use.
 ```
 herds child              make THIS machine drivable — prints one token, no signup
 herds child status|stop|logs  manage it  ·  `herds host` is the old name
-herds link               put `herds` on your PATH after a plain `pip install`
+herds link               make `herds` global — no venv to activate, ever
+                         (`--standalone` forces uv/pipx · `--from-here` links this one)
 herds update [--check]   upgrade, using whichever tool installed it
 herds use <token|name>   drive a fleet (add one, or switch to one you have)
 herds contexts           list the fleets this machine can drive

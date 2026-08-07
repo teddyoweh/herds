@@ -138,6 +138,101 @@ def test_missing_script_is_reported_not_raised(monkeypatch, on_path):
     assert not r["ok"] and r["reason"] == "no-script"
 
 
+def test_companion_scripts_come_along(script, on_path):
+    """`herdsd` next to `herds` — anything shelling out to the daemon by name
+    shouldn't fail while the command it sits beside works."""
+    (script.parent / "herdsd").write_text("#!/bin/sh\n")
+
+    r = linkmod.link()
+
+    assert (on_path / "herdsd").is_symlink()
+    assert str(on_path / "herdsd") in r["also"]
+
+
+def test_a_companion_that_already_exists_is_left_alone(script, on_path):
+    (script.parent / "herdsd").write_text("#!/bin/sh\n")
+    (on_path / "herdsd").write_text("#!/bin/sh\n# somebody else's\n")
+
+    linkmod.link()
+
+    assert "somebody else's" in (on_path / "herdsd").read_text()
+
+
+# --- global, not venv-bound ------------------------------------------------
+
+
+def test_a_venv_install_is_recognised_as_a_venv(monkeypatch):
+    """The whole point of the standalone path: know when we're a tenant."""
+    monkeypatch.setattr(linkmod.sys, "prefix", "/tmp/proj/.venv")
+    monkeypatch.setattr(linkmod.sys, "base_prefix", "/usr")
+    monkeypatch.delenv("UV_TOOL_BIN_DIR", raising=False)
+
+    assert linkmod.install_flavor() == "venv"
+
+
+def test_a_uv_tool_install_is_not_treated_as_a_venv(monkeypatch):
+    """uv's tool environments are venvs by construction, but they're managed and
+    already global — reinstalling over one would be a pointless round trip."""
+    monkeypatch.setattr(linkmod.sys, "prefix", "/Users/x/.local/share/uv/tools/herds")
+    monkeypatch.setattr(linkmod.sys, "base_prefix", "/usr")
+
+    assert linkmod.install_flavor() == "uv-tool"
+
+
+def test_going_global_uses_uv_when_it_is_there(monkeypatch, tmp_path):
+    calls = []
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "herds").write_text("#!/bin/sh\n")
+    monkeypatch.setenv("UV_TOOL_BIN_DIR", str(bin_dir))
+    monkeypatch.setenv("PATH", str(bin_dir))
+    monkeypatch.setattr(linkmod.shutil, "which", lambda n: "/usr/bin/uv" if n == "uv" else None)
+
+    class Done:
+        returncode, stdout, stderr = 0, "installed herds", ""
+
+    monkeypatch.setattr(linkmod.subprocess, "run", lambda argv, **kw: (calls.append(argv), Done())[1])
+
+    r = linkmod.go_global()
+
+    assert r["ok"] and r["tool"] == "uv" and r["on_path"]
+    assert r["dest"] == str(bin_dir / "herds")
+    assert calls[0][1:] == ["tool", "install", "--force", "herds"]
+
+
+def test_going_global_reports_a_failed_installer_instead_of_raising(monkeypatch):
+    monkeypatch.setattr(linkmod.shutil, "which", lambda n: "/usr/bin/uv" if n == "uv" else None)
+
+    class Failed:
+        returncode, stdout, stderr = 1, "", "network is down"
+
+    monkeypatch.setattr(linkmod.subprocess, "run", lambda argv, **kw: Failed())
+
+    r = linkmod.go_global()
+
+    assert not r["ok"] and "network is down" in r["detail"]
+
+
+def test_no_installer_is_an_answer_not_a_crash(monkeypatch):
+    monkeypatch.setattr(linkmod.shutil, "which", lambda _: None)
+
+    r = linkmod.go_global()
+
+    assert not r["ok"] and r["reason"] == "no-installer"
+
+
+def test_an_older_herds_earlier_on_path_is_reported(monkeypatch, tmp_path):
+    """The failure that looks like success: installed fine, shell runs the copy
+    some other install left behind."""
+    old = tmp_path / "old" / "herds"
+    old.parent.mkdir()
+    old.write_text("")
+    monkeypatch.setattr(linkmod.shutil, "which", lambda _: str(old))
+
+    assert linkmod.shadowed_by(str(tmp_path / "new" / "herds")) == str(old)
+    assert linkmod.shadowed_by(str(old)) is None
+
+
 def test_the_not_found_hint_points_at_link(monkeypatch, capsys, tmp_path):
     """`python -m herds` is how you reach `link` when `herds` isn't found, so
     the hint has to name it — printing a manual export line instead leaves the

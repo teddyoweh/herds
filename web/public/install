@@ -6,9 +6,15 @@
 # Optionally connect to a fleet in the same command:
 #   curl -fsSL herds.run/install | sh -s -- <token>
 # (the connect token carries its own link; <link> <token> still works)
+#
+# What this guarantees: a `herds` on your PATH that belongs to no virtualenv.
+# `uv tool install` (or pipx) gives the CLI its own managed environment, so
+# nothing has to be activated before you can type `herds`, and no project you
+# delete later can take it away.
 
 g() { printf "\033[32m%s\033[0m\n" "$1"; }
 d() { printf "\033[2m%s\033[0m\n" "$1"; }
+y() { printf "\033[33m%s\033[0m\n" "$1"; }
 e() { printf "\033[31m%s\033[0m\n" "$1" >&2; }
 
 g "Installing Herds…"
@@ -28,13 +34,24 @@ UV="$(command -v uv 2>/dev/null || true)"
 
 # 3. Install herds. --force/-U so re-running always lands the latest release,
 #    upgrading an existing install in place rather than no-opping on the old one.
+#    Never into a venv, even if one is active: this command is meant to outlive
+#    every project on the machine, so ask the installers for their own env.
+unset VIRTUAL_ENV
+METHOD=""
 if [ -n "$UV" ]; then
   "$UV" tool install --force herds || { e "uv tool install failed."; exit 1; }
   "$UV" tool update-shell >/dev/null 2>&1 || true
+  METHOD="uv"
 elif command -v pipx >/dev/null 2>&1; then
-  pipx install --force herds
+  pipx install --force herds || { e "pipx install failed."; exit 1; }
+  METHOD="pipx"
 elif command -v pip3 >/dev/null 2>&1; then
-  pip3 install --user -U herds
+  # Last resort: a --user install writes the script somewhere that may not be on
+  # PATH. `herds link` is what fixes that, so run it rather than leaving a
+  # "successfully installed" that the shell can't find.
+  pip3 install --user -U herds || { e "pip3 install failed."; exit 1; }
+  python3 -m herds link >/dev/null 2>&1 || true
+  METHOD="pip"
 else
   e "Couldn't install uv, and no pipx/pip3 found."
   e "Install Python 3.9+ (brew install python) or uv, then re-run."
@@ -51,10 +68,41 @@ if [ -z "$HERDS" ]; then
   exit 0
 fi
 
+# 4. Make sure ~/.local/bin survives into future shells. uv's update-shell does
+#    this for uv installs; do it ourselves for the others, or the command works
+#    in this terminal and nowhere else.
+case ":$PATH:" in *":$HOME/.local/bin:"*) NEEDS_RC="" ;; *) NEEDS_RC="1" ;; esac
+if [ "$METHOD" != "uv" ] && [ -n "$NEEDS_RC" ]; then
+  case "$(basename "${SHELL:-zsh}")" in
+    bash) RC="$HOME/.bash_profile" ;;
+    fish) RC="" ;;   # fish has its own syntax; tell the user instead of guessing
+    *)    RC="$HOME/.zshrc" ;;
+  esac
+  if [ -n "$RC" ] && ! grep -qs 'HOME/.local/bin' "$RC"; then
+    printf '\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$RC"
+    d "  added ~/.local/bin to your PATH in $RC"
+  fi
+fi
+
 g "✓ Herds installed"
 "$HERDS" version 2>/dev/null || true
 
-# 4. If a connect token was passed, join the fleet right now. One argument is
+# 5. A stale herds from some earlier install can sit earlier on PATH and keep
+#    winning — the install looks perfect and every command runs old code. Say
+#    which file it is, because nobody finds this on their own.
+RESOLVED="$(command -v herds 2>/dev/null || true)"
+if [ -n "$RESOLVED" ] && [ "$RESOLVED" != "$HERDS" ]; then
+  NEW_V="$("$HERDS" version 2>/dev/null | tr -d '\r')"
+  OLD_V="$("$RESOLVED" version 2>/dev/null | tr -d '\r')"
+  if [ "$NEW_V" != "$OLD_V" ]; then
+    echo
+    y "Heads up: your shell finds $RESOLVED first ($OLD_V)."
+    d "  The one just installed is $HERDS ($NEW_V)."
+    d "  Remove the old file, or put its directory later in PATH."
+  fi
+fi
+
+# 6. If a connect token was passed, join the fleet right now. One argument is
 #    the modern form (the token carries its own link); two is the old link+token.
 if [ -n "$1" ]; then
   echo
@@ -69,7 +117,7 @@ fi
 echo
 d "Next steps:"
 echo "  herds auth                       # sign in (stable link)"
-echo "  herds host                       # put THIS Mac online"
+echo "  herds child                      # put THIS Mac online"
 echo "  herds connect <token>            # join another host's fleet"
 echo
 d "If 'herds' isn't found, open a new terminal (uv added it to your PATH)."

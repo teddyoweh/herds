@@ -546,19 +546,26 @@ def link_cmd(
     dir: Optional[str] = typer.Option(None, "--dir", help="Link into this directory instead of the automatic choice."),
     force: bool = typer.Option(False, "--force", help="Replace an existing `herds` at the destination."),
     remove: bool = typer.Option(False, "--remove", help="Undo it."),
+    from_here: bool = typer.Option(False, "--from-here", help="Link *this* install even if it lives in a venv."),
+    standalone: bool = typer.Option(False, "--standalone", help="Always reinstall as a standalone tool (uv/pipx)."),
 ):
-    """Put `herds` on your PATH, system-wide.
+    """Make `herds` a global command, independent of any venv.
 
     `pip install herds` puts the command in whichever environment did the
     install — a venv, or `~/.local/bin` with `--user`, which isn't on a default
     PATH. No package can change that: wheels have no install-time hook.
 
-    This links it somewhere your shell already looks, so `herds` works from any
-    directory and any shell. It's a symlink, so upgrading the package upgrades
-    what it points at.
+    From a venv, this installs herds as a standalone tool (uv or pipx — its own
+    environment, nothing to activate), because a symlink into a venv is a global
+    command that dies the day that project does. The venv keeps its copy, so the
+    SDK stays importable there. Otherwise it symlinks this install into a
+    directory your shell already searches — a symlink, so upgrading the package
+    upgrades what it points at.
 
         python3 -m herds link     # works even when `herds` isn't found yet
     """
+    import os
+
     from .. import link as linkmod
 
     if remove:
@@ -568,6 +575,39 @@ def link_cmd(
             raise typer.Exit(1)
         console.print(f"[green]✓[/green] removed [cyan]{r['dest']}[/cyan]")
         return
+
+    flavor = linkmod.install_flavor()
+    # A venv install is the one case where linking answers the wrong question.
+    want_standalone = standalone or (flavor == "venv" and not from_here and not dir)
+
+    if want_standalone:
+        tool = linkmod.standalone_installer()
+        if not tool:
+            if standalone:
+                err.print("[red]✗[/red] Neither [bold]uv[/bold] nor [bold]pipx[/bold] is installed.\n"
+                          "[dim]Get uv:  curl -LsSf https://astral.sh/uv/install.sh | sh[/dim]")
+                raise typer.Exit(1)
+            console.print(
+                "[yellow]This herds lives in a virtualenv.[/yellow] [dim]No uv or pipx here to install a "
+                "standalone copy, so linking this one — it stops working if the venv goes away.[/dim]"
+            )
+        else:
+            console.print(f"[dim]Installing herds as a standalone tool with {tool[0]} …[/dim]")
+            r = linkmod.go_global()
+            if not r["ok"]:
+                err.print(f"[red]✗[/red] {r.get('detail') or r['reason']}")
+                err.print("[dim]Link this install instead:  [bold]herds link --from-here[/bold][/dim]")
+                raise typer.Exit(1)
+            console.print(f"[green]✓[/green] installed standalone: [cyan]{r['dest']}[/cyan] "
+                          f"[dim](via {r['tool']}, independent of any venv)[/dim]")
+            if not r["on_path"]:
+                d = os.path.dirname(r["dest"] or "")
+                console.print(
+                    f"[yellow]{d} isn't on your PATH yet.[/yellow]\n"
+                    f"[dim]Add it:  [bold]echo 'export PATH=\"{d}:$PATH\"' >> {linkmod.shell_rc()}[/bold][/dim]"
+                )
+            _warn_if_shadowed(linkmod, r["dest"])
+            return
 
     r = linkmod.link(dir, force=force)
     if not r["ok"]:
@@ -589,6 +629,28 @@ def link_cmd(
             f"[yellow]{r['dir']} isn't on your PATH yet.[/yellow]\n"
             f"[dim]Add it:  [bold]echo 'export PATH=\"{r['dir']}:$PATH\"' >> {linkmod.shell_rc()}[/bold][/dim]"
         )
+    if flavor == "venv":
+        console.print("[dim]Note: this link points into a virtualenv — it breaks if that venv is removed. "
+                      "[bold]herds link --standalone[/bold] installs a copy that doesn't.[/dim]")
+    _warn_if_shadowed(linkmod, r["dest"])
+
+
+def _warn_if_shadowed(linkmod, dest: Optional[str]) -> None:
+    """Say so when an older `herds` earlier on PATH still wins.
+
+    Otherwise the install looks perfect and `herds --version` keeps printing the
+    version someone installed a different way months ago.
+    """
+    import os
+
+    other = linkmod.shadowed_by(dest) if dest else None
+    if not other:
+        return
+    console.print(
+        f"[yellow]Heads up:[/yellow] your shell finds [cyan]{other}[/cyan] first — an older herds from a "
+        f"different install.\n[dim]Remove it (or put {os.path.dirname(dest)} earlier in PATH) so "
+        f"`herds` means the one you just installed.[/dim]"
+    )
 
 
 def _reachability_hint(exc: Exception, control_plane: str) -> str:
