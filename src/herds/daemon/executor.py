@@ -414,6 +414,26 @@ def _seatbelt_profile(sandbox: Sandbox, volume_paths: list[Path], network: bool)
 """
 
 
+# macOS ships zsh as the login shell, so a string command was wrapped in
+# /bin/zsh -lc unconditionally. On Linux — a Raspberry Pi, a CI box — there is
+# usually no /bin/zsh, so the machine registered fine, showed as online, and
+# then failed *every* command with "No such file or directory: '/bin/zsh'".
+#
+# -l (login shell) is the part that matters and is worth keeping: it sources the
+# user's profile, which is where Homebrew, asdf, nvm and friends put things on
+# PATH. Prefer the user's own shell, then the platform's usual ones.
+def _login_shell() -> str:
+    """The shell to run a string command through, on this machine."""
+    import os as _os
+
+    candidates = [_os.environ.get("SHELL", "")]
+    candidates += ["/bin/zsh", "/bin/bash", "/usr/bin/zsh", "/usr/bin/bash", "/bin/sh"]
+    for sh in candidates:
+        if sh and _os.path.exists(sh):
+            return sh
+    return "/bin/sh"          # POSIX guarantees this one
+
+
 def _wrap_command(
     command: Union[list[str], str],
     sandbox: Sandbox,
@@ -422,7 +442,7 @@ def _wrap_command(
 ) -> list[str]:
     """Return the argv to exec, wrapped in sandbox-exec when available."""
     if isinstance(command, str):
-        inner = ["/bin/zsh", "-lc", command]
+        inner = [_login_shell(), "-lc", command]
     else:
         inner = list(command)
 
@@ -700,7 +720,7 @@ class Executor:
             )
         # inherit_home means "run as me" — no Seatbelt write-fence (full host access).
         if inherit_home:
-            argv = ["/bin/zsh", "-lc", command] if isinstance(command, str) else list(command)
+            argv = [_login_shell(), "-lc", command] if isinstance(command, str) else list(command)
         else:
             argv = _wrap_command(command, sandbox, volume_paths, network)
         return sandbox, argv, cwd, full_env
@@ -738,7 +758,7 @@ class Executor:
         for i, cmd in enumerate(setup_commands, 1):
             await sink("stderr", f"herds: provisioning ({i}/{n}): {cmd}\n")
             if inherit_home:
-                argv = ["/bin/zsh", "-lc", cmd]
+                argv = [_login_shell(), "-lc", cmd]
             else:
                 argv = _wrap_command(cmd, sandbox, volume_paths, network)
             try:
