@@ -491,6 +491,56 @@ app.add_typer(child_app, name="host", hidden=True)
 host_app = child_app          # the status/stop/logs subcommands hang off this
 
 
+@app.command("update")
+def update_cmd(
+    check: bool = typer.Option(False, "--check", help="Only report what's available; change nothing."),
+):
+    """Upgrade Herds to the latest release.
+
+    Works out how this copy was installed — uv tool, pipx, or pip — and uses
+    that tool, because upgrading a uv-managed install with pip leaves what's on
+    your PATH untouched and looks like it did nothing.
+    """
+    from .. import update as up
+
+    have = up.installed_version()
+    console.print(f"[dim]installed[/dim]  [bold]{have}[/bold]")
+
+    latest = up.latest_version()
+    if latest is None:
+        err.print("[yellow]Couldn't reach PyPI to check for updates.[/yellow]")
+        raise typer.Exit(1)
+    console.print(f"[dim]latest[/dim]     [bold]{latest}[/bold]")
+
+    if up.parse_version(latest) <= up.parse_version(have):
+        console.print("[green]✓[/green] already up to date.")
+        return
+
+    method, argv, note = up.install_method()
+    if check:
+        console.print(f"\n[yellow]↑ {have} → {latest}[/yellow] available "
+                      f"[dim](installed via {note})[/dim]")
+        console.print(f"[dim]Run [bold]herds update[/bold], or: {' '.join(argv)}[/dim]")
+        return
+
+    console.print(f"\n[dim]updating via {note}…[/dim]")
+    ok, out = up.run_upgrade(argv)
+    if not ok:
+        err.print(f"[red]✗ Update failed.[/red]\n[dim]{out[-600:]}[/dim]")
+        err.print(f"[dim]Try it directly: [bold]{' '.join(argv)}[/bold][/dim]")
+        raise typer.Exit(1)
+
+    # Re-read from a fresh interpreter: this one imported the old version.
+    now = up.installed_after_upgrade()
+    if now and up.parse_version(now) >= up.parse_version(latest):
+        console.print(f"[green]✓[/green] updated to [bold]{now}[/bold]")
+    elif now:
+        err.print(f"[yellow]Still on {now} after upgrading.[/yellow] "
+                  f"[dim]A package index cache can lag a fresh release by a few minutes.[/dim]")
+    else:
+        console.print(f"[green]✓[/green] updated [dim](restart your shell to be sure)[/dim]")
+
+
 @app.command("link")
 def link_cmd(
     dir: Optional[str] = typer.Option(None, "--dir", help="Link into this directory instead of the automatic choice."),

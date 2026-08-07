@@ -670,6 +670,7 @@ run history — all polling the same API the SDK and CLI use.
 herds child              make THIS machine drivable — prints one token, no signup
 herds child status|stop|logs  manage it  ·  `herds host` is the old name
 herds link               put `herds` on your PATH after a plain `pip install`
+herds update [--check]   upgrade, using whichever tool installed it
 herds use <token|name>   drive a fleet (add one, or switch to one you have)
 herds contexts           list the fleets this machine can drive
 herds forget <name>      drop a fleet's credentials locally

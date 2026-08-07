@@ -255,6 +255,18 @@ herds link --remove        # undo it`}</Code>
       <Co>python3 -m herds</Co> works whenever the import does, which is how you reach <Co>link</Co> when the bare
       command isn&rsquo;t found yet. It&rsquo;s a symlink, so upgrading the package upgrades what it points at.
     </Callout>
+    <H2>Staying current</H2>
+    <P>
+      <Co>herds update</Co> works out how this copy was installed — uv tool, pipx, or pip — and upgrades with that
+      tool. It matters: <Co>pip install -U</Co> into a uv-managed install leaves the binary on your PATH untouched, so
+      it looks like it worked and nothing changed. <Co>--check</Co> reports without changing anything.
+    </P>
+    <Code lang="bash">{`herds update
+  installed  0.9.0
+  latest     0.9.2
+  updating via pip (venv)…
+  ✓ updated to 0.9.2`}</Code>
+
     <Callout type="warn" title="Why pip can't just do this">
       Wheels have no post-install hook — pip removed arbitrary install-time code execution deliberately, and only runs
       setup.py hooks when it can&rsquo;t get a wheel. So no package can put itself on your PATH at install time.{" "}
@@ -948,6 +960,7 @@ const CLI = ({ go }: { go: Go }) => (
     <Code lang="bash">{`herds child [--name <name>]        # make THIS machine drivable; prints one token
 herds child status | stop | logs   # manage it (herds host is the old name)
 herds link                         # put herds on your PATH after a pip install
+herds update [--check]             # upgrade, using whatever installed it
 herds use <token>                  # drive that fleet from here (adds + switches)
 herds use <name>                   # switch to a fleet you already have
 herds contexts                     # list the fleets this machine can drive
