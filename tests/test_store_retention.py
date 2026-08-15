@@ -41,6 +41,18 @@ def test_giant_outputs_are_capped(tmp_path):
     assert out.endswith("[truncated by retention]")
 
 
+def test_giant_commands_are_capped(tmp_path):
+    # The bug the first cut missed: bloat lived in `command`, not `output`.
+    s = Store(tmp_path / "h.db")
+    s.db.execute("INSERT INTO jobs (request_id, machine_id, state, created_ms, command) VALUES ('bigcmd','m','succeeded',?,?)",
+                 (_old_ms(0.1), "base64blob" * 200_000))
+    s.db.commit()
+    s.prune()
+    cmd = s.db.execute("SELECT command FROM jobs WHERE request_id='bigcmd'").fetchone()["command"]
+    assert len(cmd) < Store.PRUNE_COMMAND_CAP + 100
+    assert cmd.endswith("[truncated by retention]")
+
+
 def test_metric_samples_keep_a_window(tmp_path):
     s = Store(tmp_path / "h.db")
     keep = Store.PRUNE_METRIC_KEEP

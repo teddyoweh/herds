@@ -204,6 +204,18 @@ class Store:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("PRAGMA synchronous=NORMAL")
+        # BOUND THE WAL, or WAL mode just moves the leak.
+        #
+        # 0.9.8 fixed "database is locked" by switching to WAL — and then a Mac
+        # mini grew a 2.7 GB `host.db-wal` beside a 1.4 GB main file. A WAL only
+        # truncates back to `journal_size_limit` after a checkpoint, and its
+        # default is -1 (no limit): so a busy writer with a long-lived reader
+        # (the control plane holds the db open for its whole life) checkpoints
+        # without ever shrinking the file, and the WAL grows without bound. The
+        # cure for a lock must not be an unbounded disk leak. 64 MB is generous
+        # for this workload and hard-capped.
+        conn.execute("PRAGMA journal_size_limit=67108864")
+        conn.execute("PRAGMA wal_autocheckpoint=1000")
         self.db = _SafeDB(conn)
         self.db.executescript(_SCHEMA)
         self.db.commit()
@@ -216,31 +228,40 @@ class Store:
         except Exception:  # noqa: BLE001
             pass
 
-    # How long finished jobs are worth keeping, and how much of one job's
-    # output. Debugging wants recent history; nothing wants February's.
+    # How long finished jobs are worth keeping, and how much of a job's TEXT
+    # columns. Debugging wants recent history; nothing wants February's.
     PRUNE_JOB_AGE_MS = 7 * 24 * 3600 * 1000
     PRUNE_OUTPUT_CAP = 256 * 1024
+    # The command is a label, not a payload — but the pre-0.9.7 sync path and
+    # the remote-turn bridge passed multi-megabyte base64 blobs AS the command,
+    # and `create_job` stores it verbatim. Cap it hard; nobody reads 8 KB of a
+    # command string, let alone a megabyte.
+    PRUNE_COMMAND_CAP = 8 * 1024
     PRUNE_METRIC_KEEP = 50_000
 
     def prune(self) -> dict:
         """Keep the control plane's history bounded.
 
-        Three unbounded growths, found the hard way on a 1.4 GB host.db:
+        Found the hard way on a Mac mini's 1.4 GB host.db:
 
           - finished jobs accumulate forever;
-          - a job's ``output`` column holds whatever the job printed — and the
-            pre-0.9.7 sync path printed multi-megabyte base64 tars, so the jobs
-            table became a blob store nobody meant to build;
+          - a job's ``output`` holds whatever the job printed, and its
+            ``command`` holds whatever it was asked to run — and BOTH became
+            blob stores, because the pre-0.9.7 sync path and the remote-turn
+            bridge pushed multi-megabyte base64 as command AND output. The
+            first cut of this capped only ``output`` and the file stayed 1.4 GB:
+            the bloat was in ``command`` the whole time. Cap both.
           - ``metric_samples`` gains a row every heartbeat, forever.
 
         Runs at every Store construction (host start), so a machine heals on
-        restart without anyone knowing this table exists. VACUUM only when a
-        meaningful amount was reclaimed — on a healthy db this is a no-op.
+        restart. VACUUM only when meaningful space was freed — and only helps
+        with the db otherwise idle, which host start is.
         """
         import time as _time
 
         now = int(_time.time() * 1000)
-        stats = {"jobs_deleted": 0, "outputs_truncated": 0, "metrics_deleted": 0}
+        stats = {"jobs_deleted": 0, "outputs_truncated": 0,
+                 "commands_truncated": 0, "metrics_deleted": 0}
 
         cur = self.db.execute(
             "DELETE FROM jobs WHERE created_ms < ? AND state NOT IN ('running','dispatched')",
@@ -256,6 +277,13 @@ class Store:
         stats["outputs_truncated"] = cur.rowcount
 
         cur = self.db.execute(
+            "UPDATE jobs SET command = substr(command, 1, ?) || '…[truncated by retention]' "
+            "WHERE LENGTH(command) > ?",
+            (self.PRUNE_COMMAND_CAP, self.PRUNE_COMMAND_CAP),
+        )
+        stats["commands_truncated"] = cur.rowcount
+
+        cur = self.db.execute(
             "DELETE FROM metric_samples WHERE rowid < "
             "(SELECT COALESCE(MIN(rowid), 0) FROM "
             " (SELECT rowid FROM metric_samples ORDER BY rowid DESC LIMIT ?))",
@@ -263,8 +291,15 @@ class Store:
         )
         stats["metrics_deleted"] = cur.rowcount
         self.db.commit()
+        # A checkpoint(TRUNCATE) here bounds the WAL even mid-life, not only
+        # after the journal_size_limit kicks in.
+        try:
+            self.db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.OperationalError:
+            pass
 
-        if stats["jobs_deleted"] + stats["metrics_deleted"] > 2000 or stats["outputs_truncated"] > 20:
+        if (stats["jobs_deleted"] + stats["metrics_deleted"] > 2000
+                or stats["outputs_truncated"] + stats["commands_truncated"] > 20):
             try:
                 self.db.execute("VACUUM")
             except sqlite3.OperationalError:

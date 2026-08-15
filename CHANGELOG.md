@@ -3,6 +3,19 @@
 What changed, and why it had to. Headlines are the release commits' own — the
 full story behind any entry is `git log`, where each release explains itself.
 
+## 0.9.9 — 2026-08-15
+
+**0.9.8's retention capped the wrong column, and WAL mode leaked disk.** On the
+same mini, host.db stayed 1.4 GB after 0.9.8 pruned it — because the bloat was
+in the jobs' ``command`` column, not ``output``: the pre-0.9.7 sync path and
+the remote-turn bridge push multi-megabyte base64 blobs *as the command*, and
+create_job stores it verbatim. 0.9.8 capped only ``output``. And WAL had no
+``journal_size_limit``, so a long-lived host connection let ``host.db-wal``
+grow to 2.7 GB — WAL mode had traded a lock for an unbounded-disk leak. Now:
+``command`` capped at 8 KB alongside ``output`` at 256 KB, ``journal_size_limit``
+= 64 MB with autocheckpoint, and prune() ends with ``wal_checkpoint(TRUNCATE)``.
+A machine heals — fully, file size and all — on restart.
+
 ## 0.9.8 — 2026-08-15
 
 **The control plane's history stays bounded, and its database stops being the
