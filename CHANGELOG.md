@@ -33,6 +33,26 @@ restarting.
 
 ## Unreleased
 
+**Known, not yet fixed (0.9.10 candidates):**
+
+- **`run_host` dedups by PORT, not by machine.** When its port is busy it
+  bumps to the next one (8787→8788→8789) — so `herds child --restart`, plus a
+  KeepAlive LaunchAgent, plus any manual start, each spawn a SEPARATE full
+  stack instead of replacing the running one. Observed live: three control
+  planes on one Mac, all holding host.db open, so `wal_checkpoint(TRUNCATE)`
+  could never reset the WAL (a reader is always present) and it sat at 2.7 GB.
+  The dedup check must ask "is ANY herds host live on this machine", not "is
+  this exact port free".
+- **`journal_size_limit` is not a hard WAL cap under a long-lived server.** It
+  only truncates after a checkpoint fully wraps the WAL, which never happens
+  while a persistent connection (or a duplicate stack) holds frames. Needs a
+  background checkpoint thread doing periodic `wal_checkpoint(TRUNCATE)`, not
+  just autocheckpoint + a size limit.
+- **VACUUM at Store construction can't reclaim** while the serving connection
+  (or a dup) is open; real file reclaim needs the host briefly stopped. Startup
+  prune should `VACUUM INTO` a fresh file and swap, so it heals the file size
+  without a full stop.
+
 **Known, not yet fixed:** `herds auth --repoint` silently no-ops when
 `HERDS_CONTROL_PLANE` is set — and the daemon injects exactly that variable
 into commands it runs, so the repair tool cannot repair a machine you are
