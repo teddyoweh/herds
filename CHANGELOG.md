@@ -15,6 +15,14 @@ Related: deleting `host.json` breaks `child stop`'s ability to find the pid,
 so a stop/start bounce silently becomes a no-op while the old host keeps its
 old registration. Identity and process state need one story — see `doctor`.
 
+Two more from the same field day: **the run queue is invisible and unbounded**
+— a Mac reads "online" while hours of queued jobs make every `run()` take
+minutes, and nothing anywhere reports depth; "online" must mean *answers
+work*, not *socket connected*. And **two supervisors ran side by side** on one
+Mac (`child --foreground` × 2, both under launchd, respawning duelling stacks
+on ports 8788/8790) — the duplicate-host check in `run_host` guards one port,
+not the machine.
+
 ## 0.9.7 — 2026-08-15
 
 First release on PyPI since 0.9.5 — 0.9.6 was tagged but never published, so
