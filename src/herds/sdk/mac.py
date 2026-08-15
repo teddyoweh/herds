@@ -464,6 +464,140 @@ class Mac:
             info["mb_per_s"] = round(info["bytes"] / 1e6 / elapsed, 2)
         return info
 
+    def _serve_from(self, path: str, ttl: int = 120, timeout: int = 60) -> Optional[dict]:
+        """Have the Mac tar ``path`` and serve it once on its own addresses.
+
+        Returns ``{"urls": [...], "bytes": n}`` or None when the Mac has no
+        address to serve on — the caller falls back to the relay, same contract
+        as ``_push_direct`` in the other direction.
+        """
+        import json as _json
+
+        from . import _direct
+
+        r = self.run(_direct.serve_command(path, ttl), timeout=timeout, inherit_home=True)
+        if not r.ok:
+            return None
+        for line in reversed(r.stdout.strip().splitlines()):
+            if line.startswith("{"):
+                try:
+                    out = _json.loads(line)
+                except ValueError:
+                    continue
+                if out.get("urls"):
+                    return out
+        return None
+
+    def pull(self, remote: str, local: str, *, direct: bool = True,
+             timeout: int = 900) -> dict:
+        """Bring a file or directory from the Mac to THIS machine — fast.
+
+        The missing half of ``push``. ``push`` has served-here/pulled-there
+        from the start, but coming back everything rode the relay at its
+        ~0.5 MB/s — `fetch` only lets the Mac download from the internet, and
+        the "expose()" the old docstring promised was never built. So the far
+        Mac serves the path itself (LAN or tailnet, one token, one archive,
+        short TTL) and this machine downloads it directly::
+
+            mac.pull("~/work/build/App.dmg", "./App.dmg")   # seconds, not minutes
+
+        Falls back to the relay when no address is reachable — slower, never
+        broken.
+        """
+        import time as _time
+
+        from . import _direct
+
+        started = _time.time()
+
+        if direct:
+            offer = self._serve_from(remote, ttl=max(120, timeout // 4))
+            if offer:
+                try:
+                    raw = _direct.download(offer["urls"], timeout=30)
+                    n = _direct.extract(raw, local)
+                    elapsed = _time.time() - started
+                    out = {"members": n, "bytes": len(raw), "dest": local,
+                           "via": "direct", "seconds": round(elapsed, 2)}
+                    if elapsed > 0:
+                        out["mb_per_s"] = round(len(raw) / 1e6 / elapsed, 2)
+                    return out
+                except OSError:
+                    pass  # no route from here to there — relay it
+
+        # The relay path: the Mac prints the archive as base64 through the
+        # command channel. The pipe every byte of sync rode before direct
+        # transfer existed — dependable, shared, and slow, in that order.
+        import base64 as _b64
+        import shlex as _shlex
+
+        r = self.run(
+            f"COPYFILE_DISABLE=1 tar czf - -C \"$(dirname {_shlex.quote(remote)})\" "
+            f"\"$(basename {_shlex.quote(remote)})\" | base64",
+            timeout=timeout, inherit_home=True,
+        )
+        if not r.ok:
+            from .client import HerdsError
+            raise HerdsError(f"pull failed ({r.exit_code}): {r.stderr.strip()[:400]}")
+        raw = _b64.b64decode(r.stdout.strip())
+        n = _direct.extract(raw, local)
+        elapsed = _time.time() - started
+        return {"members": n, "bytes": len(raw), "dest": local,
+                "via": "relay", "seconds": round(elapsed, 2)}
+
+    def send(self, remote: str, to: "Mac", dest: str, *, timeout: int = 900) -> dict:
+        """Move a file or directory from this Mac straight to another Mac.
+
+        The bytes go machine-to-machine over whatever network the two share —
+        LAN, tailnet — and the relay carries only the two commands. This is the
+        transfer the fleet never had: before it, Mac-to-Mac meant pulling
+        everything here and pushing it back out, both legs at relay speed.
+
+            studio = herds.mac("studio")
+            mini = herds.mac("mini")
+            studio.send("~/renders/out.mov", mini, "~/incoming")
+
+        Falls back to relaying through this machine when the two Macs cannot
+        reach each other directly.
+        """
+        import json as _json
+        import time as _time
+
+        from . import _direct
+
+        started = _time.time()
+
+        offer = self._serve_from(remote, ttl=max(120, timeout // 4))
+        if offer:
+            argv = _direct.pull_command(dest, offer["urls"])
+            r = to.run(argv, timeout=timeout, inherit_home=True)
+            if r.ok:
+                for line in reversed(r.stdout.strip().splitlines()):
+                    if line.startswith("{"):
+                        try:
+                            out = _json.loads(line)
+                        except ValueError:
+                            continue
+                        elapsed = _time.time() - started
+                        out.update({"via": "direct", "seconds": round(elapsed, 2)})
+                        if elapsed > 0 and out.get("bytes"):
+                            out["mb_per_s"] = round(out["bytes"] / 1e6 / elapsed, 2)
+                        return out
+
+        # No shared network: relay both legs through this machine. Twice the
+        # slow pipe, but the transfer still happens.
+        import os as _os
+        import tempfile as _tempfile
+
+        with _tempfile.TemporaryDirectory(prefix="herds-send-") as tmp:
+            self.pull(remote, tmp, direct=False, timeout=timeout)
+            entries = _os.listdir(tmp)
+            src = _os.path.join(tmp, entries[0]) if len(entries) == 1 else tmp
+            urls_out = _push_to_path(to, src, dest, timeout=timeout)
+            elapsed = _time.time() - started
+            urls_out.update({"via": "relay", "seconds": round(elapsed, 2)})
+            return urls_out
+
     # -- Mac-native primitives: the stuff only a real Mac can do ------------- #
 
     def screenshot(self, path: Optional[str] = None, *, timeout: int = 60):
@@ -1169,3 +1303,90 @@ def fleet(*, url: Optional[str] = None, token: Optional[str] = None,
           client: Optional[HerdsClient] = None) -> Fleet:
     """Your pool of Macs — ``herds.fleet().map("pytest {}", dirs)``."""
     return Fleet(url=url, token=token, client=client)
+
+
+def _tar_payload(src, ignore=None) -> bytes:
+    """One archive for any path, WRAPPED — ``cp dir dest`` lands ``dest/dir``.
+
+    Deliberately not `_tar_dir`: that spills a directory's CONTENTS, which is
+    volume semantics (put files at the volume root). A copy keeps the thing
+    being copied as a thing — the same shape SERVE_SCRIPT produces on the far
+    side, so both directions of a transfer land identically.
+    """
+    import io
+    import tarfile
+    from pathlib import Path
+
+    from .volume import _DEFAULT_IGNORE
+
+    p = Path(src).expanduser()
+    if not p.exists():
+        raise FileNotFoundError(f"no such path: {p}")
+
+    skip = set(_DEFAULT_IGNORE) | set(ignore or [])
+
+    def keep(info):
+        parts = Path(info.name).parts
+        return None if any(part in skip for part in parts) else info
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz", compresslevel=1) as tf:
+        tf.add(str(p), arcname=p.name or "payload", recursive=p.is_dir(), filter=keep)
+    return buf.getvalue()
+
+
+def _push_to_path(mac: "Mac", local: str, dest: str, *, timeout: int = 900) -> dict:
+    """Land a local file/dir at an arbitrary PATH on a Mac, direct-first.
+
+    ``push`` targets volumes — right for workloads, wrong for `cp`, where the
+    person is thinking in paths. Same transport underneath: serve here, the Mac
+    pulls; when no address of ours is reachable from there, stage through a
+    throwaway volume over the relay and move it into place.
+    """
+    import json as _json
+    import secrets as _secrets
+    import shlex as _shlex
+    import time as _time
+
+    from . import _direct
+
+    payload = _tar_payload(local)
+    started = _time.time()
+
+    if _direct.candidate_hosts():
+        with _direct.serve(payload) as (urls, _served):
+            if urls:
+                r = mac.run(_direct.pull_command(dest, urls), timeout=timeout, inherit_home=True)
+                if r.ok:
+                    for line in reversed(r.stdout.strip().splitlines()):
+                        if line.startswith("{"):
+                            try:
+                                out = _json.loads(line)
+                            except ValueError:
+                                continue
+                            elapsed = _time.time() - started
+                            out.update({"via": "direct", "seconds": round(elapsed, 2),
+                                        "sent_bytes": len(payload)})
+                            if elapsed > 0:
+                                out["mb_per_s"] = round(len(payload) / 1e6 / elapsed, 2)
+                            return out
+
+    # Relay: stage into a throwaway volume (the one path the relay has always
+    # carried), then move it where the person actually asked for it.
+    from .volume import Volume
+
+    staging = "xfer-" + _secrets.token_urlsafe(6).lower().replace("_", "").replace("-", "")
+    Volume.from_name(staging).put(str(local), client=mac._client, machine=mac.machine_id)
+    vol_dir = f'"${{HERDS_HOME:-$HOME/.herds}}/volumes/{staging}"'
+    r = mac.run(
+        f"set -e\ndest={_shlex.quote(dest)}\nmkdir -p \"$dest\"\n"
+        f"cp -R {vol_dir}/. \"$dest\"/\nrm -rf {vol_dir}\n"
+        f'printf \'{{"dest":"%s"}}\\n\' "$dest"',
+        timeout=timeout, inherit_home=True,
+    )
+    if not r.ok:
+        from .client import HerdsError
+        raise HerdsError(f"cp failed ({r.exit_code}): {r.stderr.strip()[:400]}")
+    elapsed = _time.time() - started
+    return {"dest": dest, "via": "relay", "sent_bytes": len(payload),
+            "seconds": round(elapsed, 2)}

@@ -36,6 +36,25 @@ jobs:
           uv pip install -e ".[dev]"
           .venv/bin/python -m pytest -q
 
+      # web_dist is gitignored — a bare checkout has NO dashboard, so `uv build`
+      # alone ships a wheel without the UI and `herds child` serves a 404 where
+      # the dashboard should be. Local releases run scripts/build_release.sh,
+      # which does exactly this; CI has to do it too or a CI wheel is a worse
+      # artifact than a local one.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Build the dashboard into the package
+        run: |
+          (cd web && pnpm install --frozen-lockfile && NEXT_PUBLIC_HERDS_API="" pnpm build)
+          rm -rf src/herds/web_dist
+          cp -R web/out src/herds/web_dist
+
       - name: Build sdist + wheel
         run: uv build
 

@@ -420,6 +420,77 @@ def version():
     console.print(f"herds {__version__}")
 
 
+def _cp_spec(spec: str):
+    """Split ``machine:path`` from a plain path, by scp's rule: a colon before
+    any slash names a machine. ``./file:with:colons`` stays local; ``mini:x``
+    does not."""
+    head = spec.split("/", 1)[0]
+    if ":" in head:
+        machine, _, path = spec.partition(":")
+        return machine, (path or ".")
+    return None, spec
+
+
+@app.command("cp")
+def cp_cmd(
+    src: str = typer.Argument(..., help="Source — a local path, or machine:path."),
+    dest: str = typer.Argument(..., help="Destination — a local path, or machine:path."),
+    relay: bool = typer.Option(False, "--relay", help="Force the relay path (skip direct)."),
+    timeout: int = typer.Option(900, "--timeout", help="Seconds before giving up."),
+):
+    """Copy files between your Macs — direct, at network speed.
+
+    The bytes go over whatever the two machines share — LAN, tailnet — and the
+    relay carries only the commands. Every direction works, and every one falls
+    back to the relay when there is no direct route, so it is only ever faster::
+
+        herds cp ./build.zip mini:~/incoming        # here → Mac
+        herds cp mini:~/renders/out.mov .           # Mac → here
+        herds cp studio:~/data.tar mini:~/data      # Mac → Mac, no middleman
+    """
+    from ..sdk import mac as mac_mod
+
+    s_mac, s_path = _cp_spec(src)
+    d_mac, d_path = _cp_spec(dest)
+
+    if s_mac is None and d_mac is None:
+        err.print("[red]Both ends are local — that's `cp`.[/red]")
+        raise typer.Exit(2)
+
+    try:
+        if s_mac is None:
+            out = mac_mod._push_to_path(mac_mod.mac(d_mac), s_path, d_path, timeout=timeout)
+        elif d_mac is None:
+            out = mac_mod.mac(s_mac).pull(s_path, d_path, direct=not relay, timeout=timeout)
+        else:
+            out = mac_mod.mac(s_mac).send(s_path, mac_mod.mac(d_mac), d_path, timeout=timeout)
+    except FileNotFoundError as exc:
+        err.print(f"[red]✗ {exc}[/red]")
+        raise typer.Exit(1)
+    except Exception as exc:  # noqa: BLE001 — one line, not a traceback
+        err.print(f"[red]✗ Copy failed:[/red] {exc}")
+        raise typer.Exit(1)
+
+    speed = f" · {out['mb_per_s']} MB/s" if out.get("mb_per_s") else ""
+    via = out.get("via", "direct")
+    size = out.get("bytes") or out.get("sent_bytes") or 0
+    console.print(
+        f"[green]✓[/green] {_human(size)} in {out.get('seconds', '?')}s"
+        f" [dim]· {via}{speed}[/dim]"
+    )
+    if via == "relay":
+        console.print("[dim]No direct route between the machines — rode the relay. "
+                      "Tailscale on both ends makes this fast from anywhere.[/dim]")
+
+
+def _human(n: int) -> str:
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1000 or unit == "GB":
+            return f"{n:.1f} {unit}" if unit != "B" else f"{n} B"
+        n /= 1000
+    return f"{n} B"
+
+
 @app.command()
 def deploy(
     file: str = typer.Argument(..., help="A .py file defining a herds.App with @app.function."),
@@ -817,6 +888,36 @@ def _child_main(
     # A link on our own relay needs an account, and the relay gives one out on
     # request — so ask, rather than falling through to a Cloudflare tunnel.
     if not no_tunnel and not quick:
+        """
+        SAY SO before minting a fleet of one.
+
+        `ensure_account` provisions a fresh anonymous account whenever this Mac
+        is not signed in — deliberately, because `herds child` printing a token
+        with no signup is the front door of the product. But it did it in
+        SILENCE, and silence is how a second Mac walks off into its own
+        universe: the person signed in on their laptop, ran `child` on the new
+        Mac, and that Mac became fleet `teddy-2` instead of joining `teddyoweh`
+        — online, healthy, and invisible from every other machine they own,
+        with nothing anywhere saying why. Days of "the mini is offline" traced
+        back to this one unannounced fork.
+
+        So the fork is announced, and on a terminal it is a question. The
+        default answer is yes — hello-world stays one command and one Enter —
+        and automation (no TTY, or an explicit --background) is never asked,
+        because a prompt inside a script is a hang, not a question.
+        """
+        if not config.Auth.load().signed_in:
+            err.print(
+                "[yellow]This Mac isn't signed in, so it will go live as its own "
+                "one-machine fleet.[/yellow]\n"
+                "[dim]To add it to a fleet you already have, stop here and run "
+                "[bold]herds auth[/bold] on this Mac first — or paste a token with "
+                "[bold]herds use[/bold].[/dim]"
+            )
+            if sys.stdin.isatty() and not background:
+                if not typer.confirm("Go live standalone?", default=True):
+                    err.print("[dim]Nothing changed. Run [bold]herds auth[/bold] to join a fleet.[/dim]")
+                    raise typer.Exit(0)
         try:
             a = ensure_account(name or "")
         except Exception as exc:  # noqa: BLE001 — relay unreachable / offline
