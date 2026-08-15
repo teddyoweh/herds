@@ -3,6 +3,18 @@
 What changed, and why it had to. Headlines are the release commits' own — the
 full story behind any entry is `git log`, where each release explains itself.
 
+## Unreleased
+
+**Known, not yet fixed:** `herds auth --repoint` silently no-ops when
+`HERDS_CONTROL_PLANE` is set — and the daemon injects exactly that variable
+into commands it runs, so the repair tool cannot repair a machine you are
+driving remotely, and says nothing about why. Found while unfracturing a Mac
+mini from its accidental one-machine fleet; the env override should at least
+announce itself, and `--repoint` should override it or say it can't.
+Related: deleting `host.json` breaks `child stop`'s ability to find the pid,
+so a stop/start bounce silently becomes a no-op while the old host keeps its
+old registration. Identity and process state need one story — see `doctor`.
+
 ## 0.9.7 — 2026-08-15
 
 First release on PyPI since 0.9.5 — 0.9.6 was tagged but never published, so
