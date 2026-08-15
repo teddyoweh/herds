@@ -3,6 +3,21 @@
 What changed, and why it had to. Headlines are the release commits' own — the
 full story behind any entry is `git log`, where each release explains itself.
 
+## 0.9.8 — 2026-08-15
+
+**The control plane's history stays bounded, and its database stops being the
+bottleneck.** Found on a Mac mini whose host.db had grown to 1.4 GB: finished
+jobs lived forever, the pre-0.9.7 sync path had written multi-megabyte base64
+tars into job output, and metric samples accumulated every heartbeat since the
+beginning of time. On top of that the connection ran SQLite's default journal
+mode — readers block the writer, and eight concurrent jobs stampede into
+"database is locked". The machine read as online while every run queued for
+minutes; the daemon's 8-wide admission gate was never the problem. Now: WAL +
+busy_timeout on every connection, and retention at each host start — finished
+jobs kept a week, outputs capped at 256 KB, metrics kept to a recent window,
+VACUUM when meaningful space comes back. A drowning machine heals by
+restarting.
+
 ## Unreleased
 
 **Known, not yet fixed:** `herds auth --repoint` silently no-ops when

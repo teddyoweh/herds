@@ -188,11 +188,88 @@ class Store:
     def __init__(self, path: Union[str, Path] = ":memory:"):
         conn = sqlite3.connect(str(path), check_same_thread=False)
         conn.row_factory = sqlite3.Row
+        """
+        WAL + busy_timeout, because this file is the whole control plane's spine.
+
+        The default journal mode makes every reader block the writer and hands
+        out "database is locked" the instant two things touch the file — and
+        the daemon runs up to eight jobs at once, each writing state and output
+        here while the HTTP API reads. Watched live on a Mac mini: a 1.4 GB
+        host.db (months of sync-tar output and metric samples, see prune()) had
+        the whole machine reading as wedged — every run queued for minutes,
+        /v1/jobs timing out — while the daemon's 8-wide admission gate sat
+        mostly idle. Parallelism was never the problem; the single flat-out
+        contended journal was.
+        """
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute("PRAGMA synchronous=NORMAL")
         self.db = _SafeDB(conn)
         self.db.executescript(_SCHEMA)
         self.db.commit()
         self._ensure_scope_column()
         self._ensure_app_columns()
+        # History must not grow until the machine drowns. Best-effort: a store
+        # that cannot prune is still a store.
+        try:
+            self.prune()
+        except Exception:  # noqa: BLE001
+            pass
+
+    # How long finished jobs are worth keeping, and how much of one job's
+    # output. Debugging wants recent history; nothing wants February's.
+    PRUNE_JOB_AGE_MS = 7 * 24 * 3600 * 1000
+    PRUNE_OUTPUT_CAP = 256 * 1024
+    PRUNE_METRIC_KEEP = 50_000
+
+    def prune(self) -> dict:
+        """Keep the control plane's history bounded.
+
+        Three unbounded growths, found the hard way on a 1.4 GB host.db:
+
+          - finished jobs accumulate forever;
+          - a job's ``output`` column holds whatever the job printed — and the
+            pre-0.9.7 sync path printed multi-megabyte base64 tars, so the jobs
+            table became a blob store nobody meant to build;
+          - ``metric_samples`` gains a row every heartbeat, forever.
+
+        Runs at every Store construction (host start), so a machine heals on
+        restart without anyone knowing this table exists. VACUUM only when a
+        meaningful amount was reclaimed — on a healthy db this is a no-op.
+        """
+        import time as _time
+
+        now = int(_time.time() * 1000)
+        stats = {"jobs_deleted": 0, "outputs_truncated": 0, "metrics_deleted": 0}
+
+        cur = self.db.execute(
+            "DELETE FROM jobs WHERE created_ms < ? AND state NOT IN ('running','dispatched')",
+            (now - self.PRUNE_JOB_AGE_MS,),
+        )
+        stats["jobs_deleted"] = cur.rowcount
+
+        cur = self.db.execute(
+            "UPDATE jobs SET output = substr(output, 1, ?) || '…[truncated by retention]' "
+            "WHERE LENGTH(output) > ?",
+            (self.PRUNE_OUTPUT_CAP, self.PRUNE_OUTPUT_CAP),
+        )
+        stats["outputs_truncated"] = cur.rowcount
+
+        cur = self.db.execute(
+            "DELETE FROM metric_samples WHERE rowid < "
+            "(SELECT COALESCE(MIN(rowid), 0) FROM "
+            " (SELECT rowid FROM metric_samples ORDER BY rowid DESC LIMIT ?))",
+            (self.PRUNE_METRIC_KEEP,),
+        )
+        stats["metrics_deleted"] = cur.rowcount
+        self.db.commit()
+
+        if stats["jobs_deleted"] + stats["metrics_deleted"] > 2000 or stats["outputs_truncated"] > 20:
+            try:
+                self.db.execute("VACUUM")
+            except sqlite3.OperationalError:
+                pass  # busy db — the space comes back on the next quiet start
+        return stats
 
     # -- machines ----------------------------------------------------------- #
 
