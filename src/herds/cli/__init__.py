@@ -927,7 +927,14 @@ def _child_main(
         if name and a.account and a.account != name:
             console.print(f"[dim]Name [bold]{name}[/bold] was taken — you're [bold]{a.account}[/bold].[/dim]")
 
+    # Make `herds child` alone durably self-healing — no separate `herds
+    # install`, no `launchctl` dance ever asked of anyone. A backgrounded child
+    # is meant to outlive the terminal, so it wants supervision; arm the
+    # KeepAlive agent (which also clears any sticky `disable`) so a host that
+    # dies is revived instead of leaving the Mac silently offline. The
+    # foreground path is a deliberate "watch it here" and is left unsupervised.
     if should_detach(foreground, background, sys.stdout.isatty()):
+        _ensure_launchagent()
         start_host_background(port=port, tunnel=not no_tunnel, quick=quick, force=restart, child=True)
     else:
         run_host(port=port, tunnel=not no_tunnel, quick=quick, force=restart, child=True)
@@ -1829,6 +1836,46 @@ _PLIST_LABEL = "ai.spawnlabs.herds"
 _PLIST_PATH = Path.home() / "Library/LaunchAgents" / f"{_PLIST_LABEL}.plist"
 
 
+def _ensure_launchagent(quiet: bool = True) -> bool:
+    """Install AND ENABLE the KeepAlive agent, idempotently. Returns success.
+
+    The `enable` is the load-bearing line and the one that was missing. macOS
+    `launchctl disable` is STICKY — it persists across boots and, crucially,
+    survives a plain `bootout`/`bootstrap` cycle: a disabled label refuses to
+    bootstrap, silently. So a Mac whose agent was ever disabled (by a botched
+    cleanup, by hand, by anything) could never get its KeepAlive back through
+    `herds install` OR `herds child`, and its host would start, die, and stay
+    dead with nothing to revive it — reachable only by someone walking to the
+    machine. `enable` clears that state before bootstrap, so the standard
+    command always yields a supervised, self-healing host.
+
+    Only on macOS; a no-op elsewhere (launchd is Apple's).
+    """
+    if sys.platform != "darwin":
+        return False
+    try:
+        herds_bin = shutil.which("herds") or "herds"
+        _PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _PLIST_PATH.write_text(_plist_contents(herds_bin))
+        uid = subprocess.run(["id", "-u"], capture_output=True, text=True).stdout.strip()
+        svc = f"gui/{uid}/{_PLIST_LABEL}"
+        dom = f"gui/{uid}"
+        # enable FIRST — undo any sticky `disable` — then a clean re-bootstrap.
+        subprocess.run(["launchctl", "enable", svc], capture_output=True)
+        subprocess.run(["launchctl", "bootout", dom, str(_PLIST_PATH)], capture_output=True)
+        res = subprocess.run(["launchctl", "bootstrap", dom, str(_PLIST_PATH)],
+                             capture_output=True, text=True)
+        # `bootstrap` returns non-zero if it is ALREADY loaded — success for us.
+        ok = res.returncode == 0 or "already" in (res.stderr or "").lower()
+        if not ok and not quiet:
+            err.print(f"[yellow]LaunchAgent bootstrap: {res.stderr.strip()}[/yellow]")
+        return ok
+    except Exception as exc:  # noqa: BLE001 — supervision is best-effort; the host still ran
+        if not quiet:
+            err.print(f"[yellow]Could not arm the LaunchAgent: {exc}[/yellow]")
+        return False
+
+
 def _plist_contents(herds_bin: str) -> str:
     config.ensure_dirs()
     return f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -1869,19 +1916,13 @@ def _plist_contents(herds_bin: str) -> str:
 @app.command()
 def install():
     """Install a launchd LaunchAgent so this Mac stays online across logins."""
-    herds_bin = shutil.which("herds") or "herds"
-    _PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _PLIST_PATH.write_text(_plist_contents(herds_bin))
-    uid = subprocess.run(["id", "-u"], capture_output=True, text=True).stdout.strip()
-    subprocess.run(["launchctl", "bootout", f"gui/{uid}", str(_PLIST_PATH)],
-                   capture_output=True)
-    res = subprocess.run(["launchctl", "bootstrap", f"gui/{uid}", str(_PLIST_PATH)],
-                         capture_output=True, text=True)
-    if res.returncode == 0:
+    if sys.platform != "darwin":
+        err.print("[yellow]LaunchAgents are macOS-only.[/yellow]")
+        raise typer.Exit(1)
+    if _ensure_launchagent(quiet=False):
         console.print(f"[green]✓[/green] installed LaunchAgent at [dim]{_PLIST_PATH}[/dim]")
         console.print("This Mac will reconnect automatically on login and after crashes.")
     else:
-        err.print(f"[red]launchctl bootstrap failed:[/red] {res.stderr.strip()}")
         raise typer.Exit(1)
 
 

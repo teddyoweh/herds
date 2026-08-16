@@ -31,9 +31,22 @@ jobs kept a week, outputs capped at 256 KB, metrics kept to a recent window,
 VACUUM when meaningful space comes back. A drowning machine heals by
 restarting.
 
+## 0.9.10 — 2026-08-15
+
+**`herds child` is now durably self-healing on its own — no `launchctl`, ever.**
+The KeepAlive LaunchAgent was installed with `bootout`+`bootstrap` but never
+`enable` — and macOS `launchctl disable` is STICKY, surviving that cycle. So a
+Mac whose agent was ever disabled (a botched cleanup, a hand-run command)
+could never get KeepAlive back through `install` OR `child`: its host would
+start, die, and stay dead, reachable only by walking to the machine. Now one
+`_ensure_launchagent()` helper does `enable` → `bootout` → `bootstrap`, and a
+backgrounded `herds child` calls it — so the standard command always yields a
+supervised, self-reviving host. `install` uses the same helper. (The call
+order is pinned by a test: `enable` before `bootstrap`, always.)
+
 ## Unreleased
 
-**Known, not yet fixed (0.9.10 candidates):**
+**Known, not yet fixed:**
 
 - **`run_host` dedups by PORT, not by machine.** When its port is busy it
   bumps to the next one (8787→8788→8789) — so `herds child --restart`, plus a
