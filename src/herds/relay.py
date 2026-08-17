@@ -503,6 +503,23 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
                 if not fut.done():
                     fut.cancel()
             old.pending.clear()
+            # CLOSE the displaced socket, don't just orphan it. Left open, the
+            # losing client never learns it lost: its receive loop sits on a
+            # healthy TCP link that will simply never carry another frame, so
+            # its reconnect logic — which only fires on a socket ERROR — never
+            # runs. Two processes on one Mac holding the same token (a launchd
+            # `herds host` plus an app-armed `herds child -b`) then silently
+            # trade the slot, and when the CURRENT holder is killed, the
+            # survivor stays deaf while the map points at a dead connection —
+            # every request answers "No Herds host '<sub>' is connected" even
+            # though a live, healthy client is right there. Closing the old
+            # socket turns displacement into an error the loser's own
+            # backoff-reconnect loop is already built to handle: whoever is
+            # still alive re-claims the slot within seconds.
+            try:
+                await old.ws.close(code=4409, reason="displaced by a newer connection")
+            except Exception:  # noqa: BLE001
+                pass
         hosts[account] = conn
         try:
             async for raw in ws.iter_text():
