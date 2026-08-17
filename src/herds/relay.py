@@ -309,6 +309,18 @@ def make_accounts(state_path: Path):
     return _Accounts(state_path)
 
 
+class _HostGone(Exception):
+    """The host socket is closed or closing — a send cannot land.
+
+    Raised instead of the bare `RuntimeError('Cannot call "send" once a close
+    message has been sent.')` Starlette throws when a frame races a close. A
+    typed, expected exception lets every caller answer cleanly (a 503, a
+    dropped stream) instead of bubbling into an ASGI 500 — which is exactly how
+    a displacement took the relay's whole request path down once: the losing
+    socket was closed while `route_by_subdomain` was mid-send to it.
+    """
+
+
 class _HostConn:
     def __init__(self, account: str, ws):
         self.account = account
@@ -316,10 +328,25 @@ class _HostConn:
         self.pending: dict[str, asyncio.Future] = {}      # request_id -> HTTP response future
         self.ws_streams: dict[str, object] = {}            # stream_id -> tunnelled agent WebSocket
         self._lock = asyncio.Lock()
+        # Flipped false the instant this conn is displaced or its socket drops.
+        # Checked before every send so a frame is never handed to a closing
+        # socket, and so a caller holding a stale reference fails fast and clean.
+        self.alive = True
 
     async def send(self, frame: Frame) -> None:
+        if not self.alive:
+            raise _HostGone(self.account)
         async with self._lock:
-            await self.ws.send_text(frame.dump())
+            if not self.alive:
+                raise _HostGone(self.account)
+            try:
+                await self.ws.send_text(frame.dump())
+            except Exception as e:  # noqa: BLE001
+                # send-after-close (RuntimeError), a disconnect, a broken pipe:
+                # the socket is gone. Mark it dead and surface a typed error the
+                # callers handle, never the raw RuntimeError that 500s the relay.
+                self.alive = False
+                raise _HostGone(self.account) from e
 
 
 def create_relay_app(domain: str = "herds.run") -> FastAPI:
@@ -493,6 +520,17 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
         # fail its pending requests so half-attached agents/SDKs don't wedge.
         old = hosts.get(account)
         if old is not None and old is not conn:
+            # ORDER IS THE FIX. Mark the old conn dead and claim the slot FIRST,
+            # before touching its socket. The prod outage was the reverse: the
+            # old socket was closed while `hosts[account]` still pointed at it,
+            # so a request arriving mid-displacement read `old`, sent to its
+            # now-closing socket, and hit `RuntimeError: Cannot call "send"
+            # once a close message has been sent` — a raw 500 across the whole
+            # request path. With `alive=False` + the swap done up front, nothing
+            # new ever routes to `old`, and the one in-flight sender (if any)
+            # gets a clean `_HostGone` instead of a crash.
+            old.alive = False
+            hosts[account] = conn
             for aws in list(old.ws_streams.values()):
                 try:
                     await aws.close()
@@ -501,7 +539,13 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
             old.ws_streams.clear()
             for fut in list(old.pending.values()):
                 if not fut.done():
-                    fut.cancel()
+                    # Resolve with a typed error, NOT fut.cancel(). Cancelling
+                    # makes the awaiting request handler raise CancelledError —
+                    # which propagates as a raw 500, the same failure class this
+                    # fix exists to kill (an in-flight request on the displaced
+                    # host). _HostGone is caught by route_by_subdomain and turned
+                    # into a clean 502 the client retries.
+                    fut.set_exception(_HostGone(account))
             old.pending.clear()
             # CLOSE the displaced socket, don't just orphan it. Left open, the
             # losing client never learns it lost: its receive loop sits on a
@@ -520,7 +564,8 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
                 await old.ws.close(code=4409, reason="displaced by a newer connection")
             except Exception:  # noqa: BLE001
                 pass
-        hosts[account] = conn
+        else:
+            hosts[account] = conn
         try:
             async for raw in ws.iter_text():
                 frame = Frame.load(raw)
@@ -562,10 +607,17 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
         await ws.accept()
         sid = "ws_" + uuid.uuid4().hex[:12]
         conn.ws_streams[sid] = ws
-        await conn.send(Frame(type=FrameType.WS_OPEN, data={
-            "stream_id": sid, "path": "/" + ws_path, "query": ws.url.query,
-            "headers": {k: v for k, v in ws.headers.items() if k.lower() != "host"},
-        }))
+        try:
+            await conn.send(Frame(type=FrameType.WS_OPEN, data={
+                "stream_id": sid, "path": "/" + ws_path, "query": ws.url.query,
+                "headers": {k: v for k, v in ws.headers.items() if k.lower() != "host"},
+            }))
+        except _HostGone:
+            # Host displaced/dropped before the tunnel could open — close the
+            # client stream cleanly rather than 500-ing the upgrade.
+            conn.ws_streams.pop(sid, None)
+            await ws.close(code=4404)
+            return
         try:
             while True:
                 msg = await ws.receive_text()
@@ -603,16 +655,29 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
         rid = "rq_" + uuid.uuid4().hex[:12]
         fut = asyncio.get_running_loop().create_future()
         conn.pending[rid] = fut
-        await conn.send(Frame(type=FrameType.HTTP_REQUEST, request_id=rid, data={
-            "method": request.method, "path": request.url.path, "query": request.url.query,
-            "headers": dict(request.headers),
-            "body_b64": base64.b64encode(body).decode() if body else "",
-        }))
+        try:
+            await conn.send(Frame(type=FrameType.HTTP_REQUEST, request_id=rid, data={
+                "method": request.method, "path": request.url.path, "query": request.url.query,
+                "headers": dict(request.headers),
+                "body_b64": base64.b64encode(body).decode() if body else "",
+            }))
+        except _HostGone:
+            # The host was displaced or dropped between the lookup above and this
+            # send. A clean 502 (same as "no host connected"), never a 500 — the
+            # client's next request routes to whichever conn now holds the slot.
+            conn.pending.pop(rid, None)
+            return Response(f"Herds host '{sub}' reconnected — retry.", status_code=502)
         try:
             res = await asyncio.wait_for(fut, timeout=30)
         except asyncio.TimeoutError:
             conn.pending.pop(rid, None)
             return Response("Herds host did not respond.", status_code=504)
+        except _HostGone:
+            # The host was displaced while this request was in flight; its
+            # pending future was resolved with _HostGone rather than left to
+            # hang or cancelled. Clean 502, client retries onto the new conn.
+            conn.pending.pop(rid, None)
+            return Response(f"Herds host '{sub}' reconnected — retry.", status_code=502)
         content = base64.b64decode(res["body_b64"]) if res.get("body_b64") else b""
         skip = {"content-encoding", "content-length", "transfer-encoding", "connection"}
         headers = {k: v for k, v in (res.get("headers") or {}).items() if k.lower() not in skip}
