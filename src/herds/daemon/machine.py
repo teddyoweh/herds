@@ -85,8 +85,25 @@ def _device_type(model_name: Optional[str], model_id: Optional[str]) -> Optional
     return None
 
 
-def _pretty_name(model_name: Optional[str], model_id: Optional[str], chip: Optional[str]) -> str:
-    """Best-effort friendly name like 'MacBook Pro (Apple M4)'."""
+def _computer_name() -> Optional[str]:
+    """The name the person actually gave this Mac — System Settings > General >
+    About > Name, a.k.a. `scutil`'s ComputerName — not a hardware description
+    nobody typed. Every OTHER Mac in a fleet reads this `name` field straight
+    off the relay with no override path of its own, so whatever this function
+    returns is permanently what "MacBook Pro (Apple M4 Pro)" looked like to
+    everyone else — the actual bug a Universe user hit: two Macs, indistinguishable
+    in their own device list, because both fell through to the generic branch
+    below. `scutil` lives in /usr/sbin, hence `_run_tool` and not a bare shell out."""
+    return _run_tool("scutil", "--get", "ComputerName")
+
+
+def _pretty_name(
+    model_name: Optional[str], model_id: Optional[str], chip: Optional[str],
+    computer_name: Optional[str] = None,
+) -> str:
+    """The name a person set beats a marketing model name beats a bare model id."""
+    if computer_name:
+        return computer_name
     base = model_name
     if not base:
         slug = _device_type(None, model_id)
@@ -122,9 +139,10 @@ def gather(machine_id: str, agent_version: Optional[str] = None) -> MachineInfo:
     mem_bytes = _sysctl("hw.memsize")
     cpu_count = _sysctl("hw.ncpu")
     model_name = _model_name()
+    computer_name = _computer_name()
     info = MachineInfo(
         machine_id=machine_id,
-        name=_pretty_name(model_name, model, chip),
+        name=_pretty_name(model_name, model, chip, computer_name),
         model=model,
         device_type=_device_type(model_name, model),
         chip=chip,

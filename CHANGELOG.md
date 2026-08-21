@@ -3,6 +3,20 @@
 What changed, and why it had to. Headlines are the release commits' own — the
 full story behind any entry is `git log`, where each release explains itself.
 
+## 0.9.11 — 2026-08-16
+
+**Every Mac on a fleet showed the same generic name as every other one of its
+kind.** `daemon/machine.py`'s `gather()` — called on every reconnect, no
+override anywhere — built a Mac's display `name` purely from
+`system_profiler`/`sysctl`: "MacBook Pro (Apple M4 Pro)", identical for any two
+MacBook Pros on the same fleet, with no way to tell them apart in a device
+list. The name a person actually gave the Mac (System Settings › General ›
+About › Name) was sitting right there the whole time, unread. `gather()` now
+tries `scutil --get ComputerName` first and only falls through to the old
+hardware-description logic if that comes back empty. No flag, no config — just
+what every Mac already calls itself, matching what shows on every other Mac in
+the fleet.
+
 ## 0.9.9 — 2026-08-15
 
 **0.9.8's retention capped the wrong column, and WAL mode leaked disk.** On the
