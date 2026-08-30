@@ -723,7 +723,14 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
                     aws = conn.ws_streams.get(frame.data.get("stream_id"))
                     if aws is not None:
                         try:
-                            await aws.send_text(frame.data.get("text", ""))
+                            # Bytes go back as BYTES. Sending them as text
+                            # would re-encode and corrupt exactly what the
+                            # base64 hop above exists to preserve.
+                            blob = frame.data.get("b64")
+                            if blob is not None:
+                                await aws.send_bytes(base64.b64decode(blob))
+                            else:
+                                await aws.send_text(frame.data.get("text", ""))
                         except Exception:  # noqa: BLE001
                             pass
                 elif frame.type == FrameType.WS_CLOSE:
@@ -764,8 +771,22 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
         }))
         try:
             while True:
-                msg = await ws.receive_text()
-                await conn.send(Frame(type=FrameType.WS_DATA, data={"stream_id": sid, "text": msg}))
+                # `receive()`, not `receive_text()`.
+                #
+                # `receive_text()` raises on a BINARY frame, which closed the
+                # socket the moment anything sent bytes — so every text protocol
+                # worked and every binary one died at the first message. A raw
+                # TCP tunnel to a CDP port is binary from its first byte, which
+                # is why watching a browser on another Mac could not work
+                # through here at all.
+                event = await ws.receive()
+                if event.get("type") == "websocket.disconnect":
+                    break
+                if event.get("bytes") is not None:
+                    payload = {"stream_id": sid, "b64": base64.b64encode(event["bytes"]).decode()}
+                else:
+                    payload = {"stream_id": sid, "text": event.get("text") or ""}
+                await conn.send(Frame(type=FrameType.WS_DATA, data=payload))
         except WebSocketDisconnect:
             pass
         except Exception:  # noqa: BLE001
@@ -919,7 +940,11 @@ async def _run_client(relay_ws_url: str, token: str, local_url: str) -> None:
                             local = streams.get(frame.data.get("stream_id"))
                             if local is not None:
                                 try:
-                                    await local.send(frame.data.get("text", ""))
+                                    blob = frame.data.get("b64")
+                                    await local.send(
+                                        base64.b64decode(blob) if blob is not None
+                                        else frame.data.get("text", "")
+                                    )
                                 except Exception:  # noqa: BLE001
                                     pass
                         elif frame.type == FrameType.WS_CLOSE:
@@ -977,9 +1002,23 @@ async def _tunnel_ws(ws, send_lock, local_url: str, frame: Frame, streams: dict)
     streams[sid] = local
     try:
         async for msg in local:
-            text = msg if isinstance(msg, str) else msg.decode("utf-8", "ignore")
+            # Text stays text; BYTES ride as base64.
+            #
+            # This was `msg.decode("utf-8", "ignore")`, which does not fail on
+            # binary — it silently DELETES every byte that is not valid UTF-8
+            # and forwards the wreckage. Every text protocol was fine, so
+            # nothing complained, and every binary one was quietly corrupted:
+            # a raw TCP tunnel (`/v1/machines/{id}/tunnel/{port}`, which is how
+            # you reach a CDP port on another Mac) lost bytes on the way and
+            # the far end closed the socket. Losing data is worse than
+            # refusing it, and it hid because the failure looked like a network
+            # problem rather than an encoding one.
+            if isinstance(msg, str):
+                payload = {"stream_id": sid, "text": msg}
+            else:
+                payload = {"stream_id": sid, "b64": base64.b64encode(msg).decode()}
             async with send_lock:
-                await ws.send(Frame(type=FrameType.WS_DATA, data={"stream_id": sid, "text": text}).dump())
+                await ws.send(Frame(type=FrameType.WS_DATA, data=payload).dump())
     except Exception:  # noqa: BLE001
         pass
     finally:
