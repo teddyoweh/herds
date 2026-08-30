@@ -37,6 +37,37 @@ RESERVED = {
 }
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$")
 
+# ── running more than one relay ───────────────────────────────────────────────
+#
+# A host's WebSocket lives in one process's memory, so a second instance has no
+# socket to write to for a machine attached to the first. That single fact is
+# why the relay has always been one process, on one VM, in one zone — no
+# rolling deploy, no failover, and a restart that drops every host at once.
+#
+# `relay_hosts` (see `_PgAccounts`) is the directory that fixes it: each
+# instance publishes which accounts it holds and an address peers can reach it
+# on, so an instance can forward a request it cannot serve itself. Everything
+# below is off by default — with no `HERDS_PEER_URL` this behaves exactly as it
+# always has, which is what makes it safe to deploy to a live single-instance
+# relay before a second one exists.
+INSTANCE_ID = os.environ.get("HERDS_INSTANCE_ID") or ("relay-" + secrets.token_hex(4))
+
+#: How this instance is reachable BY ITS PEERS — usually an internal address,
+#: never the public name (that would route straight back through the load
+#: balancer and, on a bad day, to itself). Empty disables replication.
+PEER_URL = (os.environ.get("HERDS_PEER_URL") or "").rstrip("/")
+
+#: How long a claim is trusted without a refresh. A relay that is SIGKILLed
+#: never releases its rows, so the row has to expire on its own — and the
+#: window is the worst case for "my Mac says offline after a relay died".
+#: Renewed at a third of this, so two renewals can be lost before it lapses.
+HOST_LEASE_SECONDS = float(os.environ.get("HERDS_HOST_LEASE") or 45)
+
+#: Marks a request that has ALREADY been forwarded once. Without it a stale
+#: directory row pointing at an instance that no longer holds the host would
+#: bounce the request back and forth until something timed out.
+FORWARD_HEADER = "x-herds-forwarded"
+
 
 def _slug(s: str) -> str:
     return re.sub(r"[^a-z0-9-]+", "-", (s or "").lower()).strip("-")[:32]
@@ -45,6 +76,53 @@ def _slug(s: str) -> str:
 def http_base(relay_ws_url: str) -> str:
     """wss://relay.herds.run → https://relay.herds.run (and ws→http for local)."""
     return relay_ws_url.replace("wss://", "https://").replace("ws://", "http://").rstrip("/")
+
+
+async def _forward_to_peer(peer_url: str, request) -> Optional[Response]:
+    """Hand a request to the instance that actually holds the host's socket.
+
+    Plain HTTP between instances rather than a message bus. The relay already
+    speaks HTTP, the peer already knows how to serve this exact request, and a
+    bus would mean inventing request/response correlation, redelivery and
+    backpressure for something a socket does correctly for free — plus a second
+    piece of infrastructure that can be down while Postgres is up.
+
+    `FORWARD_HEADER` makes it one hop, always. A directory row can be stale —
+    the host moved instances between the lookup and the send — and without the
+    marker two relays would hand the same request back and forth until a
+    timeout, turning one wrong row into a loop that burns both of them.
+
+    Returning None means "I could not forward"; the caller then answers the
+    ordinary 502. A peer that is unreachable must read as a fleet with nobody
+    home, not as a 500 from a relay the user has never heard of.
+    """
+    import httpx
+
+    body = await request.body()
+    headers = {
+        k: v for k, v in request.headers.items()
+        if k.lower() not in {"host", "connection", "keep-alive", "transfer-encoding",
+                             "content-length"}
+    }
+    # Preserved deliberately: the peer routes by subdomain too, so it needs the
+    # ORIGINAL Host to find the same account we did.
+    headers["host"] = request.headers.get("host", "")
+    headers[FORWARD_HEADER] = "1"
+    try:
+        async with httpx.AsyncClient(timeout=35.0) as client:
+            r = await client.request(
+                request.method,
+                peer_url + request.url.path + (f"?{request.url.query}" if request.url.query else ""),
+                headers=headers, content=body,
+            )
+    except Exception:  # noqa: BLE001 — unreachable peer is not an error to surface
+        return None
+    skip = {"content-encoding", "content-length", "transfer-encoding", "connection"}
+    return Response(
+        content=r.content,
+        status_code=r.status_code,
+        headers={k: v for k, v in r.headers.items() if k.lower() not in skip},
+    )
 
 
 def _wss_ssl_context(url: str):
@@ -124,6 +202,26 @@ class _Accounts:
 
     def whoami(self, token: str) -> Optional[str]:
         return self.by_token.get(token or "")
+
+    # ── the host directory, single-instance flavour ───────────────────────────
+    #
+    # A relay with no Postgres is a relay that cannot be replicated anyway —
+    # there is nowhere for a second instance to look. So the directory is the
+    # local map: `find_host` always answers "not somewhere else", which sends
+    # `route_by_subdomain` down the exact path it took before any of this
+    # existed. One code path, two deployments.
+
+    def claim_host(self, account: str, instance: str, url: str) -> None:
+        return None
+
+    def refresh_host(self, account: str, instance: str) -> None:
+        return None
+
+    def release_host(self, account: str, instance: str) -> None:
+        return None
+
+    def find_host(self, account: str, lease: float) -> Optional[tuple]:
+        return None
 
     def _new_name(self, want: str) -> str:
         name = _slug(want) or ("m" + secrets.token_hex(4))
@@ -205,6 +303,35 @@ class _PgAccounts:
                     created BIGINT
                 )"""
             )
+            # ── which INSTANCE is holding each host's socket ──────────────────
+            #
+            # The one piece of state that stops this relay being replicated. A
+            # host's WebSocket lives in one process's memory (`hosts`), so a
+            # second instance cannot serve a request for a machine attached to
+            # the first: it has no socket to write to and answers 502, which
+            # reads to the user as "your Mac is offline" while the Mac is fine.
+            # That is why there has only ever been one relay, on one VM, in one
+            # zone — and why a deploy is an outage.
+            #
+            # This table is the missing directory. Each instance records the
+            # accounts it holds and an address its peers can reach it on, so an
+            # instance that receives a request for somebody else's host knows
+            # exactly where to forward it. Postgres rather than Redis because
+            # the relay already has Postgres and a second piece of
+            # infrastructure to keep up is a second thing that can be down.
+            #
+            # `seen_at` is a lease, not a fact: a relay that is SIGKILLed never
+            # deletes its rows, so a stale row must expire rather than be
+            # trusted. Refreshed while the link is up; ignored once older than
+            # `HOST_LEASE_SECONDS`.
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS relay_hosts (
+                    account  TEXT PRIMARY KEY,
+                    instance TEXT NOT NULL,
+                    url      TEXT NOT NULL,
+                    seen_at  DOUBLE PRECISION NOT NULL
+                )"""
+            )
         if migrate_from and migrate_from.exists():
             self._migrate_json(migrate_from)
 
@@ -238,6 +365,60 @@ class _PgAccounts:
         with self.pool.connection() as conn:
             r = conn.execute("SELECT account FROM relay_accounts WHERE token=%s", (token,)).fetchone()
             return r[0] if r else None
+
+    # ── the host directory, so more than one relay can exist ──────────────────
+
+    def claim_host(self, account: str, instance: str, url: str) -> None:
+        """Record that THIS instance holds this account's host socket.
+
+        Last writer wins, deliberately: a host that reconnects to a different
+        instance has genuinely moved, and the old instance's socket is already
+        being closed by the displacement logic in `connect`. Refusing the claim
+        would strand the account on an instance that no longer has it.
+        """
+        with self.pool.connection() as conn:
+            conn.execute(
+                """INSERT INTO relay_hosts (account, instance, url, seen_at)
+                   VALUES (%s,%s,%s,%s)
+                   ON CONFLICT (account) DO UPDATE
+                     SET instance = EXCLUDED.instance,
+                         url      = EXCLUDED.url,
+                         seen_at  = EXCLUDED.seen_at""",
+                (account, instance, url, _time.time()),
+            )
+
+    def refresh_host(self, account: str, instance: str) -> None:
+        """Renew the lease. Only our own row — never take someone else's."""
+        with self.pool.connection() as conn:
+            conn.execute(
+                "UPDATE relay_hosts SET seen_at=%s WHERE account=%s AND instance=%s",
+                (_time.time(), account, instance),
+            )
+
+    def release_host(self, account: str, instance: str) -> None:
+        """Drop the claim on a clean disconnect, guarded by instance.
+
+        The guard is what stops a slow teardown on the OLD instance deleting the
+        row a host has just written on its NEW one — which would make a machine
+        that reconnected perfectly read as offline to everyone.
+        """
+        with self.pool.connection() as conn:
+            conn.execute(
+                "DELETE FROM relay_hosts WHERE account=%s AND instance=%s", (account, instance)
+            )
+
+    def find_host(self, account: str, lease: float) -> Optional[tuple]:
+        """(instance, url) for a live claim, or None. Stale rows are not live."""
+        with self.pool.connection() as conn:
+            r = conn.execute(
+                "SELECT instance, url, seen_at FROM relay_hosts WHERE account=%s", (account,)
+            ).fetchone()
+        if not r:
+            return None
+        instance, url, seen_at = r
+        if _time.time() - float(seen_at) > lease:
+            return None  # the holder died without cleaning up
+        return instance, url
 
     def exists(self, account: str) -> bool:
         with self.pool.connection() as conn:
@@ -521,8 +702,18 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
             except Exception:  # noqa: BLE001
                 pass
         hosts[account] = conn
+        # Tell the other instances we hold this one, and keep saying so. The
+        # lease is refreshed by the keepalive below rather than on a timer of
+        # its own: a link healthy enough to carry frames is the only evidence
+        # that matters, and a separate timer would happily renew a claim on a
+        # socket that had already gone quiet.
+        await asyncio.to_thread(accounts.claim_host, account, INSTANCE_ID, PEER_URL)
+        last_renew = _time.time()
         try:
             async for raw in ws.iter_text():
+                if _time.time() - last_renew > HOST_LEASE_SECONDS / 3:
+                    last_renew = _time.time()
+                    await asyncio.to_thread(accounts.refresh_host, account, INSTANCE_ID)
                 frame = Frame.load(raw)
                 if frame.type == FrameType.HTTP_RESPONSE:
                     fut = conn.pending.pop(frame.request_id, None)
@@ -547,6 +738,11 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
         finally:
             if hosts.get(account) is conn:
                 hosts.pop(account, None)
+                # Guarded by instance inside `release_host`: if this host has
+                # already reconnected somewhere else, that row is theirs now and
+                # deleting it would make a perfectly healthy Mac read as offline
+                # to every other instance.
+                await asyncio.to_thread(accounts.release_host, account, INSTANCE_ID)
 
     @app.websocket("/{ws_path:path}")
     async def proxy_ws(ws: WebSocket, ws_path: str):
@@ -596,6 +792,19 @@ def create_relay_app(domain: str = "herds.run") -> FastAPI:
             return await call_next(request)  # relay's own endpoints
         conn = hosts.get(sub)
         if conn is None:
+            # Not ours — but another instance may be holding this host's socket.
+            #
+            # Only when replication is configured, only when this request has
+            # not already been forwarded once, and only for a claim that is
+            # still within its lease. Anything else falls through to the same
+            # 502 this has always returned, which is the honest answer for a
+            # fleet with nobody hosting it.
+            if PEER_URL and request.headers.get(FORWARD_HEADER) != "1":
+                where = await asyncio.to_thread(accounts.find_host, sub, HOST_LEASE_SECONDS)
+                if where and where[0] != INSTANCE_ID and where[1]:
+                    forwarded = await _forward_to_peer(where[1], request)
+                    if forwarded is not None:
+                        return forwarded
             return Response(f"No Herds host '{sub}' is connected.", status_code=502)
         import uuid
 
