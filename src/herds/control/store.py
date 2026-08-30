@@ -221,12 +221,55 @@ class Store:
         self.db.commit()
         self._ensure_scope_column()
         self._ensure_app_columns()
+        # A job in flight belongs to a process that no longer exists.
+        #
+        # This runs before anything reads job state, because everything that
+        # does treats `dispatched`/`running` as LIVE — `live_sandbox_ids`, the
+        # `/v1/stats` counter, and the daemon's 8-wide admission gate. A job
+        # only leaves those states when the executor that owns it reports back,
+        # so a daemon that is killed, crashes, or loses power strands every job
+        # it had in flight in a state nothing will ever clear.
+        #
+        # The capacity is what makes it fatal rather than untidy. Watched on a
+        # real Mac mini: 57 jobs stuck in `dispatched` from killed runs, and the
+        # machine answered every new request with "admission cap reached (8/8
+        # live, 32/32 queued)" — through a full stop, a process kill, and a
+        # clean restart, because the count is rebuilt from these rows. The Mac
+        # was idle and permanently unable to accept work, with no error anywhere
+        # naming the reason.
+        #
+        # Reaping at open is correct rather than merely convenient: this
+        # constructor runs when the control plane starts, and at that instant
+        # nothing is executing. Anything the table still calls in-flight is a
+        # ghost by definition.
+        try:
+            self.reap_orphaned_jobs()
+        except Exception:  # noqa: BLE001 — a store that cannot reap is still a store
+            pass
         # History must not grow until the machine drowns. Best-effort: a store
         # that cannot prune is still a store.
         try:
             self.prune()
         except Exception:  # noqa: BLE001
             pass
+
+    def reap_orphaned_jobs(self) -> int:
+        """Fail every job left in flight by a previous process. Returns the count.
+
+        `failed` and not `succeeded`, obviously — but also not a new
+        `orphaned` state: every reader in the tree branches on the three active
+        states and on `succeeded`, so inventing a fourth would need each of them
+        taught about it, and the ones not taught would keep counting these as
+        live, which is the bug.
+        """
+        q = ",".join("?" * len(self._ACTIVE))
+        cur = self.db.execute(
+            f"UPDATE jobs SET state='failed', exit_code=COALESCE(exit_code, -1) "
+            f"WHERE state IN ({q})",
+            self._ACTIVE,
+        )
+        self.db.commit()
+        return cur.rowcount or 0
 
     # How long finished jobs are worth keeping, and how much of a job's TEXT
     # columns. Debugging wants recent history; nothing wants February's.
