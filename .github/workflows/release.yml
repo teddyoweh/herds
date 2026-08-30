@@ -78,7 +78,22 @@ jobs:
           name: dist
           path: dist/
 
+      # A release workflow has to be re-runnable.
+      #
+      # Without this, any re-run — a flaky build job, a tag pushed after a
+      # manual `uv publish`, a `workflow_dispatch` to regenerate artifacts —
+      # dies on "File already exists" and takes `github-release` down with it,
+      # because that job `needs: publish`. So a release that got as far as PyPI
+      # and no further could never be finished; it could only be abandoned and
+      # re-cut under a new version number.
+      #
+      # `skip-existing` makes the step idempotent: it uploads what is missing
+      # and passes over what is already there. It does NOT weaken the version
+      # check above — a tag that disagrees with pyproject still fails the build
+      # before anything reaches PyPI.
       - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
 
   github-release:
     name: GitHub release
