@@ -930,6 +930,29 @@ async def _run_client(relay_ws_url: str, token: str, local_url: str) -> None:
                                 except Exception:  # noqa: BLE001
                                     pass
         except Exception as exc:  # noqa: BLE001 — reconnect on anything (drops, DNS, network switch)
+            # 4409 is the relay saying ANOTHER MAC IS NOW HOSTING THIS ACCOUNT.
+            #
+            # Reconnecting is right for every other cause — a dropped link, a
+            # network switch, a relay deploy — and catastrophic for this one.
+            # The relay holds one host per account, so two Macs that both host
+            # displace each other forever: each is closed with 4409, each
+            # immediately dials back, and every client sees results alternating
+            # between two different control planes. Watched on a real fleet: a
+            # `herds run` alternated OK / "machine is offline" on every other
+            # call, and `herds machines` returned one machine, then three, then
+            # one — because two hosts were answering in turn.
+            #
+            # Losing the race is information, not an error. The newest host is
+            # the one the user just started, so the displaced one steps down and
+            # says why. It stays running as a MACHINE (its daemon is a separate
+            # link); it simply stops claiming to be the account's host.
+            if getattr(exc, "code", None) == 4409 or "4409" in str(exc):
+                print(
+                    "herds relay: another Mac is now hosting this account — "
+                    "this one has stepped down. Run `herds host` here to take it back.",
+                    file=sys.stderr,
+                )
+                return
             print(f"herds relay: link lost ({exc}); reconnecting in {backoff:.0f}s…", file=sys.stderr)
         # Fast, bounded backoff so the host self-heals within seconds of the network
         # coming back — it stays up until you stop it, no matter how often Wi-Fi flaps.

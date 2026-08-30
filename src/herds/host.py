@@ -883,6 +883,28 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
             if s["proc"].poll() is None:
                 continue
             now = time.monotonic()
+            # A clean exit is a DECISION, not a crash.
+            #
+            # The relay link is the one child that can finish on purpose: when
+            # another Mac takes over hosting this account the relay closes it
+            # with 4409, and the client steps down rather than dialing back —
+            # because two hosts that both reconnect trade the account forever
+            # and every client sees alternating answers.
+            #
+            # Restarting it undoes that: the loser comes straight back, gets
+            # displaced again, and after five rounds this supervisor concludes
+            # the child is crash-looping and takes the WHOLE HOST down — so a
+            # Mac that merely lost a hosting race ends up not even drivable.
+            # Observed exactly that: five "stepped down" lines, then "relay link
+            # keeps crashing — shutting down the host".
+            #
+            # Zero means it meant it. The machine stays up and stays drivable
+            # through its daemon, which is a separate child; only the claim to
+            # serve the account's subdomain is given up.
+            if s["proc"].returncode == 0:
+                err.print(f"[dim]{s['name']} finished — not restarting it.[/dim]")
+                supervised.remove(s)
+                continue
             if now - s["started"] > 60:
                 s["restarts"] = 0  # ran fine for a while — not a crash loop
             if s["restarts"] >= 5:
