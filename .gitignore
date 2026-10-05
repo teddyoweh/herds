@@ -32,3 +32,6 @@ host_token
 *.swp
 .idea/
 .vscode/
+
+# Demo dependencies
+demo/node_modules/
