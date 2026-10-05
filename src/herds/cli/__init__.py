@@ -357,6 +357,132 @@ def tag_add(
     console.print(f"[green]✓[/green] [cyan]{machine_id}[/cyan] tags: {', '.join(r.json()['tags']) or '—'}")
 
 
+@app.command()
+def forward(
+    machine: str = typer.Argument(..., help="Machine id, e.g. mac_ed74b9b0."),
+    port: int = typer.Argument(..., help="The port ON THAT MAC to reach."),
+    local: int = typer.Option(0, "--local", "-l", help="Local port; 0 picks a free one."),
+    url: Optional[str] = typer.Option(None, "--url"),
+    token: Optional[str] = typer.Option(None, "--token"),
+):
+    """Bring a port on another Mac to a port on this one.
+
+    A local TCP listener whose bytes ride the machine tunnel to that Mac and
+    back. Whatever is on the far port is then reachable at 127.0.0.1 here, so
+    ordinary tools — a browser, curl, a debugger — need to know nothing about
+    Herds.
+
+        herds forward mac_ed74b9b0 9333 --local 9555
+
+    ── why a command and not a library call ──────────────────────────────────
+
+    `open_tunnel` has existed in the SDK for a while with no CLI surface, so the
+    only way to use it was to write Python. Everything that drives Herds from
+    another language — Universe shells out to this CLI on purpose, rather than
+    reimplementing the relay protocol and letting the two drift — could not
+    reach it at all.
+
+    ── why asyncio and not threads ───────────────────────────────────────────
+
+    The first version used `websockets.sync` with a thread pumping each
+    direction, and it worked for anything request/response: `curl` got its
+    answer, and a bare WebSocket upgrade completed. It then HUNG on Playwright's
+    CDP handshake, which is many small messages flying both ways at once — the
+    sync client is not built for a concurrent reader and writer on one
+    connection, and the deadlock only appears under exactly the traffic this
+    command exists to carry.
+
+    So both directions are coroutines on one loop, which is the shape the
+    protocol actually has. Each accepted socket gets its own tunnel: CDP alone
+    opens one connection for `/json/version` and another for the debugger
+    WebSocket, so a single-tunnel bridge cannot serve it.
+
+    ── the one thing this cannot fix for you ─────────────────────────────────
+
+    A service that advertises its own address advertises the FAR one. Chrome
+    answers `/json/version` with a `webSocketDebuggerUrl` naming its own host
+    and port, which does not exist on this machine, so a client that follows it
+    lands nowhere. Rewriting that is the caller's job, because only the caller
+    knows which protocol is being spoken.
+    """
+    import asyncio
+
+    from ..relay import _wss_ssl_context
+    from ..sdk.client import HerdsClient
+
+    client = HerdsClient(control_plane=url, api_key=token)
+    ws_url = client.tunnel_url(port, machine_id=machine)
+
+    async def serve() -> None:
+        import websockets
+
+        async def handle(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
+            try:
+                far = await websockets.connect(
+                    ws_url, max_size=None, open_timeout=20, ssl=_wss_ssl_context(ws_url)
+                )
+            except Exception as exc:  # noqa: BLE001 — offline machine, refused port
+                err.print(f"[red]✗[/red] {exc}")
+                writer.close()
+                return
+
+            async def up() -> None:
+                """This machine -> the far port."""
+                try:
+                    while True:
+                        chunk = await reader.read(65536)
+                        if not chunk:
+                            break
+                        await far.send(chunk)
+                except Exception:  # noqa: BLE001 — either end closing is ordinary
+                    pass
+
+            async def down() -> None:
+                """The far port -> this machine."""
+                try:
+                    async for msg in far:
+                        writer.write(msg if isinstance(msg, bytes) else str(msg).encode())
+                        await writer.drain()
+                except Exception:  # noqa: BLE001
+                    pass
+
+            # Whichever direction ends first ends the pair: a half-closed proxy
+            # leaks a socket and a tunnel per connection, and CDP opens a lot.
+            try:
+                await asyncio.wait(
+                    [asyncio.create_task(up()), asyncio.create_task(down())],
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+            finally:
+                try:
+                    await far.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                try:
+                    writer.close()
+                except Exception:  # noqa: BLE001
+                    pass
+
+        # Loopback only, and not negotiable: the far port is reachable through
+        # this with whatever authentication the far port has, which for a
+        # debugger port is none. Binding 0.0.0.0 would hand the LAN a
+        # remote-controlled browser.
+        server = await asyncio.start_server(handle, "127.0.0.1", local)
+        chosen = server.sockets[0].getsockname()[1]
+        console.print(f"[green]✓[/green] 127.0.0.1:{chosen} → {machine}:{port}")
+        # The line a caller parses. On its own so a wrapper can read one number
+        # without matching the sentence above, which is for a person.
+        console.print(f"PORT {chosen}")
+        sys.stdout.flush()
+        async with server:
+            await server.serve_forever()
+
+    try:
+        asyncio.run(serve())
+    except KeyboardInterrupt:
+        pass
+
+
 @app.command("tags")
 def tags_ls(
     url: Optional[str] = typer.Option(None, "--url"),

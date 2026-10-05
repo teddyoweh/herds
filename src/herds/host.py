@@ -131,6 +131,76 @@ def _write_host_state(state: dict) -> None:
         pass
 
 
+def _start_lock_file() -> Path:
+    """The claim a host holds while it is COMING UP, before it can answer /healthz."""
+    return config.HERDS_HOME / "host.starting"
+
+
+def acquire_start_lock(timeout: float = 0.0) -> Optional[int]:
+    """Claim the right to start a host on this Mac, atomically. None if taken.
+
+    ── the race this closes ───────────────────────────────────────────────────
+
+    Both guards in ``run_host`` ask "is a host already SERVING?" — one via the
+    recorded state, one via ``_healthz_ok``. Neither can see a host that is
+    still starting, and starting takes seconds: a control plane to spawn and a
+    tunnel to negotiate. Two starts inside that window both see an empty Mac.
+
+    That is not theoretical. ``herds child -b`` installs the KeepAlive agent and
+    then starts a host itself; launchd's ``RunAtLoad`` fires at the same moment,
+    so the two halves of ONE command race each other. Both spawn a control
+    plane, both bind 127.0.0.1:8787, the loser retries five times and gives up
+    with "control plane keeps crashing — shutting down the host", and the Mac
+    ends up either dead or quietly running two of everything. Observed on a
+    real mini: seven herds processes, two control planes on 8787 and 8788, five
+    API keys in ``host.db`` because every restart minted another, and
+    ``herds child status`` reporting "Not hosting" the whole time.
+
+    ``O_CREAT | O_EXCL`` is the whole mechanism — the filesystem does the
+    mutual exclusion, so it holds across unrelated processes, across launchd,
+    and across an SSH session, which a lock inside one process cannot.
+
+    A stale lock (holder died mid-start, machine lost power) is reclaimed by
+    checking the recorded pid, because a lock nobody can break is a Mac nobody
+    can host from.
+    """
+    path = _start_lock_file()
+    config.ensure_dirs()
+    deadline = time.time() + max(0.0, timeout)
+    while True:
+        try:
+            fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+            return os.getpid()
+        except FileExistsError:
+            holder = 0
+            try:
+                holder = int(path.read_text().strip() or 0)
+            except Exception:
+                holder = 0
+            # Nobody home: the previous starter died before it could clean up.
+            if not holder or not _pid_alive(holder):
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+                continue
+            if time.time() >= deadline:
+                return None
+            time.sleep(0.25)
+
+
+def release_start_lock() -> None:
+    """Drop the claim. Safe to call when we never held it."""
+    try:
+        path = _start_lock_file()
+        if path.exists() and path.read_text().strip() == str(os.getpid()):
+            path.unlink()
+    except OSError:
+        pass
+
+
 def _clear_host_state() -> None:
     try:
         _host_state_file().unlink()
@@ -603,9 +673,34 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
              quick: bool = False, force: bool = False, child: bool = False) -> None:
     config.ensure_dirs()
 
+    # Claim the right to start BEFORE either liveness check below.
+    #
+    # Both of those ask "is a host serving?", and neither can see one that is
+    # still coming up — which takes seconds. `herds child -b` races itself
+    # through exactly that window: it arms the KeepAlive agent, launchd's
+    # RunAtLoad starts a host, and it then starts one too. See
+    # `acquire_start_lock`.
+    #
+    # A short wait rather than an instant refusal: the common case is the two
+    # halves of one command arriving together, and the right answer for the
+    # loser is "somebody else is already doing this", which needs the winner to
+    # have got far enough to be visible. `force` still waits — it means restart,
+    # not "start a second one".
+    if acquire_start_lock(timeout=20.0) is None:
+        existing = _existing_host()
+        if existing:
+            _already_hosting_panel(existing, child=child)
+        else:
+            console.print("[dim]Another herds host is already starting on this Mac.[/dim]")
+        return
+
     # Already hosting on this Mac? Don't spin up a duplicate — point at the live one.
+    # Every return past this point releases the claim: a lock left behind by a
+    # start that bailed would make the Mac unhostable until somebody deleted a
+    # file they have never heard of.
     existing = _existing_host()
     if existing and not force:
+        release_start_lock()
         _already_hosting_panel(existing, child=child)
         return
     if existing and force:
@@ -627,6 +722,7 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
     # Fallback (no/stale state, e.g. a host started before this upgrade): if the
     # target port is already a live Herds control plane, don't duplicate it.
     if not force and _healthz_ok(port):
+        release_start_lock()
         _already_hosting_panel({"port": port, "public_url": f"http://127.0.0.1:{port}",
                                 "token": _persistent_token(), "provider": "local"}, child=child)
         return
@@ -732,6 +828,9 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
         "pid": os.getpid(), "port": port, "public_url": public_url,
         "token": token, "provider": provider, "permanent": permanent,
     })
+    # Discoverable now, so the claim has done its job: from here the ordinary
+    # "is a host serving?" guards see this one and will refuse to duplicate it.
+    release_start_lock()
 
     join = config.join_token(token, public_url)
     open_url = f"{public_url}/?token={token}"
@@ -784,6 +883,28 @@ def run_host(port: int = 8787, dashboard_port: int = 3939, tunnel: bool = True,
             if s["proc"].poll() is None:
                 continue
             now = time.monotonic()
+            # A clean exit is a DECISION, not a crash.
+            #
+            # The relay link is the one child that can finish on purpose: when
+            # another Mac takes over hosting this account the relay closes it
+            # with 4409, and the client steps down rather than dialing back —
+            # because two hosts that both reconnect trade the account forever
+            # and every client sees alternating answers.
+            #
+            # Restarting it undoes that: the loser comes straight back, gets
+            # displaced again, and after five rounds this supervisor concludes
+            # the child is crash-looping and takes the WHOLE HOST down — so a
+            # Mac that merely lost a hosting race ends up not even drivable.
+            # Observed exactly that: five "stepped down" lines, then "relay link
+            # keeps crashing — shutting down the host".
+            #
+            # Zero means it meant it. The machine stays up and stays drivable
+            # through its daemon, which is a separate child; only the claim to
+            # serve the account's subdomain is given up.
+            if s["proc"].returncode == 0:
+                err.print(f"[dim]{s['name']} finished — not restarting it.[/dim]")
+                supervised.remove(s)
+                continue
             if now - s["started"] > 60:
                 s["restarts"] = 0  # ran fine for a while — not a crash loop
             if s["restarts"] >= 5:

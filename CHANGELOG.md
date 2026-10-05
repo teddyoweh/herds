@@ -3,6 +3,67 @@
 What changed, and why it had to. Headlines are the release commits' own — the
 full story behind any entry is `git log`, where each release explains itself.
 
+## 0.9.12 — 2026-08-30
+
+**A fleet could spend days answering differently on alternate calls, and no
+single machine was wrong.** Four faults, each silent, each found by running a
+real two-Mac fleet rather than by reading:
+
+**`herds child -b` raced itself onto one port.** It arms the KeepAlive agent
+and then starts a host; launchd's `RunAtLoad` starts one at the same instant.
+Both liveness guards ask "is a host SERVING?", and a host still negotiating its
+tunnel is not serving yet — so both spawned a control plane and both bound
+127.0.0.1:8787. The loser retried five times and printed "control plane keeps
+crashing — shutting down the host". Observed on a mini: seven herds processes,
+two control planes (8787 and 8788, the second from the port auto-bump, so both
+survived), five API keys in `host.db` because every restart minted another, and
+`herds child status` reporting "Not hosting" throughout. Startup is now
+serialized by an `O_CREAT | O_EXCL` claim — the filesystem does the exclusion,
+because the two halves are unrelated processes and nothing in one interpreter
+can exclude the other. A holder that died mid-start is reclaimed by pid, since
+a lock nobody can break is a Mac nobody can host from.
+
+**A killed daemon wedged its Mac forever.** Everything that asks how busy a Mac
+is treats `queued`/`dispatched`/`running` as live, and a job only leaves those
+states when its executor reports back. A daemon that is killed strands every
+job it had in flight. Found 57 stuck in `dispatched`, and the machine answered
+every request with "admission cap reached (8/8 live, 32/32 queued)" — through a
+stop, a kill and a clean restart, because the count is rebuilt from those rows.
+An idle Mac, permanently unable to accept work, with nothing naming the reason.
+In-flight jobs are now failed when the store opens: the control plane is
+starting, nothing is executing, and anything still called in-flight is a ghost.
+
+**Two Macs traded one account back and forth.** The relay holds one host per
+account, so a second displaces the first — and the first's reconnect loop
+treated that like any dropped link and dialed straight back. Neither settled.
+From outside it was not a crash: `herds run` returned OK, then "machine is
+offline", then OK; `herds machines` returned one machine, then three. Both were
+true, from two Macs' control planes in turn. A container had been doing this in
+a one-second loop for three days. 4409 now means step down and say which
+command takes hosting back; the Mac stays drivable through its daemon.
+
+**And the supervisor read that step-down as a crash**, restarting it five times
+before taking the whole host down — so a Mac that merely lost a hosting race
+ended up not even drivable. A clean exit is a decision: zero is honoured, not
+restarted, not counted. Every non-zero exit still restarts and still escalates.
+
+**The relay can now be replicated.** A host's socket lives in one process's
+memory, which is why there has only ever been one relay, on one VM, in one
+zone — no rolling deploy and no failover. `relay_hosts` is the directory that
+fixes it: each instance records which accounts it holds and where peers can
+reach it, so an instance can forward what it cannot serve. Postgres because the
+relay already has it; plain HTTP between instances because a bus would mean
+inventing correlation, redelivery and backpressure for what a socket does for
+free. Leases expire (a SIGKILLed relay never releases its rows), release is
+guarded by instance (a late teardown must not delete the row a host just wrote
+elsewhere), and `x-herds-forwarded` makes it one hop so a stale row cannot make
+two relays volley the same request. All of it is gated on `HERDS_PEER_URL`:
+unset, the behaviour is byte-for-byte what it was.
+
+Measured on a real fleet before and after: 1 of 8 runs succeeded → 8 of 8; the
+machine list alternated between 1 and 3 → stable; relay restarts required
+manual recovery on every machine → 3 of 3 deploys recovered in 6 seconds.
+
 ## 0.9.11 — 2026-08-16
 
 **Every Mac on a fleet showed the same generic name as every other one of its
